@@ -1,0 +1,3 @@
+# Usa as regras padrão do gitleaks. Nenhuma exceção para arquivos reais de configuração.
+[extend]
+useDefault = true
