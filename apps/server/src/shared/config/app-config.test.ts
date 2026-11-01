@@ -4,7 +4,7 @@ import { ConfigError, loadConfig } from "./app-config.js";
 
 describe("loadConfig", () => {
   it("applies defaults when nothing is set", () => {
-    expect(loadConfig({})).toEqual({ mode: "all", port: 3100 });
+    expect(loadConfig({})).toEqual({ mode: "all", port: 3100, askTimeoutMs: 120_000 });
   });
 
   it("treats empty variables (as in .env.example) as unset", () => {
@@ -16,7 +16,15 @@ describe("loadConfig", () => {
       NEURONS_MASTER_KEY: "",
     });
 
-    expect(config).toEqual({ mode: "all", port: 3100 });
+    expect(config).toEqual({ mode: "all", port: 3100, askTimeoutMs: 120_000 });
+  });
+
+  it("reads the ask timeout in seconds", () => {
+    expect(loadConfig({ NEURONS_ASK_TIMEOUT_SEC: "30" }).askTimeoutMs).toBe(30_000);
+  });
+
+  it("rejects an ask timeout that is not a positive number of seconds", () => {
+    expect(() => loadConfig({ NEURONS_ASK_TIMEOUT_SEC: "0" })).toThrow(ConfigError);
   });
 
   it("reads mode and port", () => {

@@ -1,4 +1,4 @@
-import { check, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, check, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { idColumn } from "./columns.js";
 import { graphVersions } from "./graphs.js";
@@ -21,6 +21,12 @@ export const runs = pgTable(
     spentUsd: usd("spent_usd").notNull().default("0"),
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
+    /**
+     * Last `run_events.seq` handed out. Events take their seq with a single
+     * `UPDATE ... SET last_seq = last_seq + n RETURNING`, which serializes concurrent writers
+     * of the same run, so seqs never repeat nor leave gaps.
+     */
+    lastSeq: bigint("last_seq", { mode: "number" }).notNull().default(0),
   },
   (table) => [
     check(

@@ -15,6 +15,7 @@ export async function startTestDatabase(): Promise<TestDatabase> {
   const database = new DatabaseService({
     mode: "api",
     port: 0,
+    askTimeoutMs: 120_000,
     database: { connectionString: container.getConnectionUri() },
   });
   await runMigrations(database.db);

@@ -17,6 +17,7 @@ export interface ErrorBody {
 const STATUS_BY_KIND: Record<DomainErrorKind, HttpStatus> = {
   not_found: HttpStatus.NOT_FOUND,
   invalid: HttpStatus.BAD_REQUEST,
+  forbidden: HttpStatus.FORBIDDEN,
   conflict: HttpStatus.CONFLICT,
   unavailable: HttpStatus.SERVICE_UNAVAILABLE,
   internal: HttpStatus.INTERNAL_SERVER_ERROR,

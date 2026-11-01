@@ -13,6 +13,8 @@ export type DatabaseConnection =
 export interface AppConfig {
   mode: AppMode;
   port: number;
+  /** How long an agent's `ask` waits for the answer before failing. */
+  askTimeoutMs: number;
   /** Absent when no database variables were provided. */
   database?: DatabaseConnection;
   /** 32 raw bytes decoded from NEURONS_MASTER_KEY. Absent when not provided. */
@@ -38,6 +40,7 @@ const port = (fallback: number) =>
 const envSchema = z.object({
   NEURONS_MODE: unlessEmpty(z.enum(APP_MODES).default("all")),
   NEURONS_PORT: port(3100),
+  NEURONS_ASK_TIMEOUT_SEC: unlessEmpty(z.coerce.number().int().min(1).default(120)),
   NEURONS_DB_URL: unlessEmpty(z.url().optional()),
   NEURONS_DB_HOST: unlessEmpty(z.string().trim().min(1).optional()),
   NEURONS_DB_PORT: port(5432),
@@ -93,6 +96,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     mode: values.NEURONS_MODE,
     port: values.NEURONS_PORT,
+    askTimeoutMs: values.NEURONS_ASK_TIMEOUT_SEC * 1000,
     ...(database && { database }),
     ...(masterKey && { masterKey: Buffer.from(masterKey, "base64") }),
   };

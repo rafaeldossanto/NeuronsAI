@@ -7,6 +7,7 @@ import { DatabaseNotConfiguredError } from "./database-not-configured.error.js";
 import * as schema from "./schema/index.js";
 
 export type Database = NodePgDatabase<typeof schema>;
+export type DatabaseTransaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 const CONNECTION_TIMEOUT_MS = 2_000;
 
