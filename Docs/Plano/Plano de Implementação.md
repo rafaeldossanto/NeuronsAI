@@ -163,11 +163,11 @@ gravadas.
 - `packages/mcp-neurons`: servidor MCP (SDK oficial) com `send_message`, `ask`, `reply`,
   `list_peers`, `finish`, autenticado por um token por agente e por execução, falando com o Hub
   por HTTP local.
-- `TerminalAgentRuntime`: sobe a CLI com `node-pty` no `cwd` do bloco, gera a configuração MCP
-  da sessão apontando para o `mcp-neurons`, injeta o briefing e cada mensagem entregue quando a
-  CLI está ociosa (heurística da T05), e transmite a saída do terminal para o WebSocket.
+- `TerminalAgentRuntime` (resultado do spike T05, `Docs/Spikes/Terminal.md`): `node-pty` 1.1.0 (binário pronto para Windows, sem compilador) + `@xterm/headless` para ler a tela; **fim de turno pelo hook `Stop`** do Claude Code configurado na sessão, com o rodapé da TUI (`esc to interrupt` = ocupado, `? for shortcuts` = livre) e 1,5 s de silêncio só como confirmação; **injeção** = digitar o texto, esperar o eco na tela + 400 ms, Enter, confirmar pelo hook `UserPromptSubmit`; saída transmitida ao WebSocket.
+- `StreamJsonAgentRuntime`: segundo runtime, para agentes sem tela, com `claude -p --input-format stream-json --output-format stream-json` como sessão persistente (fim de turno, uso e custo explícitos; turno quente ~5 s). Decidir aqui se vira opção do bloco no `graph-schema`.
+- Os dois implementam a mesma `AgentRuntime` (injetar, ocioso/ocupado, saída, encerrar).
+- Encerrar com `taskkill /T /F` no Windows (`pty.kill()` trava); matar órfãos no restart; fixar a versão suportada da CLI (os textos de tela mudam entre versões); testar prompt multilinha (o spike não cobriu).
 - Esforço e modelo passados por flag/config da CLI quando ela tiver; senão, ignorados com aviso.
-- Encerrar a CLI com limpeza ao fim da execução; matar processo órfão no restart.
 
 **Pronto quando:** `mixed.json`: um agente de API manda uma tarefa ao Claude Code no terminal,
 o Claude Code pergunta algo com `ask`, recebe a resposta e avisa com `send_message` ao terminar.

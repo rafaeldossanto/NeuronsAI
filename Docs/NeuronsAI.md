@@ -76,7 +76,7 @@ sequenceDiagram
 | D2 | **v1 local-first**: roda no PC (servidor em localhost, interface no navegador) | Os agentes de terminal são processos na máquina e precisam do cofre Obsidian e dos repositórios. Empacotar como app desktop (Electron/Tauri) fica para depois |
 | D3 | **Comunicação direta entre agentes vivos** (modelo do Orca) | Pedido do Rafael. Cada agente é uma sessão de longa duração com caixa de entrada; não é um fluxo em que um bloco termina e o próximo começa |
 | D4 | **Hub próprio**: toda mensagem é gravada no Postgres antes da entrega, entregue na hora em memória, e reentregue se não houve confirmação | Visibilidade e durabilidade sem infraestrutura extra (sem Temporal, Camunda, Redis). Postgres 18 nativo já está na máquina |
-| D5 | **Dois tipos de agente** atrás da mesma interface `AgentRuntime`: **API** (loop próprio, qualquer fornecedor por chave de API) e **Terminal** (CLI oficial num pseudo-terminal: Claude Code, Codex, Gemini CLI, Hermes, qualquer uma) | O de API dá controle fino de modelo, esforço e custo. O de terminal usa a CLI oficial que você já tem logada, do mesmo jeito que o Orca, inclusive com a sua assinatura (confirmar os termos vigentes antes da T08) |
+| D5 | **Dois tipos de agente** atrás da mesma interface `AgentRuntime`: **API** (loop próprio, qualquer fornecedor por chave de API) e **Terminal** (CLI oficial num pseudo-terminal: Claude Code, Codex, Gemini CLI, Hermes, qualquer uma) | O de API dá controle fino de modelo, esforço e custo. O de terminal usa a CLI oficial que você já tem logada, do mesmo jeito que o Orca, inclusive com a sua assinatura (termos, conferidos no spike T05: o usuário pode logar o binário não modificado com a própria assinatura; um produto não pode rotear requisições pela assinatura dos usuários nem guardar tokens; controle por PTY não é citado — para vender, o padrão é chave de API) |
 | D6 | Agentes de terminal falam com o Hub por um **servidor MCP `neurons`** configurado em cada sessão | A CLI chama `send_message`/`ask` como ferramenta normal, sem raspar texto do terminal |
 | D7 | **Esforço normalizado em 5 níveis**: `low`, `medium`, `high`, `xhigh`, `max` | São os níveis do Claude (`output_config.effort`); cada adaptador traduz (OpenAI `reasoning_effort`, Gemini orçamento de raciocínio, flag/config da CLI quando existir) e satura no mais próximo. "ultracode" não é parâmetro de API |
 | D8 | **Canvas executável tipado + camada livre** | Blocos e setas tipados viram agentes e permissões; formas, notas, grupos e texto são anotação no mesmo canvas |
@@ -123,8 +123,7 @@ flowchart LR
   multiagentes da Anthropic. Diferencial a defender: topologia desenhada, conversa direta entre
   agentes de qualquer fornecedor (API e CLI) e visibilidade nível Camunda.
 - **Custo e laço infinito** com conversa livre: as guardas da D10 entram junto com o Hub, não depois.
-- **Terminal no Windows:** `node-pty` usa o ConPTY; detectar "CLI ociosa" é heurística. O spike
-  da T05 prova isso antes de construir em cima.
+- **Terminal no Windows:** provado no spike T05 (volta completa 3 de 3, ver `Docs/Spikes/Terminal.md`); o risco que sobra é a CLI mudar os textos de tela entre versões.
 - **Injeção de prompt:** texto de fora (WhatsApp, páginas) chegando num agente com ferramentas.
   Agentes que recebem texto externo começam sem ferramenta de escrita.
 - **WhatsApp:** só pela Cloud API oficial da Meta.
