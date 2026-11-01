@@ -1,0 +1,17 @@
+export interface ToolLimits {
+  /** Max characters of a tool result handed back to the agent. */
+  maxResultChars: number;
+  /** Upper bound for one HTTP request, on top of the caller's own signal. */
+  httpTimeoutMs: number;
+  /** Max size of a single vault note read or searched. */
+  maxNoteBytes: number;
+  /** Max notes visited by one vault search. */
+  maxSearchFiles: number;
+}
+
+export const DEFAULT_LIMITS: ToolLimits = {
+  maxResultChars: 20_000,
+  httpTimeoutMs: 30_000,
+  maxNoteBytes: 1024 * 1024,
+  maxSearchFiles: 5_000,
+};
