@@ -4,3 +4,4 @@ coverage/
 .turbo/
 pnpm-lock.yaml
 Docs/
+apps/server/drizzle/
