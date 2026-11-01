@@ -1,0 +1,14 @@
+{
+  "name": "neurons-spike-terminal",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "scripts": {
+    "spike": "node src/spike.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "node-pty": "^1.1.0",
+    "zod": "^4.6.7"
+  }
+}
