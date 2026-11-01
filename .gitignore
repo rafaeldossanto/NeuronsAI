@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+.env*
+!.env.example
+*.pem
+*.log
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.trash/
+.idea/
+.vscode/*
+!.vscode/extensions.json
