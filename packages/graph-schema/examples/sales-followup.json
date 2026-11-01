@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "id": "7684e7a3-bcb2-49b1-a2c0-bab4f0af2ba6",
+  "name": "Acompanhamento de vendas",
+  "nodes": [
+    {
+      "id": "gatilho-webhook",
+      "type": "trigger",
+      "position": { "x": 0, "y": 120 },
+      "kind": "webhook",
+      "target": "agente-vendedor"
+    },
+    {
+      "id": "agente-vendedor",
+      "type": "agent",
+      "position": { "x": 260, "y": 120 },
+      "name": "Vendedor",
+      "role": "Atende o cliente e fecha o pedido",
+      "instructions": "Responda ao cliente com cordialidade, confirme os itens do pedido e, ao fechar a venda, avise o PosVenda.",
+      "effort": "medium",
+      "budgetUsd": 0.5,
+      "runtime": { "kind": "api", "provider": "anthropic", "model": "claude-sonnet-5-5" }
+    },
+    {
+      "id": "agente-posvenda",
+      "type": "agent",
+      "position": { "x": 560, "y": 120 },
+      "name": "PosVenda",
+      "role": "Acompanha o pedido depois da venda",
+      "instructions": "Ao ser avisado pelo Vendedor, consulte o pedido na API e envie ao cliente a confirmação com o prazo de entrega.",
+      "effort": "low",
+      "idleTimeoutSec": 300,
+      "runtime": { "kind": "api", "provider": "anthropic", "model": "claude-haiku-5-5" }
+    },
+    {
+      "id": "ferramenta-pedido",
+      "type": "tool",
+      "position": { "x": 860, "y": 120 },
+      "name": "ConsultarPedido",
+      "tool": {
+        "kind": "http",
+        "method": "GET",
+        "url": "https://api.exemplo.com.br/pedidos/{id}",
+        "headers": { "Accept": "application/json" }
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "ligacao-conversa",
+      "from": "agente-vendedor",
+      "to": "agente-posvenda",
+      "kind": "talk",
+      "bidirectional": false
+    },
+    {
+      "id": "ligacao-ferramenta",
+      "from": "agente-posvenda",
+      "to": "ferramenta-pedido",
+      "kind": "uses",
+      "bidirectional": false
+    }
+  ],
+  "annotations": [
+    {
+      "id": "nota-1",
+      "kind": "note",
+      "position": { "x": 260, "y": 300 },
+      "size": { "width": 280, "height": 80 },
+      "text": "O Vendedor só avisa o PosVenda depois de confirmar o pagamento."
+    }
+  ]
+}
