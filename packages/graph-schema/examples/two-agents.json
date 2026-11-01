@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "5b440250-ceba-42f4-8ce6-717a290384c4",
+  "name": "Dois agentes conversando",
+  "nodes": [
+    {
+      "id": "gatilho-1",
+      "type": "trigger",
+      "position": { "x": 0, "y": 120 },
+      "kind": "manual",
+      "target": "agente-pesquisador"
+    },
+    {
+      "id": "agente-pesquisador",
+      "type": "agent",
+      "position": { "x": 260, "y": 0 },
+      "name": "Pesquisador",
+      "role": "Pesquisa e resume informações sobre o tema pedido",
+      "instructions": "Pesquise o tema recebido, resuma os pontos principais e envie o resumo ao Revisor para validação.",
+      "effort": "medium",
+      "runtime": { "kind": "api", "provider": "anthropic", "model": "claude-sonnet-5-5" }
+    },
+    {
+      "id": "agente-revisor",
+      "type": "agent",
+      "position": { "x": 560, "y": 0 },
+      "name": "Revisor",
+      "role": "Revisa resumos e aponta correções",
+      "instructions": "Revise o resumo recebido, aponte erros ou lacunas e devolva a versão final ao Pesquisador.",
+      "effort": "high",
+      "runtime": { "kind": "api", "provider": "anthropic", "model": "claude-sonnet-5-5" }
+    }
+  ],
+  "links": [
+    {
+      "id": "ligacao-1",
+      "from": "agente-pesquisador",
+      "to": "agente-revisor",
+      "kind": "talk",
+      "bidirectional": true,
+      "maxMessages": 10
+    }
+  ],
+  "annotations": []
+}
