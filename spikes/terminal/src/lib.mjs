@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pty from 'node-pty';
+import xtermHeadless from '@xterm/headless';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const SANDBOX = path.join(ROOT, 'sandbox');
@@ -35,6 +36,9 @@ export function findClaudeBin() {
   }
   throw new Error('claude.exe nao encontrado; defina CLAUDE_BIN');
 }
+
+/** Remove o que o app/sessao host injeta (CLAUDE*, ANTHROPIC*): a CLI do spike usa so o login do proprio usuario. */
+export const cleanEnv = (env) => Object.fromEntries(Object.entries(env).filter(([k]) => !/^(CLAUDE|ANTHROPIC)/i.test(k)));
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -80,18 +84,26 @@ export class ClaudePty {
     this.chunks = []; // { t, d }
     this.screen = '';
     this.exited = false;
+    this.term = new xtermHeadless.Terminal({ cols, rows, allowProposedApi: true });
     this.proc = pty.spawn(findClaudeBin(), args, {
       name: 'xterm-256color',
       cols,
       rows,
       cwd: SANDBOX,
-      env: { ...process.env, NEURONS_HUB_URL: hubUrl ?? '' },
+      env: { ...cleanEnv(process.env), NEURONS_HUB_URL: hubUrl ?? '' },
     });
-    this.proc.onData((d) => { this.chunks.push({ t: Date.now(), d }); this.screen += d; });
+    this.proc.onData((d) => { this.chunks.push({ t: Date.now(), d }); this.screen += d; this.term.write(d); });
     this.proc.onExit(() => { this.exited = true; });
   }
   write(s) { this.proc.write(s); }
   lastOutputAt() { return this.chunks.at(-1)?.t ?? 0; }
+  /** Tela renderizada hoje (linhas visiveis do buffer, sem escapes). */
+  screenText() {
+    const b = this.term.buffer.active;
+    const lines = [];
+    for (let i = 0; i < this.term.rows; i++) lines.push((b.getLine(b.viewportY + i)?.translateToString(true) ?? ''));
+    return lines.join('\n').replace(/\s+$/, '');
+  }
   /** Texto bruto sem sequencias de escape (aproximado). */
   plain(sinceIdx = 0) {
     return this.chunks.slice(sinceIdx).map((c) => c.d).join('')

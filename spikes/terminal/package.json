@@ -4,10 +4,14 @@
   "type": "module",
   "version": "0.0.0",
   "scripts": {
-    "spike": "node src/spike.mjs"
+    "spike": "node src/spike.mjs",
+    "spike:stream-json": "node src/stream-json.mjs",
+    "spike:mcp-selftest": "node src/mcp-selftest.mjs",
+    "spike:explore": "node src/explore.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "@xterm/headless": "^6.0.0",
     "node-pty": "^1.1.0",
     "zod": "^4.6.7"
   }

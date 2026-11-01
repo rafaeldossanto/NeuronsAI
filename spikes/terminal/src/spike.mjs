@@ -6,16 +6,35 @@ import { ClaudePty, startHub, sleep, ROOT, LOGS } from './lib.mjs';
 
 const SILENCE_MS = Number(process.env.SILENCE_MS ?? 1500);
 const PROMPT = 'Chame a ferramenta send_message do MCP neurons com to="agente-b" e text="ola do spike". Depois responda apenas: feito.';
-const PROMPT_PATTERN = /\? for shortcuts|\u276f\s*(\r|\n|$)/; // rodape da TUI / caixa de entrada
+const PROMPT_PATTERN = /\? for shortcuts/; // rodape da TUI quando a caixa de entrada esta livre
+const BUSY_PATTERN = /esc to interrupt|\(running|tokens\)/; // spinner / hook rodando
+
+// Dialogos conhecidos da 2.1.309; Enter aceita a opcao ja selecionada (a segura: "No, keep browser tools off").
+const DIALOGS = [
+  { name: 'tema', re: /Choose the text style/i },
+  { name: 'security-notes', re: /Security notes:[\s\S]*Press Enter to continue/i },
+  { name: 'chrome', re: /Claude in Chrome extension detected/i },
+  { name: 'trust-folder', re: /trust this folder|Do you trust the files/i },
+];
 
 const fail = (msg, code = 1) => { console.error(`\nSPIKE ABORTADO: ${msg}`); return code; };
 
 /** Injeta texto como digitado. Multilinha vai em bracketed paste (ESC[200~ ... ESC[201~) e o Enter vem depois. */
-async function inject(session, text) {
+async function inject(session, hub, text) {
   const multiline = text.includes('\n');
+  const since = Date.now();
   session.write(multiline ? `\x1b[200~${text}\x1b[201~` : text);
-  await sleep(150);
-  session.write('\r');
+  // Um Enter logo apos um bloco grande e tratado como parte da colagem (150 ms nao submete): espera o eco na tela.
+  const probe = text.split('\n')[0].slice(0, 25);
+  for (let i = 0; i < 60 && !session.screenText().includes(probe); i++) await sleep(50);
+  await sleep(400);
+  let enters = 0;
+  for (; enters < 3; ) {
+    session.write('\r');
+    enters++;
+    if (await hub.waitFor('hook:UserPromptSubmit', { since, timeoutMs: 2500 })) break;
+  }
+  return enters;
 }
 
 /** Espera o primeiro detector de ociosidade disparar e devolve todos para comparacao. */
@@ -24,14 +43,35 @@ async function waitIdle(session, hub, since, timeoutMs = 90000) {
   const seen = {};
   while (Date.now() - t0 < timeoutMs) {
     const now = Date.now();
-    if (!seen.silence && session.lastOutputAt() > since && now - session.lastOutputAt() >= SILENCE_MS) seen.silence = session.lastOutputAt() + SILENCE_MS;
-    if (!seen.prompt && PROMPT_PATTERN.test(session.plain().slice(-600)) && session.lastOutputAt() > since) seen.prompt = now;
+    const quiet = now - session.lastOutputAt() >= SILENCE_MS;
     const stop = hub.events.find((e) => e.kind === 'hook:Stop' && e.recvAt >= since);
     if (stop && !seen.stopHook) seen.stopHook = stop.recvAt;
-    if (seen.stopHook) return seen; // o hook e o sinal de referencia
+    // silencio e padrao de tela: o primeiro disparo ANTES do Stop e falso positivo; depois do Stop e o disparo valido.
+    if (quiet && session.lastOutputAt() > since) {
+      if (!seen.stopHook && !seen.silenceEarly) seen.silenceEarly = now;
+      if (seen.stopHook && !seen.silenceAfterStop) seen.silenceAfterStop = now;
+    }
+    const promptIdle = PROMPT_PATTERN.test(session.screenText()) && !BUSY_PATTERN.test(session.screenText());
+    if (promptIdle) {
+      if (!seen.stopHook && !seen.promptEarly) seen.promptEarly = now;
+      if (seen.stopHook && !seen.promptAfterStop) seen.promptAfterStop = now;
+    }
+    if (seen.stopHook && seen.silenceAfterStop && seen.promptAfterStop) return seen;
+    if (seen.stopHook && now - seen.stopHook > 20000) return seen;
     await sleep(50);
   }
   return seen;
+}
+
+/** Amostrador de tela: guarda o rodape quando muda, para escolher o padrao de ociosidade com dados. */
+function sampleScreens(session, file, t0) {
+  let last = '';
+  const out = [];
+  const timer = setInterval(() => {
+    const tail = session.screenText().split('\n').slice(-8).join('\n');
+    if (tail !== last) { last = tail; out.push({ ms: Date.now() - t0, tail }); fs.writeFileSync(file, JSON.stringify(out, null, 1)); }
+  }, 200);
+  return () => clearInterval(timer);
 }
 
 const hub = await startHub();
@@ -42,30 +82,34 @@ fs.writeFileSync(mcpConfig, JSON.stringify({
 
 const session = new ClaudePty({
   hubUrl: hub.url,
-  args: ['--model', 'haiku', '--setting-sources', 'project', '--mcp-config', mcpConfig, '--strict-mcp-config', '--allowedTools', 'mcp__neurons__send_message'],
+  args: ['--model', 'haiku', '--permission-mode', 'default', '--setting-sources', 'project', '--mcp-config', mcpConfig, '--strict-mcp-config', '--allowedTools', 'mcp__neurons__send_message'],
 });
-const report = { startedAt: Date.now(), trustDialogConfirmed: false, themeConfirmed: false };
+const report = { startedAt: Date.now() };
+const stopSampling = sampleScreens(session, path.join(LOGS, 'screens.json'), report.startedAt);
 let code = 0;
 
 try {
-  // 1) Pronto: SessionStart do hook + silencio. Trata dialogos de primeira execucao.
+  // 1) Pronto: dialogos de primeira execucao tratados pela TELA RENDERIZADA (xterm headless); login nunca e automatizado.
   const bootStart = Date.now();
-  while (Date.now() - bootStart < 60000) {
-    const text = session.plain();
-    if (/Select login method|Paste code here|Login successful/i.test(text)) throw new Error('A CLI pediu login (nao ha sessao de assinatura utilizavel). Faca "claude auth login" e rode de novo.');
-    // Onboarding de primeira execucao: aceita o tema padrao (grava o tema em ~/.claude.json); login nunca e automatizado.
-    if (/Choose the text style/i.test(text) && !report.themeConfirmed) { session.write('\r'); report.themeConfirmed = true; await sleep(800); continue; }
-    if (/trust this folder|Do you trust the files/i.test(text) && !report.trustDialogConfirmed) { session.write('\r'); report.trustDialogConfirmed = true; await sleep(500); continue; }
-    if (hub.events.some((e) => e.kind === 'hook:SessionStart') && Date.now() - session.lastOutputAt() > SILENCE_MS) break;
+  const pressed = new Map();
+  let ready = false;
+  while (Date.now() - bootStart < 90000) {
+    const screen = session.screenText();
+    if (/Select login method|Paste code here|Login successful/i.test(screen)) throw new Error('A CLI pediu login (nao ha sessao de assinatura utilizavel). Faca "claude auth login" e rode de novo.');
+    const dialog = DIALOGS.find((d) => d.re.test(screen));
+    if (dialog) {
+      if (!pressed.has(dialog.name) && Date.now() - session.lastOutputAt() > 700) { session.write('\r'); pressed.set(dialog.name, Date.now()); }
+    } else if (/❯/.test(screen) && hub.events.some((e) => e.kind === 'hook:SessionStart') && Date.now() - session.lastOutputAt() > SILENCE_MS) { ready = true; break; }
     await sleep(100);
   }
-  if (!hub.events.some((e) => e.kind === 'hook:SessionStart')) throw new Error('SessionStart nao chegou: a CLI nao ficou pronta em 60s.');
+  report.dialogsConfirmed = [...pressed.keys()];
+  if (!ready) throw new Error('A CLI nao chegou ao prompt em 90s. Tela: ' + session.screenText().slice(-300));
   report.readyAt = Date.now();
 
   // 2) Injeta e mede.
   const mark = session.chunks.length;
   const injectedAt = Date.now();
-  await inject(session, PROMPT);
+  report.enterPresses = await inject(session, hub, PROMPT);
   report.injectedAt = injectedAt;
   const firstByte = await (async () => { for (let i = 0; i < 600; i++) { if (session.chunks.length > mark) return session.chunks[mark].t; await sleep(20); } return null; })();
   report.firstByteMs = firstByte ? firstByte - injectedAt : null;
@@ -84,6 +128,7 @@ try {
   report.hookEvents = hub.events.filter((e) => e.kind.startsWith('hook:')).map((e) => [e.kind, e.recvAt - report.startedAt]);
   fs.writeFileSync(path.join(LOGS, 'last-run.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
+  stopSampling();
   session.write('\x03'); await sleep(300); session.write('\x03'); await sleep(300); session.kill();
 }
 process.exit(code);
