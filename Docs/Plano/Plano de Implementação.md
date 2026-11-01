@@ -17,13 +17,14 @@ provada antes de gastar tempo com canvas.
 | 2 · Modelador | T11–T15 | Desenhar, configurar e assistir as conversas ao vivo no canvas |
 | 3 · Mundo de fora | T16–T18 | Gatilhos externos, templates e landing publicada |
 | Distribuição | T19–T23 | CI em 3 sistemas, banco embutido, app desktop e instaladores para Windows, macOS e Linux |
+| Nuvem | T24–T26 | Protocolo de runner, contas e servidor + banco na AWS |
 | Depois | Backlog | Multiusuário, workers remotos |
 
 ## Ordem de execução
 
 - Feito: T01, T02, T03 e o spike T05. Em andamento: T06 e T09.
-- Depois: T08 + T19 → T20 → T10 → T11 → T21 → T12–T15 → T22 → T16–T18.
-- **Por último (têm custo):** T04 e T07 (chave de API) e T23 (assinatura de código).
+- Depois: T08 + T19 → T20 → T10 → T24 → T11 → T21 → T12–T15 → T22 → T25 → T16–T18.
+- **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16) sai por túnel.
 
 **Paralelismo possível:** T04 e T05 em paralelo com T02–T03. A Fase 2 pode começar assim que
 a T10 publicar a API (o modelador só depende do contrato da T02 e da API).
@@ -294,6 +295,8 @@ digitar no terminal do Claude Code.
 - Cache do pnpm e do Turbo.
 - Dependabot semanal para npm e GitHub Actions, agrupando atualizações menores.
 - Badge do CI no README.
+- Varredura de segredos com gitleaks em todo push e PR.
+- Regra de lint que proíbe `process.env` fora do módulo de config do servidor.
 
 **Pronto quando:** CI verde nos três sistemas no primeiro push.
 
@@ -334,10 +337,38 @@ digitar no terminal do Claude Code.
 
 ---
 
+## Fase de nuvem
+
+### T24 — Protocolo de runner
+
+- `packages/runner-protocol`: mensagens versionadas em zod (registrar, heartbeat, iniciar agente, entregar mensagem, confirmar, mudança de estado, saída do terminal, parar agente).
+- `RemoteAgentRuntime` no servidor, implementando a mesma `AgentRuntime`, e o lado runner que hospeda os runtimes de terminal e stream-json da T08.
+- Runner embutido no mesmo processo (perfil `local`) e runner separado conectando por WebSocket de saída, com token por runner (perfil `hybrid`).
+- Reconexão sem perder mensagem (o Hub já reentrega o que não teve confirmação).
+
+**Pronto quando:** a mesma execução do `mixed.json` roda com o runner no mesmo processo e com o runner em outro processo, mudando só a configuração.
+
+### T25 — Contas e multiusuário
+
+- Cadastro e login, organizações e papéis; grafos, execuções, runners e segredos isolados por organização.
+- Runner vinculado a uma conta por token emitido pelo servidor e revogável.
+- O perfil `local` continua funcionando sem conta.
+
+**Pronto quando:** dois usuários no mesmo servidor não enxergam nada um do outro (testes de isolamento).
+
+### T26 — Infra na AWS (tem custo)
+
+- Infraestrutura como código com AWS CDK em TypeScript: servidor em contêiner (ECS Fargate), Postgres gerenciado (RDS), segredos no Secrets Manager, domínio e TLS.
+- Deploy pelo GitHub Actions com OIDC (nenhuma chave de acesso fixa no GitHub).
+- App desktop no perfil `hybrid` apontando para o servidor na AWS.
+
+**Pronto quando:** o servidor na AWS recebe uma execução e o runner do app desktop executa o agente de terminal.
+
+---
+
 ## Backlog
 
-- Autenticação e multiusuário.
-- Workers remotos que se registram no servidor (agentes numa VPS ou por SSH, como o Orca faz).
+- Runners hospedados pelo NeuronsAI na AWS (estilo Hostinger): um contêiner isolado por usuário rodando os agentes, inclusive CLIs de terminal com login feito pelo próprio usuário; cobrança.
 - Mensagem urgente que interrompe o agente ocupado.
 - Adaptador Gemini por API; mais CLIs pré-configuradas.
 - Obsidian com escrita, com revisão.

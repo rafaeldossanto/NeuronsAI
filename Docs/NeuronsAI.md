@@ -85,6 +85,7 @@ sequenceDiagram
 | D11 | Código, banco e enums em inglês; texto de tela em pt-BR | Regra dos projetos novos do Rafael |
 | D12 | **Banco embutido no app: PGlite** (Postgres compilado para WASM), com o mesmo schema e as mesmas migrations do Drizzle; Postgres externo continua opcional (desenvolvimento, testes de integração, futuro modo servidor) — **aprovado pelo Rafael em 2026-11-01** | Quem baixa o app não vai instalar Postgres. PGlite é Postgres de verdade (SQL, triggers e migrations iguais) rodando dentro do processo, e o Drizzle tem driver para ele; SQLite obrigaria a reescrever schema e triggers |
 | D13 | **Custos por último**: chave de API (T04, T07) e assinatura de código (T23) | Decisão do Rafael. Até lá os agentes rodam pelo Claude Code com a assinatura dele, e os instaladores saem sem assinatura (aviso do sistema na primeira abertura, como no MiniInfos) |
+| D14 | **Híbrido com runners plugáveis**: servidor central e Postgres (RDS) na AWS; os agentes rodam em *runners* que se conectam ao servidor — o app desktop (padrão), um servidor do próprio usuário ou, no futuro, runners hospedados pelo NeuronsAI na AWS (estilo Hostinger). Onde o agente roda é configuração, não código. Perfis: `local` (tudo no app, com PGlite), `hybrid` (servidor na AWS + runner no app), `hosted` (servidor e runners na AWS) — **decidido pelo Rafael em 2026-11-01** | Híbrido agora e fácil de mudar depois. O Hub fala com qualquer runner pelo mesmo protocolo versionado; o runner abre a conexão de saída para o servidor (funciona atrás de NAT). O login do Claude Code fica dentro do runner e é feito pelo próprio usuário; o servidor nunca guarda token de assinatura (termos de uso) |
 
 ## Arquitetura (v1)
 
@@ -131,6 +132,7 @@ flowchart LR
   Agentes que recebem texto externo começam sem ferramenta de escrita.
 - **WhatsApp:** só pela Cloud API oficial da Meta.
 - **Multiplataforma:** o `node-pty` precisa ser recompilado para a versão do Electron em cada sistema (feito no CI); encerrar a árvore de processos muda por sistema (`taskkill` no Windows, grupo de processos no macOS/Linux); caminho e login do Claude Code CLI variam por sistema.
+- **Segredos na nuvem:** com deploy na AWS, `process.env` só no módulo de config, segredos no Secrets Manager, nada de segredo em código, log, fixture ou evento; varredura de segredos no CI (gitleaks).
 
 ## Já existe
 
