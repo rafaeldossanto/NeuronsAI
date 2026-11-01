@@ -6,12 +6,13 @@ Orquestrador visual de agentes de IA, escrito em TypeScript de ponta a ponta (Ne
 
 - Node 24 ou superior
 - Corepack (já vem com o Node), que fornece o pnpm na versão fixada em `packageManager`
+- Rode **uma única vez** `corepack enable` num terminal aberto como administrador. Sem isso o Turbo não encontra o `pnpm` no PATH
 
 ## Como rodar
 
 ```bash
-corepack pnpm install
-corepack pnpm turbo lint typecheck test build
+pnpm install
+pnpm turbo lint typecheck test build
 ```
 
 ## Estrutura
