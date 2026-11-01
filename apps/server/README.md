@@ -1,24 +1,25 @@
 # @neurons/server
 
-Servidor do NeuronsAI: NestJS 11 com adaptador Fastify, Postgres via Drizzle ORM e um gateway WebSocket para eventos de execução. Escuta **somente em `127.0.0.1`**.
+Servidor do NeuronsAI: NestJS 12 com adaptador Fastify, Postgres via Drizzle ORM e um gateway WebSocket para eventos de execução. Escuta **somente em `127.0.0.1`**.
 
-Nesta etapa (T03) existem apenas o esqueleto e a persistência. O Hub, os runtimes de agentes e a API REST completa chegam nas tarefas T06–T08 e T10.
+O Hub de mensagens (T06) está pronto; os runtimes reais de agentes (API e terminal) chegam nas tarefas T07 e T08 e a API REST na T10.
 
 ## Variáveis de ambiente
 
 Copie `.env.example` para `.env` (ignorado pelo git) e preencha. Valores vazios contam como "não definido". Qualquer valor inválido derruba o processo na partida, com uma mensagem listando todos os problemas.
 
-| Variável              | Padrão | Descrição                                                                                 |
-| --------------------- | ------ | ----------------------------------------------------------------------------------------- |
-| `NEURONS_MODE`        | `all`  | `api`, `worker` ou `all`. Por ora só decide quais módulos sobem (ver abaixo).             |
-| `NEURONS_PORT`        | `3100` | Porta em `127.0.0.1`.                                                                     |
-| `NEURONS_DB_URL`      | —      | URL completa do Postgres. Tem prioridade sobre as variáveis abaixo.                       |
-| `NEURONS_DB_HOST`     | —      | Host do banco.                                                                            |
-| `NEURONS_DB_PORT`     | `5432` | Porta do banco.                                                                           |
-| `NEURONS_DB_USER`     | —      | Usuário do banco.                                                                         |
-| `NEURONS_DB_NAME`     | —      | Nome do database.                                                                         |
-| `NEURONS_DB_PASSWORD` | —      | Senha do banco.                                                                           |
-| `NEURONS_MASTER_KEY`  | —      | Chave AES-256 (32 bytes em base64) que cifra os segredos. Sem ela, só os segredos falham. |
+| Variável                  | Padrão | Descrição                                                                                 |
+| ------------------------- | ------ | ----------------------------------------------------------------------------------------- |
+| `NEURONS_MODE`            | `all`  | `api`, `worker` ou `all`. Por ora só decide quais módulos sobem (ver abaixo).             |
+| `NEURONS_PORT`            | `3100` | Porta em `127.0.0.1`.                                                                     |
+| `NEURONS_ASK_TIMEOUT_SEC` | `120`  | Segundos que um `ask` espera pela resposta antes de falhar.                               |
+| `NEURONS_DB_URL`          | —      | URL completa do Postgres. Tem prioridade sobre as variáveis abaixo.                       |
+| `NEURONS_DB_HOST`         | —      | Host do banco.                                                                            |
+| `NEURONS_DB_PORT`         | `5432` | Porta do banco.                                                                           |
+| `NEURONS_DB_USER`         | —      | Usuário do banco.                                                                         |
+| `NEURONS_DB_NAME`         | —      | Nome do database.                                                                         |
+| `NEURONS_DB_PASSWORD`     | —      | Senha do banco.                                                                           |
+| `NEURONS_MASTER_KEY`      | —      | Chave AES-256 (32 bytes em base64) que cifra os segredos. Sem ela, só os segredos falham. |
 
 Sem nenhuma variável de banco o servidor sobe normalmente e `GET /health` informa `database.status = "not_configured"`. O mesmo vale para a chave mestra. Para gerar uma chave:
 
@@ -28,11 +29,11 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 
 ### Modos
 
-| Modo     | Módulos                                                |
-| -------- | ------------------------------------------------------ |
-| `api`    | comuns + `graphs`, `realtime`                          |
-| `worker` | comuns (os módulos de execução entram a partir da T06) |
-| `all`    | tudo                                                   |
+| Modo     | Módulos                                               |
+| -------- | ----------------------------------------------------- |
+| `api`    | comuns + `graphs`, `realtime`                         |
+| `worker` | comuns + `runs` (Hub, Supervisor e ciclo da execução) |
+| `all`    | tudo                                                  |
 
 Módulos comuns: `database`, `secrets`, `health`. Em qualquer modo o processo escuta HTTP em `127.0.0.1`.
 
@@ -95,7 +96,7 @@ Mensagens são JSON `{ "event": ..., "data": ... }` nos dois sentidos.
 | servidor | `run.event { runId, seq, type, ... }` | Eventos da execução, em ordem de `seq` e sem duplicatas.                                                |
 | servidor | `error { code, message }`             | Mensagem do cliente inválida.                                                                           |
 
-Na reconexão o cliente reenvia `subscribe` com `fromSeq`. Enquanto o Hub não existe, o histórico é vazio e nada publica eventos; a lógica de assinatura está em `src/realtime/run-subscriptions.ts`.
+Na reconexão o cliente reenvia `subscribe` com `fromSeq`. O histórico vem de `run_events` e o Hub publica cada evento só depois do commit; a lógica de assinatura está em `src/realtime/run-subscriptions.ts`.
 
 ## Estrutura
 
@@ -107,6 +108,10 @@ src/
   graphs/        GraphVersionService + repositórios (porta e adaptador Drizzle)
   secrets/       SecretsService, cifra AES-GCM, repositório
   realtime/      gateway /ws e registro de assinaturas
+  agents/        porta AgentRuntime (+ fábrica) e o FakeAgentRuntime dos testes
+  run-log/       execuções e log de eventos (seq por execução), publicação após o commit
+  hub/           Hub, políticas de mensagem, Supervisor, briefing
+  runs/          RunService: início e fim da execução
   health/        GET /health
 drizzle/         migrations SQL versionadas
 db/              setup-local.sql
@@ -114,11 +119,22 @@ db/              setup-local.sql
 
 O domínio (serviços, portas) não conhece Fastify nem HTTP; só `shared/http`, os controllers e o gateway falam o protocolo. A injeção usa `@Inject(...)` explícito em vez de `emitDecoratorMetadata`, porque o Vitest e o `tsx` (esbuild/oxc) não emitem metadados de tipo.
 
+## Hub de mensagens
+
+Agentes ligados por seta conversam direto; o Hub é só o carteiro. Seta A→B: A inicia conversa com B; B sempre pode responder a quem lhe escreveu; seta bidirecional: os dois iniciam. `@human` e `@trigger` escrevem para qualquer agente (os `@` não colidem com nomes de agente).
+
+- **`Hub.send(runId, from, to, kind, body, replyTo?)`** passa pela cadeia de `MessagePolicy` (a primeira é a `PermissionPolicy`; limites e anti pingue-pongue da T10 entram como novas políticas em `HubModule`, sem mexer no Hub), grava a mensagem e o evento `MessageSent` **na mesma transação** e só depois publica no gateway. O `seq` vem de `runs.last_seq` (`UPDATE ... RETURNING`), então não repete nem deixa buraco; a mensagem guarda o `seq` do seu próprio evento, que define a ordem FIFO da caixa de entrada.
+- **Entrega:** o `Supervisor` sobe o agente na primeira mensagem (`AgentStarted` com o briefing) e entrega a caixa de entrada em ordem sempre que o runtime fica `idle`. `delivered_at` é marcado ao entregar; `acked_at` (e o evento `MessageDelivered`) quando o runtime confirma o recebimento. No boot, `Supervisor.recover()` reentrega o que não tem `acked_at` nas execuções `running`.
+- **`ask`** devolve uma promessa resolvida pelo `reply` correspondente (que não vai ao runtime) ou rejeitada por `AskTimeoutError`. Uma resposta tardia chega ao agente como mensagem comum. O runtime reporta `waiting_reply` enquanto o `ask` dele está aberto.
+- **Fim da execução** (`RunService`): `finish` de um agente (`reason: finished`), quiescência (todos ociosos, sem mensagem pendente nem `ask` aberto: `quiescent`) ou parada manual (`stopped`). Ao terminar, todos os runtimes são parados.
+
+Um runtime novo implementa `AgentRuntime` (`src/agents/agent-runtime.ts`) e é entregue pela `AgentRuntimeFactory`; enquanto T07/T08 não existem, a fábrica padrão recusa qualquer agente.
+
 ## Testes
 
 ```bash
 pnpm --filter @neurons/server test               # unitários, sem banco (entram no `turbo test`)
-pnpm --filter @neurons/server test:integration   # migrations + repositórios em Postgres 18 real
+pnpm --filter @neurons/server test:integration   # migrations, repositórios e Hub em Postgres 18 real
 ```
 
 Os testes de integração (`*.int.test.ts`) usam Testcontainers e precisam do **Docker Desktop em execução**; ficam fora do `turbo test`. Na primeira vez, baixam a imagem `postgres:18`.

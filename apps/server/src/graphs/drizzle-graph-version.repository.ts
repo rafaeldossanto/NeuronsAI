@@ -29,6 +29,14 @@ export class DrizzleGraphVersionRepository implements GraphVersionRepository {
     });
   }
 
+  async findById(versionId: string): Promise<GraphVersionRecord | undefined> {
+    const [row] = await this.database.db
+      .select()
+      .from(graphVersions)
+      .where(eq(graphVersions.id, versionId));
+    return row;
+  }
+
   async findLatest(graphId: string): Promise<GraphVersionRecord | undefined> {
     const [row] = await this.database.db
       .select()

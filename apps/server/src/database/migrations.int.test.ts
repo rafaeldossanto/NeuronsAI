@@ -80,15 +80,15 @@ describe("schema rules", () => {
     const { run } = await seedRun();
     const base = { runId: run.id, fromAgent: "a", toAgent: "b", body: "oi" };
 
-    for (const kind of ["message", "ask", "reply"] as const) {
+    for (const [index, kind] of (["message", "ask", "reply"] as const).entries()) {
       await db()
         .insert(messages)
-        .values({ ...base, kind });
+        .values({ ...base, seq: index + 1, kind });
     }
     await expect(
       db()
         .insert(messages)
-        .values({ ...base, kind: "shout" as never }),
+        .values({ ...base, seq: 4, kind: "shout" as never }),
     ).rejects.toThrow();
   });
 
@@ -97,15 +97,36 @@ describe("schema rules", () => {
     const base = { runId: run.id, fromAgent: "a", toAgent: "b", body: "oi" };
     const [ask] = await db()
       .insert(messages)
-      .values({ ...base, kind: "ask" })
+      .values({ ...base, seq: 1, kind: "ask" })
       .returning();
 
     const [reply] = await db()
       .insert(messages)
-      .values({ ...base, kind: "reply", replyTo: ask!.id })
+      .values({ ...base, seq: 2, kind: "reply", replyTo: ask!.id })
       .returning();
 
     expect(reply?.replyTo).toBe(ask?.id);
+  });
+
+  it("keeps seq unique per run in messages", async () => {
+    const { run } = await seedRun();
+    const message = {
+      runId: run.id,
+      seq: 1,
+      fromAgent: "a",
+      toAgent: "b",
+      body: "oi",
+      kind: "message",
+    } as const;
+    await db().insert(messages).values(message);
+
+    await expect(db().insert(messages).values(message)).rejects.toThrow();
+  });
+
+  it("starts a run with no event seq handed out", async () => {
+    const { run } = await seedRun();
+
+    expect(run.lastSeq).toBe(0);
   });
 
   it("keeps seq unique per run in run_events", async () => {

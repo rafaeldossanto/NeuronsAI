@@ -52,6 +52,10 @@ export class InMemoryGraphVersionRepository implements GraphVersionRepository {
     return Promise.resolve(record);
   }
 
+  findById(versionId: string): Promise<GraphVersionRecord | undefined> {
+    return Promise.resolve(this.records.find((record) => record.id === versionId));
+  }
+
   findLatest(graphId: string): Promise<GraphVersionRecord | undefined> {
     return Promise.resolve(this.versionsOf(graphId).at(-1));
   }

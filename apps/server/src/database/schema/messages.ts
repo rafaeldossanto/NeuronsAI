@@ -1,11 +1,13 @@
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  bigint,
   check,
   index,
   pgTable,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 import { createdAtColumn, idColumn } from "./columns.js";
@@ -21,6 +23,8 @@ export const messages = pgTable(
     runId: uuid("run_id")
       .notNull()
       .references(() => runs.id, { onDelete: "cascade" }),
+    /** Seq of the `MessageSent` event: the delivery order (FIFO) of the run's messages. */
+    seq: bigint("seq", { mode: "number" }).notNull(),
     fromAgent: text("from_agent").notNull(),
     toAgent: text("to_agent").notNull(),
     kind: text("kind").$type<MessageKind>().notNull(),
@@ -33,6 +37,7 @@ export const messages = pgTable(
     ackedAt: timestamp("acked_at", { withTimezone: true }),
   },
   (table) => [
+    unique("messages_run_id_seq_unique").on(table.runId, table.seq),
     // Inbox lookup: what is still unacknowledged for an agent in a run.
     index("messages_inbox_idx").on(table.runId, table.toAgent, table.ackedAt),
     check(

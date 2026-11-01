@@ -36,7 +36,7 @@ describe("application without a database", () => {
   }
 
   it("boots and reports on /health that the database is not configured", async () => {
-    const server = await start({ mode: "all", port: 0 });
+    const server = await start({ mode: "all", port: 0, askTimeoutMs: 1000 });
 
     const response = await server.inject({ method: "GET", url: "/health" });
 
@@ -48,7 +48,7 @@ describe("application without a database", () => {
   });
 
   it("answers unknown routes with { code, message }", async () => {
-    const server = await start({ mode: "api", port: 0 });
+    const server = await start({ mode: "api", port: 0, askTimeoutMs: 1000 });
 
     const response = await server.inject({ method: "GET", url: "/nope" });
 

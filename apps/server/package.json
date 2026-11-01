@@ -16,11 +16,11 @@
     "db:migrate": "tsx --env-file-if-exists=.env src/database/migrate-cli.ts"
   },
   "dependencies": {
-    "@nestjs/common": "11.2.8",
-    "@nestjs/core": "11.2.8",
-    "@nestjs/platform-fastify": "11.2.8",
-    "@nestjs/platform-ws": "11.2.8",
-    "@nestjs/websockets": "11.2.8",
+    "@nestjs/common": "12.3.2",
+    "@nestjs/core": "12.3.2",
+    "@nestjs/platform-fastify": "12.3.2",
+    "@nestjs/platform-ws": "12.3.2",
+    "@nestjs/websockets": "12.3.2",
     "@neurons/graph-schema": "workspace:*",
     "drizzle-orm": "0.45.4",
     "fastify": "5.12.7",

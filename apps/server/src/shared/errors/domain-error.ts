@@ -1,5 +1,6 @@
 /** Transport-agnostic category; the HTTP layer decides which status each kind becomes. */
-export type DomainErrorKind = "not_found" | "invalid" | "conflict" | "unavailable" | "internal";
+export type DomainErrorKind =
+  "not_found" | "invalid" | "forbidden" | "conflict" | "unavailable" | "internal";
 
 export abstract class DomainError extends Error {
   abstract readonly kind: DomainErrorKind;
