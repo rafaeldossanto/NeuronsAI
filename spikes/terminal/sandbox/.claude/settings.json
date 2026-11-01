@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node ../src/hook.mjs Stop" }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "node ../src/hook.mjs Notification" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node ../src/hook.mjs UserPromptSubmit" }] }],
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node ../src/hook.mjs SessionStart" }] }]
+  }
+}
