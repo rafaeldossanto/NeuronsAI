@@ -332,6 +332,7 @@ digitar no terminal do Claude Code.
 - macOS: conta Apple Developer, assinatura e notarização no `release.yml`.
 - Windows: certificado de assinatura (ou Azure Trusted Signing) no `release.yml`.
 - Segredos do CI só nos secrets do GitHub, nunca no repositório.
+- Ativar o Sign in with Apple da T25 com a mesma conta Apple Developer (Service ID, chave `.p8`).
 
 **Pronto quando:** os instaladores abrem sem aviso no macOS e no Windows.
 
@@ -350,7 +351,12 @@ digitar no terminal do Claude Code.
 
 ### T25 — Contas e multiusuário
 
-- Cadastro e login, organizações e papéis; grafos, execuções, runners e segredos isolados por organização.
+- **Login com Google e com Apple** (OpenID Connect com PKCE), atrás de uma interface de provedor de identidade para dar para acrescentar outros depois. No app desktop, o login abre o **navegador do sistema** e volta para o app por deep link `neuronsai://` (ou endereço local de retorno) — nunca numa janela embutida, que o Google bloqueia.
+- Uma conta pode ter Google e Apple ligados (vinculados pelo e-mail verificado); a Apple pode esconder o e-mail real (relay), então o vínculo também aceita o identificador do provedor.
+- Sessão do NeuronsAI com tokens próprios (acesso curto + renovação rotativa); no app desktop ficam no cofre do sistema (`safeStorage` do Electron: Keychain, Credential Manager, libsecret).
+- Credenciais dos provedores (client secret do Google, chave `.p8` da Apple) só na config/Secrets Manager, nunca no código.
+- Organizações e papéis; grafos, execuções, runners e segredos isolados por organização.
+- **Depende do Rafael:** criar o OAuth client no Google Cloud (grátis). O Sign in with Apple exige a conta Apple Developer (US$ 99/ano, a mesma da T23): o código fica pronto aqui e a Apple é ativada quando a conta existir, junto da T23.
 - Runner vinculado a uma conta por token emitido pelo servidor e revogável.
 - O perfil `local` continua funcionando sem conta.
 
