@@ -18,7 +18,7 @@ provada antes de gastar tempo com canvas.
 | 3 · Mundo de fora | T16–T18 | Gatilhos externos, templates e landing publicada |
 | Distribuição | T19–T23 | CI em 3 sistemas, banco embutido, app desktop e instaladores para Windows, macOS e Linux |
 | Nuvem | T24–T26 | Protocolo de runner, contas e servidor + banco na AWS |
-| Depois | Backlog | Multiusuário, workers remotos |
+| Depois | Backlog | Runners hospedados (estilo Hostinger) e o que não entrou no plano |
 
 ## Ordem de execução
 
