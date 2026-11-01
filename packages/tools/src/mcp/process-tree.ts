@@ -30,3 +30,21 @@ export async function killProcessTree(pid: number): Promise<void> {
     // already gone
   }
 }
+
+async function waitForExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (isProcessAlive(pid)) {
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return true;
+}
+
+/** Lets `pid` exit on its own for `graceMs`, then takes its whole tree down (retrying if needed). */
+export async function ensureGone(pid: number, graceMs: number, attempts: number): Promise<void> {
+  if (await waitForExit(pid, graceMs)) return;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    await killProcessTree(pid);
+    if (await waitForExit(pid, 500)) return;
+  }
+}

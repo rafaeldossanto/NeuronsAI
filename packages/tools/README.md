@@ -38,6 +38,12 @@ Para um novo `kind`: criar a fábrica (`ToolFactory<K>`) e registrá-la em `defa
   O corpo vem do agente, então só pode usar segredos que o próprio bloco já referencia na url/headers.
   Os valores são removidos de respostas e erros e nunca entram em `inputSummary` (que também oculta
   chaves como `token`, `password`, `authorization`).
+- **Ambiente**: o pacote não lê `process.env`; config e segredos chegam por parâmetro e pelo
+  `SecretResolver`. O processo MCP stdio recebe só o `env` do `ToolNode` (com `{{secret:NOME}}`
+  resolvido) mais as variáveis mínimas de sistema que o SDK herda por conta própria: no Windows
+  `APPDATA`, `HOMEDRIVE`, `HOMEPATH`, `LOCALAPPDATA`, `PATH`, `PROCESSOR_ARCHITECTURE`, `SYSTEMDRIVE`,
+  `SYSTEMROOT`, `TEMP`, `USERNAME`, `USERPROFILE`, `PROGRAMFILES`; nos demais `HOME`, `LOGNAME`, `PATH`,
+  `SHELL`, `TERM`, `USER`. Nada além disso do servidor chega ao filho (há teste).
 - **Limites** (`deps.limits`): `maxResultChars` (20 000), `httpTimeoutMs` (30 s, somado ao `signal`),
   `maxNoteBytes` (1 MiB), `maxSearchFiles` (5 000).
 - **Cofre Obsidian**: caminho resolvido com `realpath` e conferido depois de resolvido (recusa `..`,
