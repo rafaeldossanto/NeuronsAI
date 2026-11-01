@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+
+  # O pnpm 12 recusa pacotes publicados há menos de 1 dia (minimumReleaseAge); o cooldown evita PRs que falhariam.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
