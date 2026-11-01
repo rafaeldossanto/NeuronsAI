@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createTools,
   InMemorySecretResolver,
@@ -26,6 +26,7 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(open.splice(0).map((toolSet) => toolSet.close()));
 });
 
@@ -130,16 +131,12 @@ describe("mcp tools (stdio)", () => {
   });
 
   it("não repassa ao servidor variáveis do processo pai que não estão no ToolNode", async () => {
-    process.env.NEURONS_TEST_SEGREDO_DO_PAI = "nao-deve-vazar";
-    try {
-      const { tools } = await stdioTools(["read_env"], { DO_NODE: "valor-do-node" });
-      const read = (name: string) =>
-        findTool(tools, "read_env").execute({ name }, testContext({ secrets }));
-      expect(contentOf(await read("DO_NODE"))).toBe("valor-do-node");
-      expect(contentOf(await read("NEURONS_TEST_SEGREDO_DO_PAI"))).toBe("(vazio)");
-    } finally {
-      delete process.env.NEURONS_TEST_SEGREDO_DO_PAI;
-    }
+    vi.stubEnv("NEURONS_TEST_SEGREDO_DO_PAI", "nao-deve-vazar");
+    const { tools } = await stdioTools(["read_env"], { DO_NODE: "valor-do-node" });
+    const read = (name: string) =>
+      findTool(tools, "read_env").execute({ name }, testContext({ secrets }));
+    expect(contentOf(await read("DO_NODE"))).toBe("valor-do-node");
+    expect(contentOf(await read("NEURONS_TEST_SEGREDO_DO_PAI"))).toBe("(vazio)");
   });
 
   it("trunca resultados grandes", async () => {
