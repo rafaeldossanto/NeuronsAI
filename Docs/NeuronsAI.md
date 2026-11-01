@@ -73,7 +73,7 @@ sequenceDiagram
 | # | Decisão | Por quê |
 |---|---|---|
 | D1 | **TypeScript ponta a ponta** (Node 24 + NestJS no servidor, React + React Flow no modelador) — **confirmado pelo Rafael em 2026-11-01** | Esquema do grafo num pacote só (zod) para modelador e servidor; SDK oficial de MCP, `node-pty` e xterm.js são do ecossistema Node; NestJS tem módulos e injeção de dependência no estilo do Spring |
-| D2 | **v1 local-first**: roda no PC (servidor em localhost, interface no navegador) | Os agentes de terminal são processos na máquina e precisam do cofre Obsidian e dos repositórios. Empacotar como app desktop (Electron/Tauri) fica para depois |
+| D2 | **App desktop para Windows, macOS e Linux** (Electron): o servidor roda dentro do app em localhost e a interface abre na janela; em desenvolvimento também roda no navegador — *proposta, aguardando OK do Rafael* | Pedido do Rafael: baixar e instalar em qualquer sistema. Electron porque o servidor é Node (NestJS + `node-pty`) e roda no próprio processo do app, a mesma base do Orca; Tauri exigiria empacotar um Node à parte |
 | D3 | **Comunicação direta entre agentes vivos** (modelo do Orca) | Pedido do Rafael. Cada agente é uma sessão de longa duração com caixa de entrada; não é um fluxo em que um bloco termina e o próximo começa |
 | D4 | **Hub próprio**: toda mensagem é gravada no Postgres antes da entrega, entregue na hora em memória, e reentregue se não houve confirmação | Visibilidade e durabilidade sem infraestrutura extra (sem Temporal, Camunda, Redis). Postgres 18 nativo já está na máquina |
 | D5 | **Dois tipos de agente** atrás da mesma interface `AgentRuntime`: **API** (loop próprio, qualquer fornecedor por chave de API) e **Terminal** (CLI oficial num pseudo-terminal: Claude Code, Codex, Gemini CLI, Hermes, qualquer uma) | O de API dá controle fino de modelo, esforço e custo. O de terminal usa a CLI oficial que você já tem logada, do mesmo jeito que o Orca, inclusive com a sua assinatura (termos, conferidos no spike T05: o usuário pode logar o binário não modificado com a própria assinatura; um produto não pode rotear requisições pela assinatura dos usuários nem guardar tokens; controle por PTY não é citado — para vender, o padrão é chave de API) |
@@ -83,6 +83,8 @@ sequenceDiagram
 | D9 | **Grafo versionado e imutável por execução** | Igual à definição de processo do Camunda |
 | D10 | **Guardas obrigatórias**: máximo de mensagens por seta e por execução, detecção de pingue-pongue, orçamento em US$, timeout por agente, botão de parar | Com conversa direta, dois agentes podem ficar se respondendo para sempre |
 | D11 | Código, banco e enums em inglês; texto de tela em pt-BR | Regra dos projetos novos do Rafael |
+| D12 | **Banco embutido no app: PGlite** (Postgres compilado para WASM), com o mesmo schema e as mesmas migrations do Drizzle; Postgres externo continua opcional (desenvolvimento, testes de integração, futuro modo servidor) — *proposta, aguardando OK do Rafael* | Quem baixa o app não vai instalar Postgres. PGlite é Postgres de verdade (SQL, triggers e migrations iguais) rodando dentro do processo, e o Drizzle tem driver para ele; SQLite obrigaria a reescrever schema e triggers |
+| D13 | **Custos por último**: chave de API (T04, T07) e assinatura de código (T23) | Decisão do Rafael. Até lá os agentes rodam pelo Claude Code com a assinatura dele, e os instaladores saem sem assinatura (aviso do sistema na primeira abertura, como no MiniInfos) |
 
 ## Arquitetura (v1)
 
@@ -109,6 +111,7 @@ flowchart LR
   `packages/graph-schema`, `packages/providers`, `packages/mcp-neurons`.
 - **Banco:** Postgres 18 nativo (5432), database `neurons_dev`, Drizzle ORM com migrations.
 - **Portas:** servidor 3100, web 5190, site 5191.
+- **Distribuição:** instaladores para Windows (NSIS), macOS (dmg arm64 e x64) e Linux (AppImage e deb), gerados no GitHub Actions e publicados no GitHub Releases, com atualização automática.
 - **Ciclo de uma execução:** o gatilho manda a primeira mensagem ao agente de entrada; cada
   agente sobe na primeira mensagem que recebe e fica vivo; a execução termina quando um agente
   chama `finish`, quando todos estão ociosos com a caixa vazia e ninguém esperando resposta,
@@ -127,6 +130,7 @@ flowchart LR
 - **Injeção de prompt:** texto de fora (WhatsApp, páginas) chegando num agente com ferramentas.
   Agentes que recebem texto externo começam sem ferramenta de escrita.
 - **WhatsApp:** só pela Cloud API oficial da Meta.
+- **Multiplataforma:** o `node-pty` precisa ser recompilado para a versão do Electron em cada sistema (feito no CI); encerrar a árvore de processos muda por sistema (`taskkill` no Windows, grupo de processos no macOS/Linux); caminho e login do Claude Code CLI variam por sistema.
 
 ## Já existe
 

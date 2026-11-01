@@ -16,7 +16,14 @@ provada antes de gastar tempo com canvas.
 | 1 · Comunicação | T06–T10 | Agentes de API e de terminal conversando entre si pelo Hub, com ferramentas e guardas |
 | 2 · Modelador | T11–T15 | Desenhar, configurar e assistir as conversas ao vivo no canvas |
 | 3 · Mundo de fora | T16–T18 | Gatilhos externos, templates e landing publicada |
-| Depois | Backlog | Multiusuário, workers remotos, app desktop |
+| Distribuição | T19–T23 | CI em 3 sistemas, banco embutido, app desktop e instaladores para Windows, macOS e Linux |
+| Depois | Backlog | Multiusuário, workers remotos |
+
+## Ordem de execução
+
+- Feito: T01, T02, T03 e o spike T05. Em andamento: T06 e T09.
+- Depois: T08 + T19 → T20 → T10 → T11 → T21 → T12–T15 → T22 → T16–T18.
+- **Por último (têm custo):** T04 e T07 (chave de API) e T23 (assinatura de código).
 
 **Paralelismo possível:** T04 e T05 em paralelo com T02–T03. A Fase 2 pode começar assim que
 a T10 publicar a API (o modelador só depende do contrato da T02 e da API).
@@ -272,14 +279,63 @@ digitar no terminal do Claude Code.
 
 - Trazer `E:\Notes\Design\NeuronsAI\pagina-real` para `apps/site` e publicar (Vercel ou GitHub
   Pages), com a lista de espera apontando para um destino definido pelo Rafael.
+- Botões de download por sistema (Windows, macOS, Linux) apontando para a última versão no GitHub Releases.
 
 **Pronto quando:** landing publicada no domínio escolhido.
 
 ---
 
+## Fase de distribuição
+
+### T19 — Pipelines de CI
+
+- `ci.yml` (push e PR): lint, typecheck, testes unitários e build em matriz `ubuntu-latest`, `windows-latest` e `macos-latest`.
+- Job de integração no Ubuntu: `test:integration` do server com Testcontainers (Postgres 18).
+- Cache do pnpm e do Turbo.
+- Dependabot semanal para npm e GitHub Actions, agrupando atualizações menores.
+- Badge do CI no README.
+
+**Pronto quando:** CI verde nos três sistemas no primeiro push.
+
+### T20 — Banco embutido (PGlite)
+
+- Driver PGlite no Drizzle ao lado do `pg`, escolhido pela config (`NEURONS_DB=embedded|postgres`, padrão `embedded`); dados numa pasta do usuário, por sistema.
+- As mesmas migrations nos dois bancos, incluindo os triggers que impedem UPDATE em `graph_versions` e `run_events`.
+- Repositórios sem saber qual driver está por trás.
+- Testes: a suíte de repositórios roda contra PGlite (sem Docker) e contra Postgres (Testcontainers).
+
+**Pronto quando:** o servidor sobe sem nenhum Postgres instalado e a suíte passa nos dois bancos.
+
+### T21 — App desktop (Electron)
+
+- `apps/desktop`: Electron com o servidor NestJS no processo do app, a interface do `apps/web` na janela, porta livre escolhida na hora e acesso só local.
+- `node-pty` recompilado para o Electron (`@electron/rebuild`).
+- Diferenças por sistema num lugar só: pasta de dados, localizar o Claude Code CLI, encerrar árvore de processos, menu e atalhos.
+- Ícone e nome NeuronsAI; uma instância por vez.
+
+**Pronto quando:** o app abre no Windows com o modelador e roda uma execução com agente de terminal; o build local (`electron-builder --dir`) passa nos três sistemas pelo CI.
+
+### T22 — Release multiplataforma
+
+- `release.yml` disparado por tag `v*`: matriz macOS (dmg arm64 e x64), Windows (instalador NSIS) e Linux (AppImage e deb) com `electron-builder`.
+- Publica rascunho no GitHub Releases com os instaladores e checksums.
+- Atualização automática com `electron-updater` lendo o GitHub Releases.
+- Sem assinatura nesta etapa: README e página de download explicam o aviso do sistema na primeira abertura (SmartScreen no Windows, Gatekeeper no macOS).
+
+**Pronto quando:** uma tag gera os instaladores dos três sistemas e o app instalado se atualiza sozinho para a versão seguinte.
+
+### T23 — Assinatura de código (por último, tem custo)
+
+- macOS: conta Apple Developer, assinatura e notarização no `release.yml`.
+- Windows: certificado de assinatura (ou Azure Trusted Signing) no `release.yml`.
+- Segredos do CI só nos secrets do GitHub, nunca no repositório.
+
+**Pronto quando:** os instaladores abrem sem aviso no macOS e no Windows.
+
+---
+
 ## Backlog
 
-- App desktop (Electron ou Tauri) empacotando servidor e interface.
 - Autenticação e multiusuário.
 - Workers remotos que se registram no servidor (agentes numa VPS ou por SSH, como o Orca faz).
 - Mensagem urgente que interrompe o agente ocupado.
