@@ -127,7 +127,9 @@ async function main(): Promise<number> {
     for (const screen of screens) {
       log(`fim da tela de ${screen.agent}:\n${lastLines(screen.data, 12)}`);
     }
-    await wiring.supervisor.stopAll();
+    // The run may already be ending on its own: this waits for that to finish before exiting.
+    if (runId) await wiring.supervisor.stopRun(runId);
+    else await wiring.supervisor.stopAll();
     await removeScratch(workdir);
   }
 }

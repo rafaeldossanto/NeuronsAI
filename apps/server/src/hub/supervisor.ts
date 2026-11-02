@@ -54,6 +54,7 @@ export class Supervisor {
 
   private readonly logger = new Logger(Supervisor.name);
   private readonly slots = new Map<string, Map<string, AgentSlot>>();
+  private readonly stopping = new Map<string, Promise<void>>();
 
   constructor(
     @Inject(Hub) private readonly hub: Hub,
@@ -96,11 +97,19 @@ export class Supervisor {
     return this.isIdleNow(runId);
   }
 
-  /** Stops every runtime of the run. */
-  async stopRun(runId: string): Promise<void> {
+  /**
+   * Stops every runtime of the run. Calling it again while a stop is under way waits for that one,
+   * so "resolved" always means the processes are gone and their temporary files deleted.
+   */
+  stopRun(runId: string): Promise<void> {
+    const underWay = this.stopping.get(runId);
+    if (underWay) return underWay;
+
     const slots = [...(this.slots.get(runId)?.values() ?? [])];
     this.slots.delete(runId);
-    await Promise.all(slots.map((slot) => this.stopSlot(slot)));
+    const stopped = Promise.all(slots.map((slot) => this.stopSlot(slot))).then(() => undefined);
+    this.stopping.set(runId, stopped);
+    return stopped.finally(() => this.stopping.delete(runId));
   }
 
   /** Stops every runtime of every run (server shutdown); the runs stay `running` for `recover`. */

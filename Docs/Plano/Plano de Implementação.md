@@ -22,8 +22,8 @@ provada antes de gastar tempo com canvas.
 
 ## Ordem de execução
 
-- Feito: T01, T02, T03 e o spike T05. Em andamento: T06 e T09.
-- Depois: T08 + T19 → T20 → T10 → T24 → T11 → T21 → T12–T15 → T22 → T25 → T16–T18.
+- Feito: T01, T02, T03, T05, T06, T08, T09, T19, T20.
+- Próxima: T10. Depois: T24 → T11 → T21 → T12–T15 → T22 → T25 → T16–T18.
 - **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16) sai por túnel.
 
 **Paralelismo possível:** T04 e T05 em paralelo com T02–T03. A Fase 2 pode começar assim que
@@ -315,6 +315,7 @@ digitar no terminal do Claude Code.
 - `node-pty` recompilado para o Electron (`@electron/rebuild`).
 - Diferenças por sistema num lugar só: pasta de dados, localizar o Claude Code CLI, encerrar árvore de processos, menu e atalhos.
 - Ícone e nome NeuronsAI; uma instância por vez.
+- Trava de instância única (`app.requestSingleInstanceLock()`) e trava por arquivo na pasta de dados do PGlite: hoje dois processos podem abrir a mesma pasta e corromper o banco.
 
 **Pronto quando:** o app abre no Windows com o modelador e roda uma execução com agente de terminal; o build local (`electron-builder --dir`) passa nos três sistemas pelo CI.
 
