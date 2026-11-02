@@ -1,20 +1,18 @@
 import { ConfigError, loadConfig } from "../shared/config/app-config.js";
-import { createDatabase, createPool } from "./database.service.js";
-import { runMigrations } from "./migrate.js";
+import { openDatabaseProvider } from "./open-database-provider.js";
 
 async function main(): Promise<void> {
-  const { database } = loadConfig();
-  if (!database)
+  const provider = await openDatabaseProvider(loadConfig());
+  if (!provider)
     throw new ConfigError([
       "banco não configurado: defina NEURONS_DB_URL ou NEURONS_DB_HOST/USER/NAME/PASSWORD",
     ]);
 
-  const pool = createPool(database);
   try {
-    await runMigrations(createDatabase(pool));
-    console.log("Migrations aplicadas.");
+    await provider.migrate();
+    console.log(`Migrations aplicadas (${provider.description}).`);
   } finally {
-    await pool.end();
+    await provider.close();
   }
 }
 

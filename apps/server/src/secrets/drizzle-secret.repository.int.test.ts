@@ -20,7 +20,7 @@ afterAll(async () => {
   await testDb.stop();
 });
 
-describe("SecretsService on Postgres", () => {
+describe("SecretsService", () => {
   it("round-trips a value through the bytea columns", async () => {
     await service.set("anthropic", "sk-ação-123");
 

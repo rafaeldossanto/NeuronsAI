@@ -1,8 +1,7 @@
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { runMigrations } from "./migrate.js";
 import { graphs, graphVersions, messages, runEvents, runs } from "./schema/index.js";
-import { startTestDatabase, type TestDatabase } from "./testing/test-database.js";
+import { rowsOf, startTestDatabase, type TestDatabase } from "./testing/test-database.js";
 
 let testDb: TestDatabase;
 
@@ -29,11 +28,11 @@ async function seedRun() {
 
 describe("migrations", () => {
   it("create every table", async () => {
-    const result = await db().execute<{ table_name: string }>(
+    const result = await db().execute(
       sql`select table_name from information_schema.tables where table_schema = 'public'`,
     );
 
-    const tables = result.rows.map((row) => row.table_name);
+    const tables = rowsOf<{ table_name: string }>(result).map((row) => row.table_name);
     expect(tables).toEqual(
       expect.arrayContaining([
         "graphs",
@@ -47,15 +46,17 @@ describe("migrations", () => {
   });
 
   it("can be applied again without effect", async () => {
-    await expect(runMigrations(db())).resolves.toBeUndefined();
+    await expect(testDb.migrate()).resolves.toBeUndefined();
   });
 
   it("create the inbox index on messages (run_id, to_agent, acked_at)", async () => {
-    const result = await db().execute<{ indexdef: string }>(
+    const result = await db().execute(
       sql`select indexdef from pg_indexes where indexname = 'messages_inbox_idx'`,
     );
 
-    expect(result.rows[0]?.indexdef).toContain("(run_id, to_agent, acked_at)");
+    expect(rowsOf<{ indexdef: string }>(result)[0]?.indexdef).toContain(
+      "(run_id, to_agent, acked_at)",
+    );
   });
 });
 
