@@ -16,6 +16,16 @@ import { InMemoryRunLog } from "../../run-log/testing/in-memory-run-log.js";
 import { RunService } from "../../runs/run.service.js";
 import { Hub, type HubOptions } from "../hub.js";
 import type { MessageStore } from "../message-store.js";
+import { BudgetGuard } from "../../guards/budget-guard.js";
+import { GuardEnforcer } from "../../guards/guard-enforcer.js";
+import { guardPolicies } from "../../guards/guard-policies.js";
+import { IdleWatchdog } from "../../guards/idle-watchdog.js";
+import type { RunEventHistory } from "../../realtime/run-event-history.js";
+import {
+  DEFAULT_PING_PONG_MESSAGES,
+  DEFAULT_RUN_MAX_MESSAGES,
+  type GuardLimits,
+} from "../../shared/config/guard-config.js";
 import { MessagePolicyChain, type MessagePolicy } from "../message-policy.js";
 import { PermissionPolicy } from "../permission-policy.js";
 import { RunRegistry } from "../run-registry.js";
@@ -29,6 +39,7 @@ import { buildTestGraph } from "./test-graph.js";
 export interface HubPersistence {
   messageStore: MessageStore;
   eventLog: RunEventLog;
+  history: RunEventHistory;
   runs: RunRepository;
   versions: GraphVersionRepository;
 }
@@ -45,21 +56,22 @@ export function inMemoryPersistence(): HubPersistence & {
     versions,
     runLog,
     eventLog: runLog,
+    history: runLog,
     runs: runLog,
     messageStore: new InMemoryMessageStore(runLog),
   };
 }
 
-export interface HubHarnessOptions {
-  scripts?: Record<string, FakeScript>;
-  runtimeOptions?: Record<string, FakeRuntimeOptions>;
-  hub?: Partial<HubOptions>;
-  extraPolicies?: MessagePolicy[];
-}
-
 export interface HubWiringOptions {
   hub?: Partial<HubOptions>;
   extraPolicies?: MessagePolicy[];
+  /** Overrides the guard limits (the defaults are the server's). */
+  limits?: Partial<GuardLimits>;
+}
+
+export interface HubHarnessOptions extends HubWiringOptions {
+  scripts?: Record<string, FakeScript>;
+  runtimeOptions?: Record<string, FakeRuntimeOptions>;
 }
 
 /** Wires a Hub, Supervisor and RunService over the given storage and runtime factory, like the Nest module does. */
@@ -72,8 +84,14 @@ export function createHubWiring(
   const publisher: RunEventPublisher = { publish: (event) => void published.push(event) };
   const recorder = new RunEventRecorder(persistence.eventLog, publisher);
   const registry = new RunRegistry();
+  const limits = {
+    runMaxMessages: DEFAULT_RUN_MAX_MESSAGES,
+    pingPongMessages: DEFAULT_PING_PONG_MESSAGES,
+    ...options.limits,
+  };
   const policies = new MessagePolicyChain([
     new PermissionPolicy(),
+    ...guardPolicies(persistence.messageStore, limits),
     ...(options.extraPolicies ?? []),
   ]);
   const hub = new Hub(persistence.messageStore, registry, policies, recorder, {
@@ -83,7 +101,25 @@ export function createHubWiring(
   const terminals = new TerminalSessions(
     new RunSubscriptions({ readFrom: () => Promise.resolve([]) }),
   );
-  const supervisor = new Supervisor(hub, factory, registry, persistence.runs, recorder, terminals);
+  const enforcer = new GuardEnforcer(hub, recorder);
+  const supervisor = new Supervisor(
+    hub,
+    factory,
+    registry,
+    persistence.runs,
+    recorder,
+    terminals,
+    enforcer,
+  );
+  const budgetGuard = new BudgetGuard(
+    hub,
+    supervisor,
+    registry,
+    enforcer,
+    recorder,
+    persistence.history,
+  );
+  const idleWatchdog = new IdleWatchdog(hub, supervisor, registry, enforcer);
   // Created on demand: its quiescence check would end the runs that hub-level tests drive by hand.
   let runService: RunService | undefined;
   return {
@@ -92,6 +128,9 @@ export function createHubWiring(
     registry,
     recorder,
     terminals,
+    enforcer,
+    budgetGuard,
+    idleWatchdog,
     published,
     get runService(): RunService {
       runService ??= new RunService(
@@ -101,6 +140,12 @@ export function createHubWiring(
         hub,
         supervisor,
         recorder,
+        enforcer,
+        {
+          ...(options.limits?.runBudgetUsd !== undefined && {
+            defaultBudgetUsd: options.limits.runBudgetUsd,
+          }),
+        },
       );
       return runService;
     },
@@ -108,11 +153,16 @@ export function createHubWiring(
     async openRun(
       graph: GraphDefinition = buildTestGraph(),
       graphVersionId?: string,
+      budgetUsd?: number,
     ): Promise<string> {
       const versionId =
         graphVersionId ?? (await persistence.versions.appendNext(graph.id, graph)).id;
-      const { record } = await persistence.runs.createRunning(versionId, () => []);
-      registry.register(record.id, graph);
+      const { record } = await persistence.runs.createRunning(
+        versionId,
+        () => [],
+        budgetUsd === undefined ? {} : { budgetUsd },
+      );
+      registry.register(record.id, graph, budgetUsd);
       return record.id;
     },
   };

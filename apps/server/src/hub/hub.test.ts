@@ -380,3 +380,70 @@ describe("Hub.reportUsage", () => {
     ).rejects.toBeInstanceOf(RunNotActiveError);
   });
 });
+
+describe("Hub with the human as a participant", () => {
+  let persistence: ReturnType<typeof inMemoryPersistence>;
+  let harness: ReturnType<typeof createHubHarness>;
+  let runId: string;
+
+  beforeEach(async () => {
+    persistence = inMemoryPersistence();
+    harness = createHubHarness(persistence);
+    runId = await harness.openRun();
+  });
+
+  it("settles a question the human asked when the agent answers", async () => {
+    const asked = harness.hub.ask(runId, HUMAN, "Beta", "tudo bem?", 60_000);
+    await eventually(() => expect(harness.runtimes.runtimeOf("Beta")?.received).toHaveLength(1));
+    const question = harness.runtimes.runtimeOf("Beta")!.received[0]!;
+
+    await harness.hub.reply(runId, "Beta", question.id, "tudo");
+
+    expect(await asked).toBe("tudo");
+    expect(harness.hub.openActivity(runId)).toBe(0);
+  });
+
+  it("delivers a message from the human to any agent of the run, arrows aside", async () => {
+    await harness.hub.send(runId, HUMAN, "Delta", "message", "oi, Delta");
+
+    await eventually(() =>
+      expect(harness.runtimes.runtimeOf("Delta")?.received).toMatchObject([
+        { from: HUMAN, body: "oi, Delta" },
+      ]),
+    );
+  });
+});
+
+describe("Hub.reportUsage details", () => {
+  it("writes an unknown cost as an explicit null, never as zero", async () => {
+    const persistence = inMemoryPersistence();
+    const harness = createHubHarness(persistence);
+    const runId = await harness.openRun();
+
+    await harness.hub.reportUsage(runId, "Alfa", {
+      inputTokens: 1,
+      outputTokens: 2,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
+
+    const [event] = persistence.runLog.eventsOf(runId, "UsageRecorded");
+    expect(event?.payload).toMatchObject({ costUsd: null });
+  });
+
+  it("still accepts the usage of an agent while the run winds down, and refuses it afterwards", async () => {
+    const persistence = inMemoryPersistence();
+    const harness = createHubHarness(persistence);
+    const runId = await harness.openRun();
+    const usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 };
+
+    harness.registry.close(runId);
+    await harness.hub.reportUsage(runId, "Alfa", { ...usage, costUsd: 0.01 });
+    harness.registry.release(runId);
+
+    await expect(harness.hub.reportUsage(runId, "Alfa", usage)).rejects.toBeInstanceOf(
+      RunNotActiveError,
+    );
+    expect(persistence.runLog.eventsOf(runId, "UsageRecorded")).toHaveLength(1);
+  });
+});

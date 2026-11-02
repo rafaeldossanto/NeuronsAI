@@ -16,4 +16,5 @@ export { Signal } from "./contract/signal.js";
 export type { Unsubscribe } from "./contract/signal.js";
 export { isTerminalRuntime } from "./contract/terminal-runtime.js";
 export type { TerminalAgentRuntime } from "./contract/terminal-runtime.js";
+export { DEFAULT_USAGE_FLUSH_MS } from "./contract/usage.js";
 export type { AgentUsage } from "./contract/usage.js";

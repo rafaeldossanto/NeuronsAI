@@ -1,8 +1,8 @@
 import type { GraphDefinition } from "@neurons/graph-schema";
 import { beforeEach, describe, expect, it } from "vitest";
 import { HUMAN, TRIGGER } from "../hub/addresses.js";
-import { AskTimeoutError, RunEndedError, RunNotActiveError } from "../hub/hub.errors.js";
-import { deferred, delay, eventually } from "../hub/testing/async-helpers.js";
+import { RunEndedError, RunNotActiveError } from "../hub/hub.errors.js";
+import { deferred, eventually } from "../hub/testing/async-helpers.js";
 import { createHubHarness, inMemoryPersistence } from "../hub/testing/hub-harness.js";
 import { buildTestGraph } from "../hub/testing/test-graph.js";
 import type { FakeScript } from "../agents/testing/fake-agent-runtime.js";
@@ -135,18 +135,20 @@ describe("RunService", () => {
       const harness = harnessWith({ Alfa: () => gate.promise });
       const run = await harness.runService.start(versionId, "oi");
       await eventually(() => expect(harness.runtimes.runtimeOf("Alfa")?.state).toBe("busy"));
-      // A human asks Beta, which never answers. Once Alfa is idle too, only the open ask holds the run.
-      const asked = harness.hub
-        .ask(run.id, HUMAN, "Beta", "alguém aí?", 120)
-        .catch((e: unknown) => e);
+      // A human asks Beta, which does not answer by itself. Once Alfa is idle too, only the open
+      // ask holds the run. The timeout is far away: the test ends the ask itself, so no timing matters.
+      const asked = harness.hub.ask(run.id, HUMAN, "Beta", "alguém aí?", 600_000);
       await eventually(() => expect(harness.runtimes.runtimeOf("Beta")?.received).toHaveLength(1));
       gate.resolve();
       await eventually(() => expect(harness.runtimes.runtimeOf("Alfa")?.state).toBe("idle"));
+      await eventually(() => expect(harness.runtimes.runtimeOf("Beta")?.state).toBe("idle"));
 
-      await delay(60);
+      expect(await harness.supervisor.isQuiescent(run.id)).toBe(false);
       expect(await statusOf(run.id)).toBe("running");
 
-      expect(await asked).toBeInstanceOf(AskTimeoutError);
+      const question = harness.runtimes.runtimeOf("Beta")?.received[0];
+      await harness.hub.reply(run.id, "Beta", question!.id, "estou aqui");
+      expect(await asked).toBe("estou aqui");
       await eventually(() => expect(finishedEvent(run.id)).toBeDefined());
       expect(finishedEvent(run.id)?.payload).toMatchObject({ reason: "quiescent" });
     });

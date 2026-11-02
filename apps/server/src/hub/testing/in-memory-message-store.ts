@@ -67,6 +67,36 @@ export class InMemoryMessageStore implements MessageStore {
     return Promise.resolve(this.unackedOf(runId));
   }
 
+  listByRun(
+    runId: string,
+    options: { afterSeq?: number; limit: number },
+  ): Promise<MessageRecord[]> {
+    const after = options.afterSeq ?? 0;
+    return Promise.resolve(
+      this.allOf(runId)
+        .filter((message) => message.seq > after)
+        .slice(0, options.limit),
+    );
+  }
+
+  listRecent(runId: string, limit: number): Promise<MessageRecord[]> {
+    return Promise.resolve(this.allOf(runId).reverse().slice(0, limit));
+  }
+
+  countInRun(runId: string): Promise<number> {
+    return Promise.resolve(this.allOf(runId).length);
+  }
+
+  countOnLink(runId: string, agentA: string, agentB: string): Promise<number> {
+    const onLink = this.allOf(runId).filter(
+      (message) =>
+        message.kind !== "reply" &&
+        ((message.from === agentA && message.to === agentB) ||
+          (message.from === agentB && message.to === agentA)),
+    );
+    return Promise.resolve(onLink.length);
+  }
+
   /** Every message of the run, oldest first (test inspection). */
   allOf(runId: string): MessageRecord[] {
     return this.messages.filter((message) => message.runId === runId).sort((a, b) => a.seq - b.seq);

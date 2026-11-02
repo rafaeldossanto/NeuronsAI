@@ -34,6 +34,7 @@ jobs:
           key: turbo-${{ runner.os }}-${{ github.sha }}
           restore-keys: turbo-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
       - run: pnpm turbo lint typecheck test build --cache-dir=.turbo
 
   # Testcontainers usa o Docker do runner ubuntu; nenhuma variável de ambiente é necessária.

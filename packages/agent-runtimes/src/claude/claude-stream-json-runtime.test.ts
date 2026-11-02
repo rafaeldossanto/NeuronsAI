@@ -27,7 +27,12 @@ describe("ClaudeStreamJsonRuntime (fake CLI)", () => {
   let communication = new RecordingCommunication();
 
   function create(
-    options: { fakeFlags?: string[]; cwd?: string; host?: Record<string, string> } = {},
+    options: {
+      fakeFlags?: string[];
+      cwd?: string;
+      host?: Record<string, string>;
+      usageFlushMs?: number;
+    } = {},
   ) {
     const deps = testDeps(options);
     const runtime = new ClaudeStreamJsonRuntime(
@@ -81,6 +86,46 @@ describe("ClaudeStreamJsonRuntime (fake CLI)", () => {
         turns: 2,
       },
     ]);
+  });
+
+  it("reports its usage on the cost, as a runtime that knows the price", () => {
+    expect(create().runtime.reportsCost).toBe(true);
+  });
+
+  describe("stop while a turn is under way", () => {
+    it("waits for the result event, so the usage of the closing turn is not lost", async () => {
+      const { runtime } = await started({ usageFlushMs: 10_000 });
+      await runtime.deliver(message("!finish pronto\n!sleep 400"));
+      await eventually(() => communication.finished.length === 1);
+      expect(communication.usage).toEqual([]);
+
+      await runtime.stop();
+
+      expect(communication.usage).toHaveLength(1);
+      expect(communication.usage[0]).toMatchObject({ costUsd: 0.0123 });
+      expect(runtime.state).toBe("stopped");
+    });
+
+    it("gives up after the flush window and still kills the CLI", async () => {
+      const { runtime } = await started({ usageFlushMs: 100 });
+      await runtime.deliver(message("!sleep 5000"));
+      await untilState(runtime, "busy");
+      const pid = runtime.processId!;
+
+      const startedAt = Date.now();
+      await runtime.stop();
+
+      expect(Date.now() - startedAt).toBeLessThan(4_000);
+      expect(communication.usage).toEqual([]);
+      expect(isAlive(pid)).toBe(false);
+    });
+
+    it("does not wait when the agent is idle", async () => {
+      const { runtime } = await started({ usageFlushMs: 60_000 });
+      const startedAt = Date.now();
+      await runtime.stop();
+      expect(Date.now() - startedAt).toBeLessThan(10_000);
+    });
   });
 
   it("is waiting_reply while an ask is open and hands the answer back to the model", async () => {

@@ -20,6 +20,8 @@ import type { McpServerCommand } from "./session-files.js";
 export interface TerminalRuntimeFactoryOptions {
   /** The Hub's `ask` timeout; the CLI's MCP tool timeout follows it. */
   askTimeoutMs: number;
+  /** How long `stop` waits for a turn under way to report its usage; defaults to `DEFAULT_USAGE_FLUSH_MS`. */
+  usageFlushMs?: number;
   /** Where the CLI is and how it is found (`NEURONS_CLAUDE_BIN` goes in `configuredBinary`). */
   cli?: ClaudeCliOptions;
   /** How to start the `neurons` MCP server; defaults to this repository's `@neurons/mcp-neurons`. */
@@ -39,6 +41,7 @@ export class TerminalRuntimeFactory implements AgentRuntimeFactory {
       mcpServer: options.mcpServer ?? { command: process.execPath, args: [neuronsServerEntry()] },
       askTimeoutMs: options.askTimeoutMs,
       logger: options.logger ?? silentLogger,
+      ...(options.usageFlushMs !== undefined && { usageFlushMs: options.usageFlushMs }),
     };
   }
 

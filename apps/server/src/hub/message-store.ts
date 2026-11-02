@@ -28,6 +28,18 @@ export interface MessageStore {
 
   /** Everything not acknowledged in the run, oldest first. */
   listUnacked(runId: string): Promise<MessageRecord[]>;
+
+  /** Messages of the run, oldest first, after `afterSeq`. */
+  listByRun(runId: string, options: { afterSeq?: number; limit: number }): Promise<MessageRecord[]>;
+
+  /** The latest `limit` messages of the run, newest first. */
+  listRecent(runId: string, limit: number): Promise<MessageRecord[]>;
+
+  /** Every message of the run. */
+  countInRun(runId: string): Promise<number>;
+
+  /** Messages that started a conversation (not replies) between the two agents, in either direction. */
+  countOnLink(runId: string, agentA: string, agentB: string): Promise<number>;
 }
 
 export const MESSAGE_STORE = Symbol("MESSAGE_STORE");

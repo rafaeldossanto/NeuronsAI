@@ -4,6 +4,7 @@ import {
   GRAPH_VERSION_REPOSITORY,
   type GraphVersionRepository,
 } from "../graphs/graph-version-repository.js";
+import { GuardEnforcer } from "../guards/guard-enforcer.js";
 import { TRIGGER } from "../hub/addresses.js";
 import { Hub } from "../hub/hub.js";
 import { RunRegistry } from "../hub/run-registry.js";
@@ -31,7 +32,15 @@ const STATUS_BY_REASON: Record<RunFinishReason, FinalRunStatus> = {
   quiescent: "succeeded",
   stopped: "cancelled",
   failed: "failed",
+  guard_tripped: "failed",
 };
+
+export interface RunServiceOptions {
+  /** Spending limit of a run that does not set its own. */
+  defaultBudgetUsd?: number;
+}
+
+export const RUN_SERVICE_OPTIONS = Symbol("RUN_SERVICE_OPTIONS");
 
 /**
  * Starts runs and ends them. A run ends when an agent calls `finish`, when it goes quiescent
@@ -47,21 +56,29 @@ export class RunService {
     @Inject(Hub) private readonly hub: Hub,
     @Inject(Supervisor) private readonly supervisor: Supervisor,
     @Inject(RunEventRecorder) private readonly recorder: RunEventRecorder,
+    @Inject(GuardEnforcer) private readonly enforcer: GuardEnforcer,
+    @Inject(RUN_SERVICE_OPTIONS) private readonly options: RunServiceOptions,
   ) {
     this.hub.finishRequested.subscribe(({ runId, agent, result }) =>
       this.end(runId, "finished", { agent, result }),
     );
+    this.enforcer.tripped.subscribe((trip) => {
+      if (trip.scope === "run") {
+        return this.end(trip.runId, "guard_tripped", { guard: trip.guard, message: trip.reason });
+      }
+    });
     this.supervisor.settled.subscribe((runId) => this.endIfQuiescent(runId));
   }
 
   /**
    * Creates the run and sends the trigger's first message (`input`) to its target agent.
    * @param options.triggerId Which trigger to use; optional when the graph has only one.
+   * @param options.budgetUsd Spending limit of the run; the server's default applies when absent.
    */
   async start(
     graphVersionId: string,
     input: string,
-    options: { triggerId?: string } = {},
+    options: { triggerId?: string; budgetUsd?: number } = {},
   ): Promise<RunRecord> {
     const version = await this.versions.findById(graphVersionId);
     if (!version) throw new GraphVersionNotFoundError(graphVersionId);
@@ -71,12 +88,22 @@ export class RunService {
     const target = graph.nodes.find((node) => node.type === "agent" && node.id === trigger.target);
     if (target?.type !== "agent") throw new TriggerTargetNotFoundError(trigger.id);
 
-    const { record: run, events } = await this.runs.createRunning(version.id, () => [
-      RunLifecycleEvents.runStarted({ graphVersionId: version.id, triggerId: trigger.id, input }),
-    ]);
+    const budgetUsd = options.budgetUsd ?? this.options.defaultBudgetUsd;
+    const { record: run, events } = await this.runs.createRunning(
+      version.id,
+      () => [
+        RunLifecycleEvents.runStarted({
+          graphVersionId: version.id,
+          triggerId: trigger.id,
+          input,
+          budgetUsd: budgetUsd ?? null,
+        }),
+      ],
+      budgetUsd === undefined ? {} : { budgetUsd },
+    );
     this.recorder.publish(events);
 
-    this.registry.register(run.id, graph);
+    this.registry.register(run.id, graph, budgetUsd);
     try {
       await this.hub.send(run.id, TRIGGER, target.name, "message", input);
     } catch (error) {
@@ -103,18 +130,25 @@ export class RunService {
     reason: RunFinishReason,
     details: RunFinishDetails = {},
   ): Promise<void> {
-    // Taking the run out of the registry first shuts the door for new messages and makes
-    // concurrent attempts to end it (e.g. `finish` racing with quiescence) harmless.
-    const wasActive = this.registry.remove(runId);
+    // Closing the run first shuts the door for new messages and makes concurrent attempts to end
+    // it (e.g. `finish` racing with quiescence) harmless. Agents winding down may still report
+    // their last usage.
+    const wasActive = this.registry.close(runId);
     if (!wasActive && reason !== "stopped") return;
     try {
-      const finished = await this.runs.finish(runId, STATUS_BY_REASON[reason], [
-        RunLifecycleEvents.runFinished(reason, details),
-      ]);
-      if (finished) this.recorder.publish(finished.events);
-    } finally {
       this.hub.cancelAsks(runId);
+      // Before the run is marked as finished: the last turn's usage lands in the log first.
       await this.supervisor.stopRun(runId);
+    } finally {
+      try {
+        const finished = await this.runs.finish(runId, STATUS_BY_REASON[reason], [
+          RunLifecycleEvents.runFinished(reason, details),
+        ]);
+        if (finished) this.recorder.publish(finished.events);
+      } finally {
+        this.registry.release(runId);
+        this.enforcer.forget(runId);
+      }
     }
   }
 }

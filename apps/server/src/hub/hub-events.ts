@@ -40,7 +40,8 @@ export const HubEvents = {
   usageRecorded: (agent: string, usage: AgentUsage): RunEventDraft => ({
     type: "UsageRecorded",
     agent,
-    payload: usage,
+    // A missing price is written as an explicit null, so "unknown" never reads as "free".
+    payload: { ...usage, costUsd: usage.costUsd ?? null },
   }),
 
   agentFailed: (agent: string, reason: string): RunEventDraft => ({

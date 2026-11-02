@@ -14,7 +14,8 @@ import { TerminalSessions } from "./terminal-sessions.js";
     TerminalSessions,
     { provide: RUN_EVENT_HISTORY, useClass: DrizzleRunEventHistory },
   ],
-  // The Hub publishes through RunSubscriptions; the Supervisor attaches terminal runtimes to TerminalSessions.
-  exports: [RunSubscriptions, TerminalSessions],
+  // The Hub publishes through RunSubscriptions; the Supervisor attaches terminal runtimes to TerminalSessions;
+  // the history is also read by the guards and the API.
+  exports: [RunSubscriptions, TerminalSessions, RUN_EVENT_HISTORY],
 })
 export class RealtimeModule {}

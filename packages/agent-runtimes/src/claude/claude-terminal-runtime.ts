@@ -115,6 +115,8 @@ const ECHO_PROBE_CHARS = 25;
  */
 export class ClaudeTerminalRuntime extends ClaudeRuntimeBase implements TerminalAgentRuntime {
   protected readonly mode = "pty";
+  /** The screen of the CLI carries no structured usage. */
+  readonly reportsCost = false;
 
   private readonly timings: TerminalTimings;
   private readonly size: TerminalSize;

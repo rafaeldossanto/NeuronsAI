@@ -1,3 +1,6 @@
+/** Default for how long a runtime's `stop` waits for a closing turn to report its usage: a closing turn is a short answer, not new work. */
+export const DEFAULT_USAGE_FLUSH_MS = 4_000;
+
 /** What one turn of an agent consumed, as the CLI or the provider reports it. */
 export interface AgentUsage {
   model?: string;

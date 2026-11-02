@@ -1,3 +1,4 @@
+import type { GuardTripDetails } from "../guards/guard-trip.js";
 import { DomainError, type DomainErrorKind } from "../shared/errors/domain-error.js";
 
 export class RunNotActiveError extends DomainError {
@@ -12,7 +13,12 @@ export class RunNotActiveError extends DomainError {
 export class MessageDeniedError extends DomainError {
   readonly kind: DomainErrorKind = "forbidden";
 
-  constructor(code: string, reason: string) {
+  constructor(
+    code: string,
+    reason: string,
+    /** Set when the refusal comes from a guard that also stops the run or an agent. */
+    readonly trip?: GuardTripDetails,
+  ) {
     super(code, reason);
   }
 }

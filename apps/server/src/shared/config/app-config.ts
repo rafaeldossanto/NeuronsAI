@@ -3,23 +3,28 @@ import { z } from "zod";
 import { ConfigError } from "./config-error.js";
 import { type HostInfo, resolveDataDir } from "./data-dir.js";
 import { type DatabaseConfig, databaseEnvShape, resolveDatabase } from "./database-config.js";
+import { type GuardLimits, guardEnvShape, resolveGuardLimits } from "./guard-config.js";
 import { port, unlessEmpty } from "./env-schema.js";
+import { listenEnvShape, resolveListenHost } from "./listen-config.js";
 
 export { ConfigError } from "./config-error.js";
 export { DATABASE_KINDS } from "./database-config.js";
+export type { GuardLimits } from "./guard-config.js";
 export type { DatabaseConfig, DatabaseKind, PostgresConnection } from "./database-config.js";
 
 export const APP_MODES = ["api", "worker", "all"] as const;
 export type AppMode = (typeof APP_MODES)[number];
 
-/** The server only listens on loopback in v1. */
-export const LISTEN_HOST = "127.0.0.1";
-
 export interface AppConfig {
   mode: AppMode;
+  /** Where the server listens: loopback unless `NEURONS_ALLOW_REMOTE` says otherwise. */
+  host: string;
   port: number;
   /** How long an agent's `ask` waits for the answer before failing. */
   askTimeoutMs: number;
+  guards: GuardLimits;
+  /** How long stopping a run waits for the agents' last usage report (see `NEURONS_USAGE_FLUSH_MS`). */
+  usageFlushMs: number;
   /** Folder where the app keeps its data (the embedded database lives in its `db` subfolder). */
   dataDir: string;
   database: DatabaseConfig;
@@ -33,10 +38,12 @@ const BASE64_32_BYTES = /^[A-Za-z0-9+/]{43}=$/;
 
 const envSchema = z.object({
   NEURONS_MODE: unlessEmpty(z.enum(APP_MODES).default("all")),
+  ...listenEnvShape,
   NEURONS_PORT: port(3100),
   NEURONS_ASK_TIMEOUT_SEC: unlessEmpty(z.coerce.number().int().min(1).default(120)),
   NEURONS_DATA_DIR: unlessEmpty(z.string().trim().min(1).optional()),
   ...databaseEnvShape,
+  ...guardEnvShape,
   NEURONS_CLAUDE_BIN: unlessEmpty(z.string().trim().min(1).optional()),
   NEURONS_MASTER_KEY: unlessEmpty(
     z
@@ -68,8 +75,11 @@ export function loadConfig(
 
   return {
     mode: values.NEURONS_MODE,
+    host: resolveListenHost(values),
     port: values.NEURONS_PORT,
     askTimeoutMs: values.NEURONS_ASK_TIMEOUT_SEC * 1000,
+    guards: resolveGuardLimits(values),
+    usageFlushMs: values.NEURONS_USAGE_FLUSH_MS,
     dataDir: resolveDataDir(values.NEURONS_DATA_DIR, env, host),
     database: resolveDatabase(values),
     ...(masterKey && { masterKey: Buffer.from(masterKey, "base64") }),

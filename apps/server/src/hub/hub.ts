@@ -4,12 +4,14 @@ import { peersOf, type AgentPeers, type GraphDefinition } from "@neurons/graph-s
 import type { MessageKind } from "../database/schema/index.js";
 import { RunEventRecorder } from "../run-log/run-event-recorder.js";
 import { Signal } from "../shared/signal.js";
+import type { GuardTrip } from "../guards/guard-trip.js";
 import { isExternalAddress } from "./addresses.js";
 import { findAgent } from "./agent-lookup.js";
 import { HubEvents } from "./hub-events.js";
 import {
   AskTimeoutError,
   InvalidMessageError,
+  MessageDeniedError,
   MessageNotFoundError,
   RunEndedError,
 } from "./hub.errors.js";
@@ -24,6 +26,19 @@ export interface HubOptions {
 }
 
 export const HUB_OPTIONS = Symbol("HUB_OPTIONS");
+
+/** What one turn of an agent consumed, after it was written to the log. */
+export interface UsageReport {
+  runId: string;
+  agent: string;
+  usage: AgentUsage;
+}
+
+/** An agent showed it is alive: it sent, asked, replied, listed its peers, reported usage or finished. */
+export interface AgentActivity {
+  runId: string;
+  agent: string;
+}
 
 /** An agent declaring the whole run done. */
 export interface FinishRequest {
@@ -64,6 +79,11 @@ export class Hub {
   readonly finishRequested = new Signal<FinishRequest>();
   /** An `ask` is no longer open (answered or timed out): the run may have gone quiet. */
   readonly askClosed = new Signal<string>();
+  /** A message was refused by a guard that also stops the run or an agent. */
+  readonly guardTripped = new Signal<GuardTrip>();
+  /** An agent's usage was recorded. */
+  readonly usageRecorded = new Signal<UsageReport>();
+  readonly agentActive = new Signal<AgentActivity>();
 
   private readonly pendingAsks = new Map<string, PendingAsk>();
   private readonly sendsInFlight = new Map<string, number>();
@@ -135,21 +155,29 @@ export class Hub {
   }
 
   listPeers(runId: string, agent: string): AgentPeers {
-    return peersOf(this.registry.require(runId).graph, agent);
+    const { graph } = this.registry.require(runId);
+    this.agentActive.emit({ runId, agent });
+    return peersOf(graph, agent);
   }
 
   finish(runId: string, agent: string, result: string): Promise<void> {
     const { graph } = this.registry.require(runId);
     if (!findAgent(graph, agent)) return Promise.reject(unknownAgent("unknown_sender", agent));
+    this.agentActive.emit({ runId, agent });
     this.finishRequested.emit({ runId, agent, result });
     return Promise.resolve();
   }
 
-  /** Writes what an agent's turn consumed to the run log. */
+  /**
+   * Writes what an agent's turn consumed to the run log. Also accepted while the run winds down:
+   * the last turn of an agent reports its usage as the run is closing.
+   */
   async reportUsage(runId: string, agent: string, usage: AgentUsage): Promise<void> {
-    const { graph } = this.registry.require(runId);
+    const { graph } = this.registry.requireOpen(runId);
     if (!findAgent(graph, agent)) throw unknownAgent("unknown_sender", agent);
     await this.recorder.record(runId, [HubEvents.usageRecorded(agent, usage)]);
+    this.agentActive.emit({ runId, agent });
+    this.usageRecorded.emit({ runId, agent, usage });
   }
 
   // ---- delivery bookkeeping, used by the Supervisor ----
@@ -201,18 +229,12 @@ export class Hub {
     const { runId } = request;
     const { graph } = this.registry.require(runId);
     this.sendStarted(runId);
+    let askSettled = false;
     try {
       assertWellFormed(request, graph);
+      if (!isExternalAddress(request.from)) this.agentActive.emit({ runId, agent: request.from });
       const original = await this.loadOriginal(request);
-      await this.policies.enforce({
-        runId,
-        graph,
-        from: request.from,
-        to: request.to,
-        kind: request.kind,
-        body: request.body,
-        ...(original && { replyTo: original }),
-      });
+      await this.enforcePolicies(request, graph, original);
 
       const external = isExternalAddress(request.to);
       const { record, events } = await this.store.append(
@@ -229,10 +251,36 @@ export class Hub {
       );
       this.recorder.publish(events);
       onStored?.(record);
-      if (!external) await this.route(record);
+      askSettled = await this.route(record, external);
       return record;
     } finally {
       this.sendFinished(runId);
+      // After the send no longer counts as activity, or the run could never look quiet.
+      if (askSettled) this.askClosed.emit(runId);
+    }
+  }
+
+  /** A refusal by a guard is not just an error to the sender: the guard's trip is announced too. */
+  private async enforcePolicies(
+    request: SendRequest,
+    graph: GraphDefinition,
+    original: MessageRecord | undefined,
+  ): Promise<void> {
+    try {
+      await this.policies.enforce({
+        runId: request.runId,
+        graph,
+        from: request.from,
+        to: request.to,
+        kind: request.kind,
+        body: request.body,
+        ...(original && { replyTo: original }),
+      });
+    } catch (error) {
+      if (error instanceof MessageDeniedError && error.trip) {
+        this.guardTripped.emit({ runId: request.runId, ...error.trip });
+      }
+      throw error;
     }
   }
 
@@ -243,17 +291,21 @@ export class Hub {
     return original;
   }
 
-  /** An answer to an open `ask` settles it; anything else goes to the recipient's inbox. */
-  private async route(message: MessageRecord): Promise<void> {
+  /**
+   * An answer to an open `ask` settles it (also when it goes to `@human`, who may have asked);
+   * anything else goes to the recipient's inbox, unless the recipient is not an agent.
+   * @returns whether an open `ask` was settled.
+   */
+  private async route(message: MessageRecord, external: boolean): Promise<boolean> {
     const ask =
       message.kind === "reply" && message.replyTo ? this.closeAsk(message.replyTo) : undefined;
     if (!ask) {
-      this.messageRecorded.emit(message);
-      return;
+      if (!external) this.messageRecorded.emit(message);
+      return false;
     }
     ask.resolve(message.body);
-    await this.markAcked(message);
-    this.askClosed.emit(message.runId);
+    if (!external) await this.markAcked(message);
+    return true;
   }
 
   private expireAsk(askId: string, timeoutMs: number): void {

@@ -5,7 +5,7 @@ import type { AgentCommunication } from "../contract/agent-communication.js";
 import type { AgentRuntime, AgentRuntimeState, InboundMessage } from "../contract/agent-runtime.js";
 import type { RuntimeLogger } from "../contract/logger.js";
 import { Signal, type Unsubscribe } from "../contract/signal.js";
-import type { AgentUsage } from "../contract/usage.js";
+import { DEFAULT_USAGE_FLUSH_MS, type AgentUsage } from "../contract/usage.js";
 import { assertAllowedUserArgs, buildClaudeArgs } from "./claude-args.js";
 import type { ClaudeCli } from "./claude-cli.js";
 import {
@@ -21,6 +21,8 @@ export interface ClaudeRuntimeDeps {
   /** The Hub's `ask` timeout: the CLI's MCP tool timeout is derived from it. */
   askTimeoutMs: number;
   logger: RuntimeLogger;
+  /** On `stop`, how long a turn still under way may take to end, so its last usage is recorded. */
+  usageFlushMs?: number;
 }
 
 /** The part of the graph node the Claude runtimes read. */
@@ -103,6 +105,8 @@ export abstract class ClaudeRuntimeBase implements AgentRuntime {
   abstract deliver(message: InboundMessage): Promise<void>;
 
   async stop(): Promise<void> {
+    // Before the state changes: the turn that is wrapping up still has its usage to report.
+    await this.drain(this.deps.usageFlushMs ?? DEFAULT_USAGE_FLUSH_MS);
     this.setState("stopped");
     await this.release();
   }
@@ -115,12 +119,23 @@ export abstract class ClaudeRuntimeBase implements AgentRuntime {
   /** Kills the CLI process tree; must be safe to call when nothing was launched. */
   protected abstract terminate(): Promise<void>;
 
+  /**
+   * Gives a turn still under way up to `flushMs` to report what it consumed before the CLI is
+   * killed. The PTY mode reports no usage, so it has nothing to wait for.
+   */
+  protected drain(flushMs: number): Promise<void> {
+    void flushMs;
+    return Promise.resolve();
+  }
+
   /** The hooks the CLI posts to the bridge; the stream-json mode has none. */
   protected hooks(): BridgeHooks | undefined {
     return undefined;
   }
 
   protected abstract readonly mode: "pty" | "stream-json";
+
+  abstract readonly reportsCost: boolean;
 
   protected get closed(): boolean {
     return this.currentState === "stopped" || this.currentState === "failed";

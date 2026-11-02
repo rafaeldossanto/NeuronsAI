@@ -7,6 +7,7 @@ import {
 } from "@neurons/agent-runtimes";
 import { peersOf, type AgentNode } from "@neurons/graph-schema";
 import { AGENT_RUNTIME_FACTORY } from "../agents/agent-runtime-factory.js";
+import { GuardEnforcer } from "../guards/guard-enforcer.js";
 import { TerminalSessions } from "../realtime/terminal-sessions.js";
 import { RunEventRecorder } from "../run-log/run-event-recorder.js";
 import { RUN_REPOSITORY, type RunRepository } from "../run-log/run-repository.js";
@@ -20,6 +21,20 @@ import type { MessageRecord } from "./message.js";
 import { RunRegistry } from "./run-registry.js";
 
 type SlotState = AgentRuntimeState | "failed";
+
+/** An agent's runtime was created and is about to boot. */
+export interface StartedAgent {
+  runId: string;
+  agent: AgentNode;
+  runtime: AgentRuntime;
+}
+
+/** The state of an agent's runtime changed (`failed` also when the agent was taken out by a guard). */
+export interface AgentStateChange {
+  runId: string;
+  agent: string;
+  state: SlotState;
+}
 
 /** States in which an agent is still working, so the run cannot be quiet. */
 const ACTIVE_STATES: ReadonlySet<SlotState> = new Set(["starting", "busy", "waiting_reply"]);
@@ -41,6 +56,8 @@ interface AgentSlot {
   unsubscribe: Unsubscribe;
   /** Stops publishing the terminal output of a terminal runtime. */
   detachTerminal: Unsubscribe;
+  /** The runtime is being stopped (or already is); stopping again waits for the same stop. */
+  stopping: Promise<void> | undefined;
 }
 
 /**
@@ -51,6 +68,10 @@ interface AgentSlot {
 export class Supervisor {
   /** Something happened that may have left the run quiet: nudge whoever checks for the end. */
   readonly settled = new Signal<string>();
+  readonly agentStarted = new Signal<StartedAgent>();
+  readonly agentStateChanged = new Signal<AgentStateChange>();
+  /** Every runtime of the run is stopped. */
+  readonly runStopped = new Signal<string>();
 
   private readonly logger = new Logger(Supervisor.name);
   private readonly slots = new Map<string, Map<string, AgentSlot>>();
@@ -63,9 +84,15 @@ export class Supervisor {
     @Inject(RUN_REPOSITORY) private readonly runs: RunRepository,
     @Inject(RunEventRecorder) private readonly recorder: RunEventRecorder,
     @Inject(TerminalSessions) private readonly terminals: TerminalSessions,
+    @Inject(GuardEnforcer) enforcer: GuardEnforcer,
   ) {
     this.hub.messageRecorded.subscribe((message) => this.onMessage(message));
     this.hub.askClosed.subscribe((runId) => this.settled.emit(runId));
+    enforcer.tripped.subscribe((trip) => {
+      if (trip.scope === "agent" && trip.agent) {
+        return this.abortAgent(trip.runId, trip.agent, trip.reason);
+      }
+    });
   }
 
   /**
@@ -74,7 +101,7 @@ export class Supervisor {
    */
   async recover(): Promise<void> {
     for (const { run, graph } of await this.runs.listRunning()) {
-      this.registry.register(run.id, graph);
+      this.registry.register(run.id, graph, run.budgetUsd ?? undefined);
       const recipients = new Set((await this.hub.unacked(run.id)).map((message) => message.to));
       for (const name of recipients) {
         const slot = this.ensureSlot(run.id, name);
@@ -107,9 +134,22 @@ export class Supervisor {
 
     const slots = [...(this.slots.get(runId)?.values() ?? [])];
     this.slots.delete(runId);
-    const stopped = Promise.all(slots.map((slot) => this.stopSlot(slot))).then(() => undefined);
+    const stopped = Promise.all(slots.map((slot) => this.stopSlot(slot))).then(() =>
+      this.runStopped.emit(runId),
+    );
     this.stopping.set(runId, stopped);
     return stopped.finally(() => this.stopping.delete(runId));
+  }
+
+  /**
+   * Takes one agent out of the run for good because a guard tripped: the failure is logged with the
+   * guard's reason, the runtime is stopped and the run goes on without it.
+   */
+  async abortAgent(runId: string, agentName: string, reason: string): Promise<void> {
+    const slot = this.slots.get(runId)?.get(agentName);
+    if (!slot) return;
+    await this.reportFailure(slot, reason);
+    await this.stopSlot(slot);
   }
 
   /** Stops every runtime of every run (server shutdown); the runs stay `running` for `recover`. */
@@ -125,6 +165,7 @@ export class Supervisor {
   }
 
   private onStateChange(slot: AgentSlot, state: AgentRuntimeState): void {
+    this.agentStateChanged.emit({ runId: slot.runId, agent: slot.agent.name, state });
     if (state === "idle") this.schedulePump(slot);
     if (state === "failed") void this.reportFailure(slot, slot.runtime?.failureReason);
     if (state === "idle" || DEAD_STATES.has(state)) this.settled.emit(slot.runId);
@@ -152,6 +193,7 @@ export class Supervisor {
       repump: false,
       unsubscribe: () => undefined,
       detachTerminal: () => undefined,
+      stopping: undefined,
     };
     bySlot.set(agentName, slot);
     slot.booted = this.boot(slot, buildBriefing(agent, peersOf(graph, agentName)));
@@ -169,6 +211,7 @@ export class Supervisor {
         slot.detachTerminal = this.terminals.attach(slot.runId, slot.agent.name, runtime);
       }
       await this.recorder.record(slot.runId, [HubEvents.agentStarted(slot.agent.name, briefing)]);
+      this.agentStarted.emit({ runId: slot.runId, agent: slot.agent, runtime });
       await runtime.start(briefing);
     } catch (error) {
       await this.reportFailure(slot, errorMessage(error));
@@ -192,10 +235,16 @@ export class Supervisor {
         `Não foi possível registrar a falha de "${slot.agent.name}": ${errorMessage(error)}`,
       );
     }
+    this.agentStateChanged.emit({ runId: slot.runId, agent: slot.agent.name, state: "failed" });
     this.settled.emit(slot.runId);
   }
 
-  private async stopSlot(slot: AgentSlot): Promise<void> {
+  private stopSlot(slot: AgentSlot): Promise<void> {
+    slot.stopping ??= this.stopRuntime(slot);
+    return slot.stopping;
+  }
+
+  private async stopRuntime(slot: AgentSlot): Promise<void> {
     slot.unsubscribe();
     await slot.booted;
     try {

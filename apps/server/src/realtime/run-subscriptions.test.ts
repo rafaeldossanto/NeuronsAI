@@ -32,7 +32,7 @@ class RecordingSink implements EventSink {
 }
 
 /** History backed by a list; `gate` lets a test publish while the replay is still pending. */
-class FakeHistory implements RunEventHistory {
+class FakeHistory implements Pick<RunEventHistory, "readFrom"> {
   events: RunEvent[] = [];
   gate: Promise<void> | undefined;
   failure: Error | undefined;

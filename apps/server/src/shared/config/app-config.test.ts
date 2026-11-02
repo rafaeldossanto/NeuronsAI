@@ -10,7 +10,10 @@ const loadConfig = (env: NodeJS.ProcessEnv) => loadConfigFor(env, host);
 /** What the config holds when nothing is set. */
 const defaults = {
   mode: "all",
+  host: "127.0.0.1",
   port: 3100,
+  guards: { runMaxMessages: 200, pingPongMessages: 20 },
+  usageFlushMs: 4_000,
   askTimeoutMs: 120_000,
   dataDir: "/home/ana/.local/share/neuronsai",
   database: { kind: "embedded" },
@@ -174,5 +177,47 @@ describe("loadConfig", () => {
     expect(() => loadConfig(env)).toThrow(
       expect.objectContaining({ message: expect.not.stringContaining("super-secret") as string }),
     );
+  });
+});
+
+describe("listening address", () => {
+  it("is loopback by default", () => {
+    expect(loadConfig({}).host).toBe("127.0.0.1");
+  });
+
+  it("accepts other loopback addresses without any opt-in", () => {
+    expect(loadConfig({ NEURONS_HOST: "localhost" }).host).toBe("localhost");
+    expect(loadConfig({ NEURONS_HOST: "::1" }).host).toBe("::1");
+    expect(loadConfig({ NEURONS_HOST: "127.0.0.2" }).host).toBe("127.0.0.2");
+  });
+
+  it("refuses to listen outside this machine unless NEURONS_ALLOW_REMOTE=true", () => {
+    expect(() => loadConfig({ NEURONS_HOST: "0.0.0.0" })).toThrow(/NEURONS_ALLOW_REMOTE/);
+    expect(() =>
+      loadConfig({ NEURONS_HOST: "192.168.0.5", NEURONS_ALLOW_REMOTE: "false" }),
+    ).toThrow(ConfigError);
+    expect(loadConfig({ NEURONS_HOST: "0.0.0.0", NEURONS_ALLOW_REMOTE: "true" }).host).toBe(
+      "0.0.0.0",
+    );
+  });
+});
+
+describe("guard limits", () => {
+  it("reads the limits and the usage flush window", () => {
+    const config = loadConfig({
+      NEURONS_RUN_MAX_MESSAGES: "50",
+      NEURONS_PING_PONG_MESSAGES: "8",
+      NEURONS_RUN_BUDGET_USD: "2.5",
+      NEURONS_USAGE_FLUSH_MS: "1500",
+    });
+
+    expect(config.guards).toEqual({ runMaxMessages: 50, pingPongMessages: 8, runBudgetUsd: 2.5 });
+    expect(config.usageFlushMs).toBe(1500);
+  });
+
+  it("rejects limits that make no sense", () => {
+    expect(() => loadConfig({ NEURONS_PING_PONG_MESSAGES: "1" })).toThrow(ConfigError);
+    expect(() => loadConfig({ NEURONS_RUN_MAX_MESSAGES: "0" })).toThrow(ConfigError);
+    expect(() => loadConfig({ NEURONS_RUN_BUDGET_USD: "-3" })).toThrow(ConfigError);
   });
 });
