@@ -51,6 +51,9 @@ export interface RunRepository {
 
   findById(runId: string): Promise<RunRecord | undefined>;
 
+  /** The run as the listings show it. */
+  findSummary(runId: string): Promise<RunSummaryRecord | undefined>;
+
   listRunning(): Promise<ActiveRun[]>;
 
   /** Newest first. */

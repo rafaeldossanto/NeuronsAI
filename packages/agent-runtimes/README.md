@@ -31,6 +31,12 @@ Dois pontos de entrada:
   uma linha JSON no stdin; o evento `result` é o fim do turno e traz uso e custo, repassados por `communication.reportUsage` (o servidor
   grava `UsageRecorded`) antes de o agente voltar a `idle`. Sem tela; sem permissões interativas (`--permission-prompts none`).
 
+**Custo e descarga do uso (T10).** `AgentRuntime.reportsCost` diz se o runtime informa o que cada turno custou: o stream-json sim, o
+PTY não (a tela não traz o uso). Quem aplica orçamento precisa saber disso para não tratar "sem custo" como zero. Como o `finish`
+chega no meio de um turno e o `result` só vem depois, `stop()` do stream-json espera o turno em andamento terminar por até
+`usageFlushMs` (padrão `DEFAULT_USAGE_FLUSH_MS`, 4 s) antes de matar a CLI, e só então derruba o processo. No Windows o `stop()` também
+solta o pipe e a thread que o node-pty deixa abertos (sem isso o processo do servidor não termina depois de parar um terminal).
+
 ## Como a CLI é configurada sem tocar na pasta do usuário
 
 Nada é escrito em `~/.claude` nem na pasta do projeto. Cada sessão cria uma pasta temporária **só do usuário** (POSIX `0700`/`0600`;

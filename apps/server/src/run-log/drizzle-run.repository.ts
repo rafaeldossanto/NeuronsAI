@@ -67,6 +67,15 @@ export class DrizzleRunRepository implements RunRepository {
     return row && toRunRecord(row);
   }
 
+  async findSummary(runId: string): Promise<RunSummaryRecord | undefined> {
+    const [row] = await this.database.db
+      .select({ run: runs, graphId: graphVersions.graphId })
+      .from(runs)
+      .innerJoin(graphVersions, eq(graphVersions.id, runs.graphVersionId))
+      .where(eq(runs.id, runId));
+    return row && { ...toRunRecord(row.run), graphId: row.graphId };
+  }
+
   async list(filter: RunListFilter): Promise<RunSummaryRecord[]> {
     const conditions: SQL[] = [];
     if (filter.status) conditions.push(eq(runs.status, filter.status));

@@ -99,6 +99,12 @@ export class InMemoryRunLog implements RunEventLog, RunRepository, RunEventHisto
     return Promise.resolve(this.runs.get(runId));
   }
 
+  async findSummary(runId: string): Promise<RunSummaryRecord | undefined> {
+    const run = this.runs.get(runId);
+    const version = run && (await this.versions.findById(run.graphVersionId));
+    return run && version && { ...run, graphId: version.graphId };
+  }
+
   async list(filter: RunListFilter): Promise<RunSummaryRecord[]> {
     const summaries: RunSummaryRecord[] = [];
     for (const run of this.runs.values()) {

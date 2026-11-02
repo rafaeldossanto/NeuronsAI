@@ -8,7 +8,8 @@ import {
   SecretNotFoundError,
 } from "./secrets.errors.js";
 
-const VALID_NAME = /^[A-Za-z0-9._-]{1,128}$/;
+/** What a secret name may look like; the API validates its path parameter with the same rule. */
+export const SECRET_NAME_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 
 /** Encrypted key/value store. Values are never logged or returned by {@link listNames}. */
 @Injectable()
@@ -41,6 +42,6 @@ export class SecretsService {
   }
 
   private assertValidName(name: string): void {
-    if (!VALID_NAME.test(name)) throw new InvalidSecretNameError();
+    if (!SECRET_NAME_PATTERN.test(name)) throw new InvalidSecretNameError();
   }
 }

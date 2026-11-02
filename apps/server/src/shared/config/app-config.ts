@@ -32,6 +32,11 @@ export interface AppConfig {
   masterKey?: Buffer;
   /** Path of the Claude Code executable (NEURONS_CLAUDE_BIN); absent means "find it". */
   claudeBin?: string;
+  /**
+   * What to run as the Claude Code CLI, program and leading arguments. Not an environment variable:
+   * set in code by whoever embeds the server (the demo points it at the fake CLI).
+   */
+  claudeCommand?: { command: string; args: string[] };
 }
 
 const BASE64_32_BYTES = /^[A-Za-z0-9+/]{43}=$/;

@@ -119,6 +119,9 @@ export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase {
     child.stdin.end();
     await killProcessTree(child.pid, this.deps.cli.platform);
     await settlesWithin(this.exited, 5_000);
+    // The process is gone, but a pipe whose end was queued behind a dead reader would keep this
+    // process from ever exiting (a server that was asked to shut down would hang).
+    child.stdin.destroy();
   }
 
   // ---- events ----

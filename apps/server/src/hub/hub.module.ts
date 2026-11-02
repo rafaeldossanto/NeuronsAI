@@ -39,6 +39,6 @@ import { Supervisor } from "./supervisor.js";
     Supervisor,
     HubLifecycle,
   ],
-  exports: [Hub, Supervisor, RunRegistry, GuardEnforcer],
+  exports: [Hub, Supervisor, RunRegistry, GuardEnforcer, MESSAGE_STORE],
 })
 export class HubModule {}
