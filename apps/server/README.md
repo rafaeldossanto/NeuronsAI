@@ -2,26 +2,27 @@
 
 Servidor do NeuronsAI: NestJS 12 com adaptador Fastify, Drizzle ORM sobre um banco embutido (PGlite) ou Postgres, e um gateway WebSocket para eventos de execução. Escuta **somente em `127.0.0.1`**.
 
-O Hub de mensagens (T06) está pronto; os runtimes reais de agentes (API e terminal) chegam nas tarefas T07 e T08 e a API REST na T10.
+O Hub de mensagens (T06) e os runtimes de terminal do Claude Code (T08, pacote `@neurons/agent-runtimes`) estão prontos; o runtime de API chega na T07 e a API REST na T10.
 
 ## Variáveis de ambiente
 
 Copie `.env.example` para `.env` (ignorado pelo git) e preencha. Valores vazios contam como "não definido". Qualquer valor inválido derruba o processo na partida, com uma mensagem listando todos os problemas.
 
-| Variável                  | Padrão | Descrição                                                                                 |
-| ------------------------- | ------ | ----------------------------------------------------------------------------------------- |
-| `NEURONS_MODE`            | `all`  | `api`, `worker` ou `all`. Por ora só decide quais módulos sobem (ver abaixo).             |
-| `NEURONS_PORT`            | `3100` | Porta em `127.0.0.1`.                                                                     |
-| `NEURONS_ASK_TIMEOUT_SEC` | `120`  | Segundos que um `ask` espera pela resposta antes de falhar.                               |
-| `NEURONS_DB`              | `embedded` | `embedded` (PGlite, dentro do processo) ou `postgres`. As variáveis `NEURONS_DB_*` abaixo só valem com `postgres`. |
-| `NEURONS_DATA_DIR`        | por sistema | Pasta de dados do app (ver abaixo). O banco embutido fica em `<pasta>/db`.            |
-| `NEURONS_DB_URL`          | —      | URL completa do Postgres. Tem prioridade sobre as variáveis abaixo.                       |
-| `NEURONS_DB_HOST`         | —      | Host do banco.                                                                            |
-| `NEURONS_DB_PORT`         | `5432` | Porta do banco.                                                                           |
-| `NEURONS_DB_USER`         | —      | Usuário do banco.                                                                         |
-| `NEURONS_DB_NAME`         | —      | Nome do database.                                                                         |
-| `NEURONS_DB_PASSWORD`     | —      | Senha do banco.                                                                           |
-| `NEURONS_MASTER_KEY`      | —      | Chave AES-256 (32 bytes em base64) que cifra os segredos. Sem ela, só os segredos falham. |
+| Variável                  | Padrão      | Descrição                                                                                                                                                                  |
+| ------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEURONS_MODE`            | `all`       | `api`, `worker` ou `all`. Por ora só decide quais módulos sobem (ver abaixo).                                                                                              |
+| `NEURONS_PORT`            | `3100`      | Porta em `127.0.0.1`.                                                                                                                                                      |
+| `NEURONS_ASK_TIMEOUT_SEC` | `120`       | Segundos que um `ask` espera pela resposta antes de falhar.                                                                                                                |
+| `NEURONS_CLAUDE_BIN`      | —           | Caminho do executável do Claude Code usado pelos agentes de terminal. Vazio: procura sozinho (PATH, pastas dos instaladores e, no Windows, a CLI embutida no app desktop). |
+| `NEURONS_DB`              | `embedded`  | `embedded` (PGlite, dentro do processo) ou `postgres`. As variáveis `NEURONS_DB_*` abaixo só valem com `postgres`.                                                         |
+| `NEURONS_DATA_DIR`        | por sistema | Pasta de dados do app (ver abaixo). O banco embutido fica em `<pasta>/db`.                                                                                                 |
+| `NEURONS_DB_URL`          | —           | URL completa do Postgres. Tem prioridade sobre as variáveis abaixo.                                                                                                        |
+| `NEURONS_DB_HOST`         | —           | Host do banco.                                                                                                                                                             |
+| `NEURONS_DB_PORT`         | `5432`      | Porta do banco.                                                                                                                                                            |
+| `NEURONS_DB_USER`         | —           | Usuário do banco.                                                                                                                                                          |
+| `NEURONS_DB_NAME`         | —           | Nome do database.                                                                                                                                                          |
+| `NEURONS_DB_PASSWORD`     | —           | Senha do banco.                                                                                                                                                            |
+| `NEURONS_MASTER_KEY`      | —           | Chave AES-256 (32 bytes em base64) que cifra os segredos. Sem ela, só os segredos falham.                                                                                  |
 
 Por padrão (`NEURONS_DB=embedded`) o servidor sobe **sem Postgres nenhum**: o banco é o PGlite e as migrations são aplicadas na partida. Com `NEURONS_DB=postgres` e nenhuma variável `NEURONS_DB_*` o servidor também sobe, e `GET /health` informa `database.status = "not_configured"`. O mesmo vale para a chave mestra.
 

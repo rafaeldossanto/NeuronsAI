@@ -1,6 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { RUN_EVENT_HISTORY, type RunEventHistory } from "./run-event-history.js";
-import type { EventSink, RunEvent } from "./run-event.js";
+import type { EphemeralRunEvent, EventSink, RunEvent } from "./run-event.js";
 
 interface Subscription {
   /** Lowest seq still owed to the sink; undefined until the first event when no resume point was given. */
@@ -61,6 +61,11 @@ export class RunSubscriptions {
       if (subscription.buffered) subscription.buffered.push(event);
       else this.deliver(sink, subscription, event);
     }
+  }
+
+  /** Pushes a live-only event to everyone subscribed to its run; nothing is buffered or replayed. */
+  publishEphemeral(event: EphemeralRunEvent): void {
+    for (const sink of this.subscriptions.get(event.runId)?.keys() ?? []) sink.sendEphemeral(event);
   }
 
   private deliver(sink: EventSink, subscription: Subscription, event: RunEvent): void {

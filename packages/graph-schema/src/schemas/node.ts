@@ -32,10 +32,16 @@ const apiRuntimeSchema = z.object({
   model: z.string().min(1),
 });
 
+/** `pty`: the CLI's own screen, which a person can watch and type into. `stream-json`: a headless structured session. */
+export const TERMINAL_MODES = ["pty", "stream-json"] as const;
+export type TerminalMode = (typeof TERMINAL_MODES)[number];
+
 const terminalRuntimeSchema = z
   .object({
     kind: z.literal("terminal"),
     cli: z.enum(["claude", "codex", "gemini", "custom"]),
+    // Graphs saved before the field existed have no `mode`: they keep running on the PTY.
+    mode: z.enum(TERMINAL_MODES).default("pty"),
     command: z.string().min(1).optional(),
     args: z.array(z.string()).default([]),
     cwd: z.string().regex(ABSOLUTE_PATH_PATTERN, {

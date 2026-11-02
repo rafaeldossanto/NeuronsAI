@@ -1,15 +1,15 @@
 import { Injectable } from "@nestjs/common";
+import type {
+  AgentCommunication,
+  AgentRuntime,
+  AgentRuntimeFactory,
+} from "@neurons/agent-runtimes";
 import type { AgentNode } from "@neurons/graph-schema";
 import { DomainError, type DomainErrorKind } from "../shared/errors/domain-error.js";
-import type { AgentCommunication } from "./agent-communication.js";
-import type { AgentRuntime } from "./agent-runtime.js";
-
-/** Builds the runtime that matches the agent's configuration (API, terminal...). */
-export interface AgentRuntimeFactory {
-  create(agent: AgentNode, communication: AgentCommunication): AgentRuntime;
-}
 
 export const AGENT_RUNTIME_FACTORY = Symbol("AGENT_RUNTIME_FACTORY");
+
+export type AgentRuntimeKind = AgentNode["runtime"]["kind"];
 
 export class RuntimeUnavailableError extends DomainError {
   readonly kind: DomainErrorKind = "unavailable";
@@ -22,10 +22,17 @@ export class RuntimeUnavailableError extends DomainError {
   }
 }
 
-/** Placeholder until the API (T07) and terminal (T08) runtimes exist. */
+/**
+ * Picks the factory that matches the agent's `runtime.kind`; a kind with no factory yet (the API
+ * runtime, T07) is reported as unavailable. Each kind's factory decides the rest (CLI, mode...).
+ */
 @Injectable()
-export class UnavailableAgentRuntimeFactory implements AgentRuntimeFactory {
-  create(agent: AgentNode): AgentRuntime {
-    throw new RuntimeUnavailableError(agent.name, agent.runtime.kind);
+export class RoutingAgentRuntimeFactory implements AgentRuntimeFactory {
+  constructor(private readonly byKind: Partial<Record<AgentRuntimeKind, AgentRuntimeFactory>>) {}
+
+  create(agent: AgentNode, communication: AgentCommunication): AgentRuntime {
+    const factory = this.byKind[agent.runtime.kind];
+    if (!factory) throw new RuntimeUnavailableError(agent.name, agent.runtime.kind);
+    return factory.create(agent, communication);
   }
 }

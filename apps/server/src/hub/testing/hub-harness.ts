@@ -1,3 +1,4 @@
+import type { AgentRuntimeFactory } from "@neurons/agent-runtimes";
 import type { GraphDefinition } from "@neurons/graph-schema";
 import type { GraphVersionRepository } from "../../graphs/graph-version-repository.js";
 import { InMemoryGraphVersionRepository } from "../../graphs/testing/in-memory-graph-repositories.js";
@@ -18,6 +19,8 @@ import type { MessageStore } from "../message-store.js";
 import { MessagePolicyChain, type MessagePolicy } from "../message-policy.js";
 import { PermissionPolicy } from "../permission-policy.js";
 import { RunRegistry } from "../run-registry.js";
+import { RunSubscriptions } from "../../realtime/run-subscriptions.js";
+import { TerminalSessions } from "../../realtime/terminal-sessions.js";
 import { Supervisor } from "../supervisor.js";
 import { InMemoryMessageStore } from "./in-memory-message-store.js";
 import { buildTestGraph } from "./test-graph.js";
@@ -54,8 +57,17 @@ export interface HubHarnessOptions {
   extraPolicies?: MessagePolicy[];
 }
 
-/** Wires a Hub, Supervisor and RunService (fake runtimes) over the given storage, like the Nest module does. */
-export function createHubHarness(persistence: HubPersistence, options: HubHarnessOptions = {}) {
+export interface HubWiringOptions {
+  hub?: Partial<HubOptions>;
+  extraPolicies?: MessagePolicy[];
+}
+
+/** Wires a Hub, Supervisor and RunService over the given storage and runtime factory, like the Nest module does. */
+export function createHubWiring(
+  persistence: HubPersistence,
+  factory: AgentRuntimeFactory,
+  options: HubWiringOptions = {},
+) {
   const published: RunEvent[] = [];
   const publisher: RunEventPublisher = { publish: (event) => void published.push(event) };
   const recorder = new RunEventRecorder(persistence.eventLog, publisher);
@@ -68,16 +80,18 @@ export function createHubHarness(persistence: HubPersistence, options: HubHarnes
     askTimeoutMs: 120_000,
     ...options.hub,
   });
-  const runtimes = new FakeAgentRuntimeFactory(options.scripts, options.runtimeOptions);
-  const supervisor = new Supervisor(hub, runtimes, registry, persistence.runs, recorder);
+  const terminals = new TerminalSessions(
+    new RunSubscriptions({ readFrom: () => Promise.resolve([]) }),
+  );
+  const supervisor = new Supervisor(hub, factory, registry, persistence.runs, recorder, terminals);
   // Created on demand: its quiescence check would end the runs that hub-level tests drive by hand.
   let runService: RunService | undefined;
   return {
     hub,
     supervisor,
-    runtimes,
     registry,
     recorder,
+    terminals,
     published,
     get runService(): RunService {
       runService ??= new RunService(
@@ -101,5 +115,18 @@ export function createHubHarness(persistence: HubPersistence, options: HubHarnes
       registry.register(record.id, graph);
       return record.id;
     },
+  };
+}
+
+/** The wiring with scriptable fake runtimes, for tests. */
+export function createHubHarness(persistence: HubPersistence, options: HubHarnessOptions = {}) {
+  const runtimes = new FakeAgentRuntimeFactory(options.scripts, options.runtimeOptions);
+  const wiring = createHubWiring(persistence, runtimes, options);
+  // Not a spread: `runService` is a getter that must stay lazy.
+  return Object.defineProperty(wiring, "runtimes", {
+    value: runtimes,
+    enumerable: true,
+  }) as typeof wiring & {
+    runtimes: FakeAgentRuntimeFactory;
   };
 }

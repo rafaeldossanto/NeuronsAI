@@ -22,6 +22,10 @@ class RecordingSink implements EventSink {
     this.received.push(sent);
   }
 
+  sendEphemeral(): void {
+    // not under test here
+  }
+
   get seqs(): number[] {
     return this.received.map((e) => e.seq);
   }

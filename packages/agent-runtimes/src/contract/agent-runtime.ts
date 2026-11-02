@@ -1,5 +1,4 @@
-import type { MessageKind } from "../database/schema/index.js";
-import type { Unsubscribe } from "../shared/signal.js";
+import type { Unsubscribe } from "./signal.js";
 
 export const AGENT_RUNTIME_STATES = [
   "starting",
@@ -11,12 +10,14 @@ export const AGENT_RUNTIME_STATES = [
 ] as const;
 export type AgentRuntimeState = (typeof AGENT_RUNTIME_STATES)[number];
 
+export type InboundMessageKind = "message" | "ask" | "reply";
+
 /** What a runtime receives when the Hub hands it a message from its inbox. */
 export interface InboundMessage {
   id: string;
   /** Agent name, or one of the external addresses (`@human`, `@trigger`). */
   from: string;
-  kind: MessageKind;
+  kind: InboundMessageKind;
   body: string;
   /** Id of the message this one answers (only for `reply`). */
   replyTo: string | null;

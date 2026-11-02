@@ -1,0 +1,35 @@
+{
+  "name": "@neurons/agent-runtimes",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./claude": {
+      "types": "./dist/claude/index.d.ts",
+      "default": "./dist/claude/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@neurons/graph-schema": "workspace:*",
+    "@neurons/mcp-neurons": "workspace:*",
+    "@xterm/headless": "6.0.0",
+    "node-pty": "1.1.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@types/node": "^24.19.2"
+  }
+}

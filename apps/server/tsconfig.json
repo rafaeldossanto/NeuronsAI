@@ -2,10 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": "src",
+    "rootDir": ".",
     "types": ["node"],
     "resolveJsonModule": true,
     "experimentalDecorators": true
   },
-  "include": ["src"]
+  "include": ["src", "e2e"]
 }

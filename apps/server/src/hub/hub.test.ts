@@ -338,3 +338,45 @@ describe("Hub.send", () => {
     });
   });
 });
+
+describe("Hub.reportUsage", () => {
+  const usage = {
+    model: "haiku",
+    inputTokens: 10,
+    outputTokens: 20,
+    cacheReadTokens: 30,
+    cacheCreationTokens: 40,
+    costUsd: 0.01,
+  };
+  let persistence: ReturnType<typeof inMemoryPersistence>;
+  let harness: ReturnType<typeof createHubHarness>;
+  let runId: string;
+
+  beforeEach(async () => {
+    persistence = inMemoryPersistence();
+    harness = createHubHarness(persistence);
+    runId = await harness.openRun();
+  });
+
+  it("stores a UsageRecorded event for the agent and publishes it after the commit", async () => {
+    await harness.hub.reportUsage(runId, "Alfa", usage);
+
+    expect(persistence.runLog.eventsOf(runId, "UsageRecorded")).toMatchObject([
+      { type: "UsageRecorded", agent: "Alfa", payload: usage },
+    ]);
+    expect(harness.published.filter((event) => event.type === "UsageRecorded")).toHaveLength(1);
+  });
+
+  it("refuses an agent that is not in the graph", async () => {
+    await expect(harness.hub.reportUsage(runId, "Fantasma", usage)).rejects.toBeInstanceOf(
+      InvalidMessageError,
+    );
+    expect(persistence.runLog.eventsOf(runId, "UsageRecorded")).toEqual([]);
+  });
+
+  it("refuses a run that is not active", async () => {
+    await expect(
+      harness.hub.reportUsage("0192f1c0-0000-7000-8000-00000000ffff", "Alfa", usage),
+    ).rejects.toBeInstanceOf(RunNotActiveError);
+  });
+});

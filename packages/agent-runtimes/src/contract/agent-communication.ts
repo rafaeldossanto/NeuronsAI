@@ -1,4 +1,5 @@
 import type { AgentPeers } from "@neurons/graph-schema";
+import type { AgentUsage } from "./usage.js";
 
 /**
  * The communication tools every agent has, already bound to its run and name. Runtimes expose
@@ -18,4 +19,7 @@ export interface AgentCommunication {
 
   /** Declares the whole run done. */
   finish(result: string): Promise<void>;
+
+  /** Records what a turn consumed (only runtimes that learn it call this). */
+  reportUsage(usage: AgentUsage): Promise<void>;
 }

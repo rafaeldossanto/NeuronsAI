@@ -25,6 +25,8 @@ export interface AppConfig {
   database: DatabaseConfig;
   /** 32 raw bytes decoded from NEURONS_MASTER_KEY. Absent when not provided. */
   masterKey?: Buffer;
+  /** Path of the Claude Code executable (NEURONS_CLAUDE_BIN); absent means "find it". */
+  claudeBin?: string;
 }
 
 const BASE64_32_BYTES = /^[A-Za-z0-9+/]{43}=$/;
@@ -35,6 +37,7 @@ const envSchema = z.object({
   NEURONS_ASK_TIMEOUT_SEC: unlessEmpty(z.coerce.number().int().min(1).default(120)),
   NEURONS_DATA_DIR: unlessEmpty(z.string().trim().min(1).optional()),
   ...databaseEnvShape,
+  NEURONS_CLAUDE_BIN: unlessEmpty(z.string().trim().min(1).optional()),
   NEURONS_MASTER_KEY: unlessEmpty(
     z
       .string()
@@ -70,5 +73,6 @@ export function loadConfig(
     dataDir: resolveDataDir(values.NEURONS_DATA_DIR, env, host),
     database: resolveDatabase(values),
     ...(masterKey && { masterKey: Buffer.from(masterKey, "base64") }),
+    ...(values.NEURONS_CLAUDE_BIN && { claudeBin: values.NEURONS_CLAUDE_BIN }),
   };
 }
