@@ -56,7 +56,9 @@ export function findClaudeBinary(configured: string | undefined, lookup: BinaryL
   const paths = windows ? path.win32 : path.posix;
   const executable = windows ? "claude.exe" : "claude";
   const variable = (name: string): string | undefined => {
-    const key = Object.keys(lookup.host).find((k) => (windows ? k.toLowerCase() === name.toLowerCase() : k === name));
+    const key = Object.keys(lookup.host).find((k) =>
+      windows ? k.toLowerCase() === name.toLowerCase() : k === name,
+    );
     return key === undefined ? undefined : lookup.host[key];
   };
 
@@ -104,7 +106,9 @@ function findDesktopEmbedded(
     }
     roots.push(paths.join(variable("APPDATA") ?? "", "Claude", "claude-code"));
   } else if (lookup.platform === "darwin") {
-    roots.push(paths.join(lookup.homeDir, "Library", "Application Support", "Claude", "claude-code"));
+    roots.push(
+      paths.join(lookup.homeDir, "Library", "Application Support", "Claude", "claude-code"),
+    );
   }
 
   for (const root of roots) {

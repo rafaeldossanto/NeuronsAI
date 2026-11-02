@@ -52,7 +52,14 @@ export class TerminalSessions {
     for (const [agent, runtime] of this.sessions.get(runId) ?? []) {
       const data = runtime.outputSnapshot();
       if (data) {
-        sink.sendEphemeral({ runId, type: "TerminalOutput", agent, data, replay: true, at: new Date() });
+        sink.sendEphemeral({
+          runId,
+          type: "TerminalOutput",
+          agent,
+          data,
+          replay: true,
+          at: new Date(),
+        });
       }
     }
   }

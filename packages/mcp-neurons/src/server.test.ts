@@ -127,7 +127,10 @@ describe("neurons MCP server", () => {
   });
 
   it("returns reply, list_peers and finish results", async () => {
-    const peers = { canMessage: [{ id: "a", name: "Revisor", role: "revisa" }], canBeMessagedBy: [] };
+    const peers = {
+      canMessage: [{ id: "a", name: "Revisor", role: "revisa" }],
+      canBeMessagedBy: [],
+    };
     bridge.handler = (call, res) => {
       if (call.route === BRIDGE_ROUTES.reply) json(res, 200, { messageId: "m-2" });
       else if (call.route === BRIDGE_ROUTES.listPeers) json(res, 200, peers);

@@ -11,7 +11,10 @@ describe("LocalBridge", () => {
   const post = (route: string, body: unknown, token: string | null = bridge.token) =>
     fetch(`${bridge.url}${route}`, {
       method: "POST",
-      headers: { "content-type": "application/json", ...(token && { authorization: `Bearer ${token}` }) },
+      headers: {
+        "content-type": "application/json",
+        ...(token && { authorization: `Bearer ${token}` }),
+      },
       body: JSON.stringify(body),
     });
 
@@ -34,7 +37,7 @@ describe("LocalBridge", () => {
     expect(bridge.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
   });
 
-  it("gives each bridge a different long random token", async () => {
+  it("gives each bridge a different long random token", () => {
     const other = new LocalBridge({ communication });
     expect(other.token).not.toBe(bridge.token);
     expect(bridge.token.length).toBeGreaterThanOrEqual(32);
@@ -57,10 +60,14 @@ describe("LocalBridge", () => {
   });
 
   it("forwards the tools to the communication", async () => {
-    expect(await (await post(BRIDGE_ROUTES.sendMessage, { to: "Revisor", text: "oi" })).json()).toEqual({
+    expect(
+      await (await post(BRIDGE_ROUTES.sendMessage, { to: "Revisor", text: "oi" })).json(),
+    ).toEqual({
       messageId: "sent-1",
     });
-    expect(await (await post(BRIDGE_ROUTES.reply, { messageId: "m-1", text: "ok" })).json()).toEqual({
+    expect(
+      await (await post(BRIDGE_ROUTES.reply, { messageId: "m-1", text: "ok" })).json(),
+    ).toEqual({
       messageId: "reply-1",
     });
     expect(await (await post(BRIDGE_ROUTES.finish, { result: "pronto" })).json()).toEqual({});
@@ -82,7 +89,8 @@ describe("LocalBridge", () => {
   });
 
   it("answers a refusal of the Hub with its message, ready for the model", async () => {
-    communication.sendMessage = () => Promise.reject(new Error("Você não pode escrever a Revisor."));
+    communication.sendMessage = () =>
+      Promise.reject(new Error("Você não pode escrever a Revisor."));
     const response = await post(BRIDGE_ROUTES.sendMessage, { to: "Revisor", text: "oi" });
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({ error: "Você não pode escrever a Revisor." });

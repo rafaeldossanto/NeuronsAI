@@ -103,7 +103,9 @@ export interface TestDepsOptions {
 }
 
 /** Runtime dependencies wired to the fake CLI and the real `neurons` MCP server. */
-export function testDeps(options: TestDepsOptions = {}): ClaudeRuntimeDeps & { logger: RecordingLogger } {
+export function testDeps(
+  options: TestDepsOptions = {},
+): ClaudeRuntimeDeps & { logger: RecordingLogger } {
   const logger = new RecordingLogger();
   return {
     cli: new ClaudeCli({
@@ -118,7 +120,13 @@ export function testDeps(options: TestDepsOptions = {}): ClaudeRuntimeDeps & { l
 }
 
 export function terminalAgent(
-  overrides: { name?: string; mode?: "pty" | "stream-json"; cwd?: string; args?: string[]; cli?: "claude" | "codex" } = {},
+  overrides: {
+    name?: string;
+    mode?: "pty" | "stream-json";
+    cwd?: string;
+    args?: string[];
+    cli?: "claude" | "codex";
+  } = {},
 ): AgentNode {
   return {
     id: overrides.name ?? "agent",
@@ -147,9 +155,12 @@ export function untilState(
   if (runtime.state === state) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
-      () => reject(new Error(
-          `Timeout waiting for "${state}"; the runtime is "${runtime.state}" (${runtime.failureReason ?? "no failure reason"}).`,
-        )),
+      () =>
+        reject(
+          new Error(
+            `Timeout waiting for "${state}"; the runtime is "${runtime.state}" (${runtime.failureReason ?? "no failure reason"}).`,
+          ),
+        ),
       timeoutMs,
     );
     const stop = runtime.onStateChange((current) => {

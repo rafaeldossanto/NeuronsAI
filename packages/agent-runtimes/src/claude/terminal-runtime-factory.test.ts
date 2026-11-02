@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { UnsupportedRuntimeError } from "../contract/agent-runtime-factory.js";
-import { RecordingCommunication, fakeClaudeCommand, terminalAgent } from "../testing/fake-claude-support.js";
+import {
+  RecordingCommunication,
+  fakeClaudeCommand,
+  terminalAgent,
+} from "../testing/fake-claude-support.js";
 import { ClaudeStreamJsonRuntime } from "./claude-stream-json-runtime.js";
 import { ClaudeTerminalRuntime } from "./claude-terminal-runtime.js";
 import { TerminalRuntimeFactory } from "./terminal-runtime-factory.js";

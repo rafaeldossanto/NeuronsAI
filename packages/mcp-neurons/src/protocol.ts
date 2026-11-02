@@ -22,7 +22,13 @@ export const BRIDGE_TOKEN_MIN_LENGTH = 32;
 /** The name of the MCP server, hence the prefix of its tools (`mcp__neurons__ask`...). */
 export const MCP_SERVER_NAME = "neurons";
 
-export const COMMUNICATION_TOOLS = ["send_message", "ask", "reply", "list_peers", "finish"] as const;
+export const COMMUNICATION_TOOLS = [
+  "send_message",
+  "ask",
+  "reply",
+  "list_peers",
+  "finish",
+] as const;
 export type CommunicationTool = (typeof COMMUNICATION_TOOLS)[number];
 
 /** How the CLI names the tools of this server; used to pre-approve exactly these and nothing else. */

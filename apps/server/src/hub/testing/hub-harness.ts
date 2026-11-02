@@ -80,7 +80,9 @@ export function createHubWiring(
     askTimeoutMs: 120_000,
     ...options.hub,
   });
-  const terminals = new TerminalSessions(new RunSubscriptions({ readFrom: () => Promise.resolve([]) }));
+  const terminals = new TerminalSessions(
+    new RunSubscriptions({ readFrom: () => Promise.resolve([]) }),
+  );
   const supervisor = new Supervisor(hub, factory, registry, persistence.runs, recorder, terminals);
   // Created on demand: its quiescence check would end the runs that hub-level tests drive by hand.
   let runService: RunService | undefined;
@@ -121,7 +123,10 @@ export function createHubHarness(persistence: HubPersistence, options: HubHarnes
   const runtimes = new FakeAgentRuntimeFactory(options.scripts, options.runtimeOptions);
   const wiring = createHubWiring(persistence, runtimes, options);
   // Not a spread: `runService` is a getter that must stay lazy.
-  return Object.defineProperty(wiring, "runtimes", { value: runtimes, enumerable: true }) as typeof wiring & {
+  return Object.defineProperty(wiring, "runtimes", {
+    value: runtimes,
+    enumerable: true,
+  }) as typeof wiring & {
     runtimes: FakeAgentRuntimeFactory;
   };
 }

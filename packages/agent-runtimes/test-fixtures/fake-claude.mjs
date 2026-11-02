@@ -44,12 +44,18 @@ const ARROW_DOWN = `${ESCAPE}[B`;
 const KEY_SEQUENCES = [PASTE_START, PASTE_END, ARROW_DOWN];
 
 /** Answers a one-shot command and exits once stdout is flushed (a pipe may still hold the bytes). */
-const answerAndExit = (text, code) => process.stdout.write(text + NEWLINE, () => process.exit(code));
+const answerAndExit = (text, code) =>
+  process.stdout.write(text + NEWLINE, () => process.exit(code));
 
 if (args[0] === "auth" && args[1] === "status") {
-  answerAndExit(JSON.stringify({ loggedIn: !fake.has("--logged-out") }), fake.has("--logged-out") ? 1 : 0);
+  answerAndExit(
+    JSON.stringify({ loggedIn: !fake.has("--logged-out") }),
+    fake.has("--logged-out") ? 1 : 0,
+  );
 } else if (args.includes("--help")) {
-  const help = fake.has("--no-effort") ? "Usage: claude [options]" : `Usage: claude${NEWLINE}  --effort <level>  Effort level`;
+  const help = fake.has("--no-effort")
+    ? "Usage: claude [options]"
+    : `Usage: claude${NEWLINE}  --effort <level>  Effort level`;
   answerAndExit(help, 0);
 } else {
   await main();
@@ -65,7 +71,11 @@ async function main() {
   let mcpTransport;
   async function tools() {
     if (!mcp) {
-      mcpTransport = new StdioClientTransport({ command: mcpConfig.command, args: mcpConfig.args, env: mcpConfig.env });
+      mcpTransport = new StdioClientTransport({
+        command: mcpConfig.command,
+        args: mcpConfig.args,
+        env: mcpConfig.env,
+      });
       mcp = new Client({ name: "fake-claude", version: "0.0.0" });
       await mcp.connect(mcpTransport);
     }
@@ -96,23 +106,42 @@ async function main() {
       const [command, ...words] = line.slice(1).split(" ");
       const text = (from) => words.slice(from).join(" ").replaceAll("$last", last);
       switch (command) {
-        case "ask": await callTool("ask", { to: words[0], question: text(1) }); break;
-        case "send": await callTool("send_message", { to: words[0], text: text(1) }); break;
-        case "reply": await callTool("reply", { messageId, text: text(0) }); break;
-        case "finish": await callTool("finish", { result: text(0) }); break;
-        case "peers": await callTool("list_peers", {}); break;
-        case "sleep": await new Promise((resolve) => setTimeout(resolve, Number(words[0]))); break;
+        case "ask":
+          await callTool("ask", { to: words[0], question: text(1) });
+          break;
+        case "send":
+          await callTool("send_message", { to: words[0], text: text(1) });
+          break;
+        case "reply":
+          await callTool("reply", { messageId, text: text(0) });
+          break;
+        case "finish":
+          await callTool("finish", { result: text(0) });
+          break;
+        case "peers":
+          await callTool("list_peers", {});
+          break;
+        case "sleep":
+          await new Promise((resolve) => setTimeout(resolve, Number(words[0])));
+          break;
         case "env": {
-          const report = { names: Object.keys(process.env).sort(), values: Object.fromEntries(words.slice(1).map((name) => [name, process.env[name]])) };
+          const report = {
+            names: Object.keys(process.env).sort(),
+            values: Object.fromEntries(words.slice(1).map((name) => [name, process.env[name]])),
+          };
           await callTool("send_message", { to: words[0], text: JSON.stringify(report) });
           break;
         }
         case "pids": {
           await tools();
-          await callTool("send_message", { to: words[0], text: JSON.stringify({ cli: process.pid, mcp: mcpTransport.pid }) });
+          await callTool("send_message", {
+            to: words[0],
+            text: JSON.stringify({ cli: process.pid, mcp: mcpTransport.pid }),
+          });
           break;
         }
-        case "crash": process.exit(3);
+        case "crash":
+          process.exit(3);
       }
     }
   }
@@ -137,12 +166,27 @@ function streamJsonMode(work) {
       queue = queue.then(async () => {
         if (!started) {
           started = true;
-          emit({ type: "system", subtype: "init", model: "fake-model", mcp_servers: [{ name: "neurons", status: "connected" }] });
+          emit({
+            type: "system",
+            subtype: "init",
+            model: "fake-model",
+            mcp_servers: [{ name: "neurons", status: "connected" }],
+          });
         }
         await work(JSON.parse(line).message.content);
         emit({
-          type: "result", subtype: "success", is_error: false, duration_ms: 12, num_turns: 2, total_cost_usd: 0.0123,
-          usage: { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 30, cache_creation_input_tokens: 40 },
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          duration_ms: 12,
+          num_turns: 2,
+          total_cost_usd: 0.0123,
+          usage: {
+            input_tokens: 10,
+            output_tokens: 20,
+            cache_read_input_tokens: 30,
+            cache_creation_input_tokens: 40,
+          },
         });
       });
     }
@@ -155,7 +199,11 @@ function streamJsonMode(work) {
 function interactiveMode(work, callHook) {
   let typed = "";
   let busy = false;
-  let dialog = fake.has("--theme-dialog") ? "theme" : fake.has("--trust-dialog") ? "trust" : undefined;
+  let dialog = fake.has("--theme-dialog")
+    ? "theme"
+    : fake.has("--trust-dialog")
+      ? "trust"
+      : undefined;
   let ignoreEnter = fake.has("--ignore-first-enter");
   let paste = false;
   let pasteLines = 0;
@@ -163,15 +211,19 @@ function interactiveMode(work, callHook) {
   // Like the real "trust this folder" dialog: it opens on "No, exit".
   let trustChoice = 0;
   const trustOptions = ["No, exit", "Yes, I trust this folder"];
-  const trustBody = () => [
-    "Accessing workspace:",
-    ...trustOptions.map((option, index) => `${index === trustChoice ? "❯" : " "} ${option}`),
-  ].join(NEWLINE);
+  const trustBody = () =>
+    [
+      "Accessing workspace:",
+      ...trustOptions.map((option, index) => `${index === trustChoice ? "❯" : " "} ${option}`),
+    ].join(NEWLINE);
 
   const paint = () => {
-    const body = dialog === "theme" ? "Choose the text style that looks best with your terminal"
-      : dialog === "trust" ? trustBody()
-      : `> ${pasteLines > 0 ? `[Pasted text #1 +${pasteLines} lines]` : typed}`;
+    const body =
+      dialog === "theme"
+        ? "Choose the text style that looks best with your terminal"
+        : dialog === "trust"
+          ? trustBody()
+          : `> ${pasteLines > 0 ? `[Pasted text #1 +${pasteLines} lines]` : typed}`;
     const footer = dialog ? "Enter to confirm" : busy ? "esc to interrupt" : "? for shortcuts";
     process.stdout.write(`${ESCAPE}[2J${ESCAPE}[H${body}${NEWLINE}${NEWLINE}${footer}`);
   };
@@ -210,13 +262,23 @@ function interactiveMode(work, callHook) {
         }
         continue;
       }
-      if (KEY_SEQUENCES.some((candidate) => candidate.startsWith(chunk))) { carry = chunk; break; }
+      if (KEY_SEQUENCES.some((candidate) => candidate.startsWith(chunk))) {
+        carry = chunk;
+        break;
+      }
       const char = chunk[0];
       chunk = chunk.slice(1);
       if (char === CARRIAGE_RETURN && !paste) {
         if (dialog === "trust" && trustChoice === 0) process.exit(1); // "No, exit"
-        if (dialog) { dialog = undefined; paint(); continue; }
-        if (ignoreEnter) { ignoreEnter = false; continue; }
+        if (dialog) {
+          dialog = undefined;
+          paint();
+          continue;
+        }
+        if (ignoreEnter) {
+          ignoreEnter = false;
+          continue;
+        }
         if (!busy && typed) void submit();
       } else if (char === CTRL_C) {
         process.exit(130);

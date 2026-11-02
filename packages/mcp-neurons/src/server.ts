@@ -60,7 +60,10 @@ export function createNeuronsServer(client: BridgeClient): McpServer {
     {
       description:
         "Responde a uma mensagem recebida, usando o id que veio com ela. A resposta vai a quem a escreveu.",
-      inputSchema: { messageId: z.string().describe("Id da mensagem respondida"), text: z.string() },
+      inputSchema: {
+        messageId: z.string().describe("Id da mensagem respondida"),
+        text: z.string(),
+      },
     },
     ({ messageId, text }) =>
       guarded(async () => `Resposta enviada (id ${await client.reply(messageId, text)}).`),

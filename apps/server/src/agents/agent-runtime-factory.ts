@@ -1,5 +1,9 @@
 import { Injectable } from "@nestjs/common";
-import type { AgentCommunication, AgentRuntime, AgentRuntimeFactory } from "@neurons/agent-runtimes";
+import type {
+  AgentCommunication,
+  AgentRuntime,
+  AgentRuntimeFactory,
+} from "@neurons/agent-runtimes";
 import type { AgentNode } from "@neurons/graph-schema";
 import { DomainError, type DomainErrorKind } from "../shared/errors/domain-error.js";
 

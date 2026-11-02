@@ -1,10 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import {
-  createServer,
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
   BRIDGE_ROUTES,
@@ -78,8 +73,8 @@ export class LocalBridge {
       return {};
     });
 
-    this.hook(BRIDGE_ROUTES.hooks.userPromptSubmit, hooks?.onUserPromptSubmit);
-    this.hook(BRIDGE_ROUTES.hooks.stop, hooks?.onStop);
+    this.hook(BRIDGE_ROUTES.hooks.userPromptSubmit, () => hooks?.onUserPromptSubmit?.());
+    this.hook(BRIDGE_ROUTES.hooks.stop, () => hooks?.onStop?.());
   }
 
   /** `http://127.0.0.1:<port>`; only valid after {@link start}. */
@@ -117,7 +112,9 @@ export class LocalBridge {
     call: (input: z.infer<S>) => Promise<unknown>,
   ): void {
     this.routes.set(route, (body) => {
-      const parsed = schema ? schema.safeParse(body) : ({ success: true, data: undefined } as const);
+      const parsed = schema
+        ? schema.safeParse(body)
+        : ({ success: true, data: undefined } as const);
       if (!parsed.success) throw new HttpProblem(400, "Pedido inválido para a ferramenta.");
       return call(parsed.data as z.infer<S>);
     });

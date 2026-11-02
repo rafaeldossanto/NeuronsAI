@@ -34,7 +34,10 @@ export interface ClaudeAgentConfig {
 
 export type TerminalRuntimeNode = Extract<AgentNode["runtime"], { kind: "terminal" }>;
 
-export function claudeAgentConfig(agent: AgentNode, runtime: TerminalRuntimeNode): ClaudeAgentConfig {
+export function claudeAgentConfig(
+  agent: AgentNode,
+  runtime: TerminalRuntimeNode,
+): ClaudeAgentConfig {
   return {
     name: agent.name,
     cwd: runtime.cwd,
@@ -249,7 +252,9 @@ export abstract class ClaudeRuntimeBase implements AgentRuntime {
       try {
         await step();
       } catch (error) {
-        this.deps.logger.error(`Falha ao encerrar o agente "${this.agent.name}": ${errorMessage(error)}`);
+        this.deps.logger.error(
+          `Falha ao encerrar o agente "${this.agent.name}": ${errorMessage(error)}`,
+        );
       }
     };
     await attempt(() => this.terminate());

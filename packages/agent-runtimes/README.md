@@ -6,10 +6,10 @@ runner separado (T24) possa hospedar os mesmos runtimes.
 
 Dois pontos de entrada:
 
-| Import | O que traz |
-| --- | --- |
-| `@neurons/agent-runtimes` | O contrato, leve e sem dependências nativas: `AgentRuntime`, `AgentRuntimeState`, `InboundMessage`, `AgentCommunication` (`sendMessage`, `ask`, `reply`, `listPeers`, `finish`, `reportUsage`), `AgentRuntimeFactory`, `TerminalAgentRuntime`, `AgentUsage`, `Signal`. |
-| `@neurons/agent-runtimes/claude` | Os runtimes e a `TerminalRuntimeFactory` (carrega `node-pty` e `@xterm/headless`). |
+| Import                           | O que traz                                                                                                                                                                                                                                                             |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@neurons/agent-runtimes`        | O contrato, leve e sem dependências nativas: `AgentRuntime`, `AgentRuntimeState`, `InboundMessage`, `AgentCommunication` (`sendMessage`, `ask`, `reply`, `listPeers`, `finish`, `reportUsage`), `AgentRuntimeFactory`, `TerminalAgentRuntime`, `AgentUsage`, `Signal`. |
+| `@neurons/agent-runtimes/claude` | Os runtimes e a `TerminalRuntimeFactory` (carrega `node-pty` e `@xterm/headless`).                                                                                                                                                                                     |
 
 ## Runtimes
 
@@ -17,14 +17,14 @@ Dois pontos de entrada:
 `"stream-json"`. Outra `cli` (`codex`, `gemini`, `custom`) falha com mensagem clara; fica para depois.
 
 - **`ClaudeTerminalRuntime` (PTY).** `node-pty` + `@xterm/headless` (a tela renderizada). O usuário vê e digita na CLI de verdade.
-  - *Fim de turno:* hook `Stop`. O rodapé (`? for shortcuts` livre / `esc to interrupt` ocupado) e o silêncio só confirmam, ou
+  - _Fim de turno:_ hook `Stop`. O rodapé (`? for shortcuts` livre / `esc to interrupt` ocupado) e o silêncio só confirmam, ou
     substituem o hook se ele nunca chegar (`hookGraceMs`).
-  - *Injeção:* digita o texto (multilinha vai em *bracketed paste*), espera o eco, 400 ms, Enter; o hook `UserPromptSubmit` confirma
+  - _Injeção:_ digita o texto (multilinha vai em _bracketed paste_), espera o eco, 400 ms, Enter; o hook `UserPromptSubmit` confirma
     (reenvia o Enter até 3 vezes).
-  - *Saída:* `onOutput` entrega os bytes brutos (evento efêmero, nunca vai para `run_events`); `outputSnapshot()` guarda os últimos
+  - _Saída:_ `onOutput` entrega os bytes brutos (evento efêmero, nunca vai para `run_events`); `outputSnapshot()` guarda os últimos
     ~200 KB para quem conectar depois; `writeInput(data)` digita no terminal. Um prompt que o usuário digita na própria tela vira um turno
     normal (`ocupado` → `ocioso`).
-  - *Diálogos da 1ª execução* (tema, notas de segurança, extensão do Chrome) são confirmados sozinhos; **confiar na pasta nunca**: o
+  - _Diálogos da 1ª execução_ (tema, notas de segurança, extensão do Chrome) são confirmados sozinhos; **confiar na pasta nunca**: o
     boot espera o usuário responder no terminal e, passado `userDialogTimeoutMs`, falha dizendo o que fazer. Pedido de login falha com
     mensagem em português.
 - **`ClaudeStreamJsonRuntime`.** `claude -p --input-format stream-json --output-format stream-json`, uma sessão persistente. A mensagem é

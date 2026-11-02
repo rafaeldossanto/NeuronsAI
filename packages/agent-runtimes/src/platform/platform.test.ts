@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildChildEnv } from "./child-env.js";
-import {
-  ClaudeBinaryNotFoundError,
-  findClaudeBinary,
-  type FileProbe,
-} from "./claude-binary.js";
+import { ClaudeBinaryNotFoundError, findClaudeBinary, type FileProbe } from "./claude-binary.js";
 
 describe("buildChildEnv", () => {
   const host = {
@@ -28,7 +24,9 @@ describe("buildChildEnv", () => {
       host: { ...host, Path: "C:\\bin", SYSTEMROOT: "C:\\Windows" },
       platform: "win32",
     });
-    expect(Object.keys(env).sort()).toEqual(["PATH", "Path", "SYSTEMROOT", "SystemRoot", "USERPROFILE"].sort());
+    expect(Object.keys(env).sort()).toEqual(
+      ["PATH", "Path", "SYSTEMROOT", "SystemRoot", "USERPROFILE"].sort(),
+    );
   });
 
   it("adds what the runtime asks for on top of the minimum", () => {
@@ -104,8 +102,8 @@ describe("findClaudeBinary", () => {
   });
 
   it("explains how to install it when there is nothing", () => {
-    expect(() =>
-      findClaudeBinary(undefined, { ...windows, files: files({}) }),
-    ).toThrow(ClaudeBinaryNotFoundError);
+    expect(() => findClaudeBinary(undefined, { ...windows, files: files({}) })).toThrow(
+      ClaudeBinaryNotFoundError,
+    );
   });
 });

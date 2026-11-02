@@ -40,7 +40,7 @@ describe("validateGraph", () => {
 
     it("exposes the custom rule codes of the schemas", () => {
       const customCli = agent("a", "Alfa", {
-        runtime: { kind: "terminal", cli: "custom", args: [], cwd: "/tmp" },
+        runtime: { kind: "terminal", cli: "custom", mode: "pty", args: [], cwd: "/tmp" },
       });
       const graph = validGraph({ nodes: [trigger("t1", "a"), customCli], links: [] });
       expect(issueCodes(graph)).toEqual(["command_required"]);

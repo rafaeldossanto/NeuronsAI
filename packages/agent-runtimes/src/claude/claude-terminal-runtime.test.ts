@@ -81,7 +81,9 @@ describe("ClaudeTerminalRuntime (fake CLI in a PTY)", () => {
   it("injects a multi-line message through bracketed paste, header included", async () => {
     const { runtime } = await started();
 
-    await runtime.deliver(message("primeira linha\n!send Revisor ok\n!finish feito", { id: "m-42" }));
+    await runtime.deliver(
+      message("primeira linha\n!send Revisor ok\n!finish feito", { id: "m-42" }),
+    );
     await untilState(runtime, "idle");
 
     expect(communication.sent).toEqual([{ to: "Revisor", text: "ok" }]);
@@ -131,12 +133,15 @@ describe("ClaudeTerminalRuntime (fake CLI in a PTY)", () => {
   });
 
   it("never trusts a folder for the user: the boot fails with instructions", async () => {
-    const { runtime } = create({ fakeFlags: ["--trust-dialog"], timings: { userDialogTimeoutMs: 500 } });
+    const { runtime } = create({
+      fakeFlags: ["--trust-dialog"],
+      timings: { userDialogTimeoutMs: 500 },
+    });
     await expect(runtime.start("x")).rejects.toThrow(/confiar na pasta/);
     expect(runtime.state).toBe("failed");
   });
 
-  it("trusts the folder only when told to, moving off the highlighted \"No, exit\" first", async () => {
+  it('trusts the folder only when told to, moving off the highlighted "No, exit" first', async () => {
     const deps = testDeps({ fakeFlags: ["--trust-dialog"] });
     const runtime = new ClaudeTerminalRuntime(
       { name: "Pesquisador", cwd: process.cwd(), args: [], effort: "low" },

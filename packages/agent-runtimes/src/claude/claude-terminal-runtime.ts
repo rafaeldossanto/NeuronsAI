@@ -85,7 +85,11 @@ const TRUST_FOLDER = "trust-folder";
 /** First-run screens of Claude Code 2.1.x. Enter picks the option already highlighted (the safe one). */
 const DIALOGS: Dialog[] = [
   { name: "theme", pattern: /Choose the text style/i, answer: "\r" },
-  { name: "security-notes", pattern: /Security notes:[\s\S]*Press Enter to continue/i, answer: "\r" },
+  {
+    name: "security-notes",
+    pattern: /Security notes:[\s\S]*Press Enter to continue/i,
+    answer: "\r",
+  },
   { name: "chrome", pattern: /Claude in Chrome extension detected/i, answer: "\r" },
   // Trusting a folder is the user's decision (see `trustWorkingDirectory`).
   { name: TRUST_FOLDER, pattern: /trust this folder|Do you trust the files/i, answer: undefined },
@@ -283,7 +287,9 @@ export class ClaudeTerminalRuntime extends ClaudeRuntimeBase implements Terminal
 
     this.writeInput(multiline ? `${PASTE_START}${text}${PASTE_END}` : text);
     if (!(await this.waitForEcho(screen, text))) {
-      throw new Error("O Claude Code não mostrou na tela o texto digitado; a mensagem não foi enviada.");
+      throw new Error(
+        "O Claude Code não mostrou na tela o texto digitado; a mensagem não foi enviada.",
+      );
     }
     // An Enter right after a block of text is read as part of the paste.
     await sleep(this.timings.enterDelayMs);
@@ -292,7 +298,9 @@ export class ClaudeTerminalRuntime extends ClaudeRuntimeBase implements Terminal
       this.writeInput("\r");
       if (await this.waitForSubmission(submitted)) return;
     }
-    throw new Error("O Claude Code não confirmou o recebimento da mensagem (o Enter não foi aceito).");
+    throw new Error(
+      "O Claude Code não confirmou o recebimento da mensagem (o Enter não foi aceito).",
+    );
   }
 
   private waitForSubmission(hook: Promise<void>): Promise<boolean> {

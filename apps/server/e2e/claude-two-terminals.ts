@@ -11,7 +11,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isTerminalRuntime, type AgentCommunication, type AgentRuntime } from "@neurons/agent-runtimes";
+import {
+  isTerminalRuntime,
+  type AgentCommunication,
+  type AgentRuntime,
+} from "@neurons/agent-runtimes";
 import { TerminalRuntimeFactory } from "@neurons/agent-runtimes/claude";
 import { validateGraph, type GraphDefinition } from "@neurons/graph-schema";
 import { RoutingAgentRuntimeFactory } from "../src/agents/agent-runtime-factory.js";
@@ -37,7 +41,12 @@ const log = (line: string) => console.log(`[${elapsed()}] ${line}`);
 /** The CLI arguments of an agent: the cheapest model, plus a debug log when asked for. */
 function claudeArgs(agentName: string): string[] {
   const debug = process.argv.includes("--claude-debug")
-    ? ["--debug", "hooks,mcp", "--debug-file", path.join(debugFolder ?? os.tmpdir(), `${agentName}.log`)]
+    ? [
+        "--debug",
+        "hooks,mcp",
+        "--debug-file",
+        path.join(debugFolder ?? os.tmpdir(), `${agentName}.log`),
+      ]
     : [];
   return ["--model", MODEL, ...debug];
 }
@@ -109,7 +118,10 @@ async function main(): Promise<number> {
   } finally {
     // Whatever happened, show what the PTY agent's screen ended with, then clean up.
     const screens: EphemeralRunEvent[] = [];
-    const sink: EventSink = { send: () => undefined, sendEphemeral: (event) => screens.push(event) };
+    const sink: EventSink = {
+      send: () => undefined,
+      sendEphemeral: (event) => screens.push(event),
+    };
     const runId = wiring.published[0]?.runId;
     if (runId) wiring.terminals.replayTo(sink, runId);
     for (const screen of screens) {
@@ -136,7 +148,9 @@ async function bootOnly(factory: RoutingAgentRuntimeFactory, workdir: string): P
       const t0 = Date.now();
       try {
         await runtime.start(`# Você é "${node.name}"`);
-        log(`${node.name}: pronto em ${((Date.now() - t0) / 1000).toFixed(1)} s (${runtime.state})`);
+        log(
+          `${node.name}: pronto em ${((Date.now() - t0) / 1000).toFixed(1)} s (${runtime.state})`,
+        );
         if (process.argv.includes("--probe")) await probe(runtime, node.name);
       } catch (error) {
         failed = true;
@@ -168,12 +182,17 @@ async function probe(runtime: AgentRuntime, name: string): Promise<void> {
   });
   log(`${name}: mensagem aceita em ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   await Promise.race([idle, new Promise((resolve) => setTimeout(resolve, 120_000))]);
-  log(`${name}: turno terminou em ${((Date.now() - t0) / 1000).toFixed(1)} s (estado ${runtime.state})`);
+  log(
+    `${name}: turno terminou em ${((Date.now() - t0) / 1000).toFixed(1)} s (estado ${runtime.state})`,
+  );
 }
 
 function describe(type: string, agent: string | null, payload: unknown): string {
   const data = payload as Record<string, unknown>;
-  const text = (value: unknown) => String(value ?? "").replace(/\s+/g, " ").slice(0, 160);
+  const text = (value: unknown) =>
+    String(value ?? "")
+      .replace(/\s+/g, " ")
+      .slice(0, 160);
   switch (type) {
     case "MessageSent":
       return `${text(data.from)} -> ${text(data.to)} [${text(data.kind)}] ${text(data.body)}`;
@@ -204,7 +223,10 @@ function report(events: Logged[], finished: boolean): boolean {
   const end = events.find((e) => e.type === "RunFinished");
   const reason = (end?.payload as { reason?: string } | undefined)?.reason;
   const usages = events.filter((e) => e.type === "UsageRecorded");
-  const cost = usages.reduce((sum, e) => sum + ((e.payload as { costUsd?: number }).costUsd ?? 0), 0);
+  const cost = usages.reduce(
+    (sum, e) => sum + ((e.payload as { costUsd?: number }).costUsd ?? 0),
+    0,
+  );
   const failures = events.filter((e) => e.type === "AgentFailed");
 
   console.log("\n==== Resumo ====");
@@ -213,11 +235,17 @@ function report(events: Logged[], finished: boolean): boolean {
   if (ask && reply) {
     console.log(`ask -> reply: ${((reply.at.getTime() - ask.at.getTime()) / 1000).toFixed(1)} s`);
   }
-  console.log(`encerrada por finish: ${reason === "finished" ? "sim" : `NÃO (${reason ?? "não encerrou"})`}`);
+  console.log(
+    `encerrada por finish: ${reason === "finished" ? "sim" : `NÃO (${reason ?? "não encerrou"})`}`,
+  );
   console.log(`tempo total: ${((Date.now() - startedAt) / 1000).toFixed(1)} s`);
-  console.log(`custo informado pelo stream-json (${usages.length} turno(s)): US$ ${cost.toFixed(4)}`);
+  console.log(
+    `custo informado pelo stream-json (${usages.length} turno(s)): US$ ${cost.toFixed(4)}`,
+  );
   console.log(`falhas de agente: ${failures.length}`);
-  return finished && Boolean(ask) && Boolean(reply) && reason === "finished" && failures.length === 0;
+  return (
+    finished && Boolean(ask) && Boolean(reply) && reason === "finished" && failures.length === 0
+  );
 }
 
 main().then(

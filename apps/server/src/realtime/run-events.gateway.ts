@@ -61,7 +61,8 @@ function socketSink(socket: WebSocket): EventSink {
   if (!sink) {
     sink = {
       send: (event) => socket.send(JSON.stringify({ event: "run.event", data: event })),
-      sendEphemeral: (event) => socket.send(JSON.stringify({ event: "run.ephemeral", data: event })),
+      sendEphemeral: (event) =>
+        socket.send(JSON.stringify({ event: "run.ephemeral", data: event })),
     };
     sinks.set(socket, sink);
   }

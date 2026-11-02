@@ -68,7 +68,11 @@ export interface ChildEnvInput {
 }
 
 /** Builds the environment of an agent's CLI explicitly: the system minimum plus `extra`. */
-export function buildChildEnv({ host, platform, extra = {} }: ChildEnvInput): Record<string, string> {
+export function buildChildEnv({
+  host,
+  platform,
+  extra = {},
+}: ChildEnvInput): Record<string, string> {
   // Windows variable names are case-insensitive (`Path` vs `PATH`).
   const caseInsensitive = platform === "win32";
   const wanted = new Set(

@@ -11,10 +11,14 @@ describe("buildClaudeArgs", () => {
     const args = buildClaudeArgs({ ...base, mode: "pty", settingsFile: "settings.json" });
     const allowed = args[args.indexOf("--allowedTools") + 1];
     expect(allowed?.split(",").sort()).toEqual(
-      ["ask", "finish", "list_peers", "reply", "send_message"].map((t) => `mcp__neurons__${t}`).sort(),
+      ["ask", "finish", "list_peers", "reply", "send_message"]
+        .map((t) => `mcp__neurons__${t}`)
+        .sort(),
     );
     expect(args).not.toContain("--dangerously-skip-permissions");
-    expect(args).toEqual(expect.arrayContaining(["--strict-mcp-config", "--settings", "settings.json"]));
+    expect(args).toEqual(
+      expect.arrayContaining(["--strict-mcp-config", "--settings", "settings.json"]),
+    );
   });
 
   it("loads only project and local settings, so the user's own settings are never involved", () => {
@@ -24,18 +28,29 @@ describe("buildClaudeArgs", () => {
 
   it("asks for the plain permission mode, unless the agent's args choose another", () => {
     const own = buildClaudeArgs({ ...base, mode: "pty" });
-    expect(own.slice(own.indexOf("--permission-mode"), own.indexOf("--permission-mode") + 2)).toEqual(
-      ["--permission-mode", "manual"],
-    );
+    expect(
+      own.slice(own.indexOf("--permission-mode"), own.indexOf("--permission-mode") + 2),
+    ).toEqual(["--permission-mode", "manual"]);
 
-    const chosen = buildClaudeArgs({ ...base, mode: "pty", userArgs: ["--permission-mode", "plan"] });
+    const chosen = buildClaudeArgs({
+      ...base,
+      mode: "pty",
+      userArgs: ["--permission-mode", "plan"],
+    });
     expect(chosen.filter((arg) => arg === "--permission-mode")).toHaveLength(1);
   });
 
   it("runs a headless stream-json session without permission prompts", () => {
     const args = buildClaudeArgs({ ...base, mode: "stream-json", maxBudgetUsd: 2 });
     expect(args).toEqual(
-      expect.arrayContaining(["-p", "--input-format", "stream-json", "--output-format", "--max-budget-usd", "2"]),
+      expect.arrayContaining([
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "--max-budget-usd",
+        "2",
+      ]),
     );
     expect(args[args.indexOf("--permission-prompts") + 1]).toBe("none");
   });
@@ -49,7 +64,12 @@ describe("buildClaudeArgs", () => {
     expect(buildClaudeArgs({ ...base, mode: "pty", effort: "high" })).toEqual(
       expect.arrayContaining(["--effort", "high"]),
     );
-    const own = buildClaudeArgs({ ...base, mode: "pty", effort: "high", userArgs: ["--effort=low"] });
+    const own = buildClaudeArgs({
+      ...base,
+      mode: "pty",
+      effort: "high",
+      userArgs: ["--effort=low"],
+    });
     expect(own.filter((arg) => arg === "--effort")).toEqual([]);
   });
 });

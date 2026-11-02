@@ -54,16 +54,15 @@ export class ClaudeCli {
 
   /** @throws ClaudeBinaryNotFoundError */
   command(): ClaudeCommand {
-    this.resolved ??=
-      this.options.command ?? {
-        command: findClaudeBinary(this.options.configuredBinary, {
-          platform: this.platform,
-          host: this.host,
-          homeDir: this.options.homeDir ?? os.homedir(),
-          ...(this.options.files && { files: this.options.files }),
-        }),
-        args: [],
-      };
+    this.resolved ??= this.options.command ?? {
+      command: findClaudeBinary(this.options.configuredBinary, {
+        platform: this.platform,
+        host: this.host,
+        homeDir: this.options.homeDir ?? os.homedir(),
+        ...(this.options.files && { files: this.options.files }),
+      }),
+      args: [],
+    };
     return this.resolved;
   }
 
