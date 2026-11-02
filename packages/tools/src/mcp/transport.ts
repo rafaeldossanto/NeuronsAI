@@ -4,12 +4,17 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ToolSetupError } from "../core/errors.js";
 import type { ToolNodeOf } from "../core/registry.js";
 import { type SecretResolver, SecretNotFoundError, substituteSecrets } from "../core/secrets.js";
-import { isProcessAlive, killProcessTree } from "./process-tree.js";
+import { ensureGone } from "./process-tree.js";
 
 type McpConfig = ToolNodeOf<"mcp">["tool"];
 
-/** The SDK waits 2 s after closing stdin before SIGTERM; the tree is forced down before that. */
-const STDIO_GRACE_MS = 1_000;
+/**
+ * How long a server gets to leave by itself once its stdin is closed. Kept well under the 2 s
+ * after which the SDK sends SIGTERM to the direct child (which would sever the process tree
+ * that `taskkill /T` walks).
+ */
+const STDIO_GRACE_MS = 500;
+const KILL_ATTEMPTS = 3;
 const STDERR_TAIL_CHARS = 2_000;
 
 export interface McpConnectionTransport {
@@ -62,15 +67,8 @@ async function stdioTransport(
     async shutdown() {
       const pid = transport.pid;
       const closing = transport.close();
-      const watchdog = setTimeout(() => {
-        if (pid !== null) void killProcessTree(pid);
-      }, STDIO_GRACE_MS);
-      try {
-        await closing;
-      } finally {
-        clearTimeout(watchdog);
-      }
-      if (pid !== null && isProcessAlive(pid)) await killProcessTree(pid);
+      if (pid !== null) await ensureGone(pid, STDIO_GRACE_MS, KILL_ATTEMPTS);
+      await closing;
     },
   };
 }
