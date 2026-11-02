@@ -17,7 +17,9 @@ interface Subscription {
 export class RunSubscriptions {
   private readonly subscriptions = new Map<string, Map<EventSink, Subscription>>();
 
-  constructor(@Inject(RUN_EVENT_HISTORY) private readonly history: RunEventHistory) {}
+  constructor(
+    @Inject(RUN_EVENT_HISTORY) private readonly history: Pick<RunEventHistory, "readFrom">,
+  ) {}
 
   /**
    * Subscribes the sink to a run. With `fromSeq`, events from that seq onwards are replayed first.

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { linkBetween } from "./queries/link-between.js";
 import { peersOf } from "./queries/peers-of.js";
 import { toolsOf } from "./queries/tools-of.js";
 import { agent, httpTool, link, trigger, validGraph } from "./test-support.js";
@@ -62,5 +63,27 @@ describe("toolsOf", () => {
 
   it("returns an empty list for an unknown agent", () => {
     expect(toolsOf(graph, "Fantasma")).toEqual([]);
+  });
+});
+
+describe("linkBetween", () => {
+  it("finds the arrow that lets the first agent start a talk with the second", () => {
+    const graph = validGraph({ links: [link("l1", "a", "b", { maxMessages: 3 })] });
+    expect(linkBetween(graph, "Alfa", "Beta")?.id).toBe("l1");
+    expect(linkBetween(graph, "Beta", "Alfa")).toBeUndefined();
+  });
+
+  it("finds a double arrow from either side, ignoring case", () => {
+    const graph = validGraph({ links: [link("l1", "a", "b", { bidirectional: true })] });
+    expect(linkBetween(graph, "beta", "ALFA")?.id).toBe("l1");
+  });
+
+  it("ignores tool links and unknown names", () => {
+    const graph = validGraph({
+      nodes: [trigger("t1", "a"), agent("a", "Alfa"), httpTool("f")],
+      links: [link("l1", "a", "f", { kind: "uses" })],
+    });
+    expect(linkBetween(graph, "Alfa", "f")).toBeUndefined();
+    expect(linkBetween(graph, "Alfa", "Fantasma")).toBeUndefined();
   });
 });

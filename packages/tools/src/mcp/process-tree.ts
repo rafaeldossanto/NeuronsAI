@@ -42,7 +42,8 @@ async function descendantsOf(root: number): Promise<number[]> {
   const childrenOf = new Map<number, number[]>();
   for (const line of stdout.split("\n")) {
     const [pid, ppid] = line.trim().split(/\s+/).map(Number);
-    if (pid === undefined || ppid === undefined || Number.isNaN(pid) || Number.isNaN(ppid)) continue;
+    if (pid === undefined || ppid === undefined || Number.isNaN(pid) || Number.isNaN(ppid))
+      continue;
     childrenOf.set(ppid, [...(childrenOf.get(ppid) ?? []), pid]);
   }
   const found: number[] = [];

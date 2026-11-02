@@ -1,4 +1,5 @@
 import type {
+  AgentUsage,
   AgentCommunication,
   AgentRuntime,
   AgentRuntimeFactory,
@@ -7,6 +8,13 @@ import type {
 } from "@neurons/agent-runtimes";
 import type { AgentNode, AgentPeers } from "@neurons/graph-schema";
 import { Signal, type Unsubscribe } from "../../shared/signal.js";
+
+const EMPTY_USAGE: AgentUsage = {
+  inputTokens: 1,
+  outputTokens: 1,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 0,
+};
 
 /** What a scripted agent can do while it handles one message. */
 export interface FakeTurn {
@@ -20,6 +28,10 @@ export interface FakeTurn {
   reply(text: string): Promise<{ messageId: string }>;
   finish(result: string): Promise<void>;
   peers(): AgentPeers;
+  /** Reports what the turn consumed, as stream-json does at the end of a turn. */
+  usage(usage: { costUsd: number } & Partial<Omit<AgentUsage, "costUsd">>): Promise<void>;
+  /** Reports a turn whose price is unknown. */
+  usageWithoutCost(): Promise<void>;
 }
 
 export type FakeScript = (turn: FakeTurn) => Promise<void> | void;
@@ -29,6 +41,10 @@ export interface FakeRuntimeOptions {
   neverAck?: boolean;
   /** Fails to start with this message. */
   failOnStart?: string;
+  /** Whether the runtime reports what its turns cost (like stream-json); default true. */
+  reportsCost?: boolean;
+  /** Reports a turn with this cost while stopping, like a closing turn whose `result` arrives late. */
+  usageOnStop?: number;
 }
 
 /** A scriptable {@link AgentRuntime} for tests: handles each message by running its script. */
@@ -37,6 +53,7 @@ export class FakeAgentRuntime implements AgentRuntime {
   briefing: string | undefined;
   stopCount = 0;
   failureReason: string | undefined;
+  readonly reportsCost: boolean;
 
   private currentState: AgentRuntimeState = "starting";
   private readonly changes = new Signal<AgentRuntimeState>();
@@ -46,7 +63,9 @@ export class FakeAgentRuntime implements AgentRuntime {
     private readonly script: FakeScript,
     private readonly communication: AgentCommunication,
     private readonly options: FakeRuntimeOptions = {},
-  ) {}
+  ) {
+    this.reportsCost = options.reportsCost ?? true;
+  }
 
   get state(): AgentRuntimeState {
     return this.currentState;
@@ -74,10 +93,12 @@ export class FakeAgentRuntime implements AgentRuntime {
     await Promise.resolve();
   }
 
-  stop(): Promise<void> {
+  async stop(): Promise<void> {
     this.stopCount++;
+    if (this.options.usageOnStop !== undefined) {
+      await this.communication.reportUsage({ ...EMPTY_USAGE, costUsd: this.options.usageOnStop });
+    }
     this.setState("stopped");
-    return Promise.resolve();
   }
 
   private async runTurn(message: InboundMessage): Promise<void> {
@@ -106,6 +127,8 @@ export class FakeAgentRuntime implements AgentRuntime {
       reply: (text) => communication.reply(message.id, text),
       finish: (result) => communication.finish(result),
       peers: () => communication.listPeers(),
+      usage: (usage) => communication.reportUsage({ ...EMPTY_USAGE, ...usage }),
+      usageWithoutCost: () => communication.reportUsage({ ...EMPTY_USAGE }),
     };
   }
 

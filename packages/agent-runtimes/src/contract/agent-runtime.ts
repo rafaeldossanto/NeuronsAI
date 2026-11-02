@@ -36,6 +36,11 @@ export interface InboundMessage {
  */
 export interface AgentRuntime {
   readonly state: AgentRuntimeState;
+  /**
+   * Whether the runtime tells the Hub what its turns cost (`reportUsage` with a `costUsd`). A
+   * budget cannot be enforced on a runtime that does not: the guards say so instead of counting 0.
+   */
+  readonly reportsCost: boolean;
   /** Human-readable cause, when `state` is `failed`. */
   readonly failureReason?: string;
 

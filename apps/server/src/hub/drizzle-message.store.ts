@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, ne, or, sql } from "drizzle-orm";
 import { DatabaseService } from "../database/database.service.js";
 import { messages } from "../database/schema/index.js";
 import { allocateSeqs, appendEvents, insertEvents } from "../run-log/drizzle-event-writer.js";
@@ -93,6 +93,54 @@ export class DrizzleMessageStore implements MessageStore {
       .orderBy(asc(messages.seq))
       .limit(1);
     return row && toMessageRecord(row);
+  }
+
+  async listByRun(
+    runId: string,
+    options: { afterSeq?: number; limit: number },
+  ): Promise<MessageRecord[]> {
+    const rows = await this.database.db
+      .select()
+      .from(messages)
+      .where(and(eq(messages.runId, runId), gt(messages.seq, options.afterSeq ?? 0)))
+      .orderBy(asc(messages.seq))
+      .limit(options.limit);
+    return rows.map(toMessageRecord);
+  }
+
+  async listRecent(runId: string, limit: number): Promise<MessageRecord[]> {
+    const rows = await this.database.db
+      .select()
+      .from(messages)
+      .where(eq(messages.runId, runId))
+      .orderBy(desc(messages.seq))
+      .limit(limit);
+    return rows.map(toMessageRecord);
+  }
+
+  async countInRun(runId: string): Promise<number> {
+    const [row] = await this.database.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(messages)
+      .where(eq(messages.runId, runId));
+    return row?.total ?? 0;
+  }
+
+  async countOnLink(runId: string, agentA: string, agentB: string): Promise<number> {
+    const [row] = await this.database.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.runId, runId),
+          ne(messages.kind, "reply"),
+          or(
+            and(eq(messages.fromAgent, agentA), eq(messages.toAgent, agentB)),
+            and(eq(messages.fromAgent, agentB), eq(messages.toAgent, agentA)),
+          ),
+        ),
+      );
+    return row?.total ?? 0;
   }
 
   async listUnacked(runId: string): Promise<MessageRecord[]> {

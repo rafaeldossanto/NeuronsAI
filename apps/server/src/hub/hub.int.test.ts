@@ -28,6 +28,7 @@ beforeAll(async () => {
   persistence = {
     messageStore: new DrizzleMessageStore(database),
     eventLog: new DrizzleRunEventLog(database),
+    history: new DrizzleRunEventHistory(database),
     runs: new DrizzleRunRepository(database),
     versions: new DrizzleGraphVersionRepository(database),
   };

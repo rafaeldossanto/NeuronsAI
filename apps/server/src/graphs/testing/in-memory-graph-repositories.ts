@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { GraphDefinition } from "@neurons/graph-schema";
-import type { GraphRepository } from "../graph-repository.js";
+import type { GraphChanges, GraphRepository } from "../graph-repository.js";
 import type { GraphVersionRepository } from "../graph-version-repository.js";
 import type { GraphRecord, GraphVersionRecord } from "../graph.records.js";
 
@@ -28,12 +28,21 @@ export class InMemoryGraphRepository implements GraphRepository {
     return Promise.resolve([...this.records.values()]);
   }
 
-  saveDraft(id: string, draft: unknown): Promise<GraphRecord | undefined> {
+  update(id: string, changes: GraphChanges): Promise<GraphRecord | undefined> {
     const record = this.records.get(id);
     if (!record) return Promise.resolve(undefined);
-    const updated = { ...record, draft, updatedAt: new Date() };
+    const updated = {
+      ...record,
+      ...(changes.name !== undefined && { name: changes.name }),
+      ...(changes.draft !== undefined && { draft: changes.draft }),
+      updatedAt: new Date(),
+    };
     this.records.set(id, updated);
     return Promise.resolve(updated);
+  }
+
+  delete(id: string): Promise<boolean> {
+    return Promise.resolve(this.records.delete(id));
   }
 }
 

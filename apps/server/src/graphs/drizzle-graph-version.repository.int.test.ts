@@ -36,16 +36,29 @@ describe("DrizzleGraphRepository", () => {
     });
     expect((await graphs.list()).map((g) => g.id)).toContain(created.id);
 
-    const saved = await graphs.saveDraft(created.id, { nodes: [1] });
+    const saved = await graphs.update(created.id, { draft: { nodes: [1] } });
     expect(saved?.draft).toEqual({ nodes: [1] });
     expect(saved!.updatedAt.getTime()).toBeGreaterThanOrEqual(created.updatedAt.getTime());
+
+    const renamed = await graphs.update(created.id, { name: "Outro nome" });
+    expect(renamed).toMatchObject({ name: "Outro nome", draft: { nodes: [1] } });
+    const cleared = await graphs.update(created.id, { draft: null });
+    expect(cleared?.draft).toBeNull();
+  });
+
+  it("deletes a graph, once", async () => {
+    const created = await graphs.create({ name: "Descartável" });
+
+    expect(await graphs.delete(created.id)).toBe(true);
+    expect(await graphs.findById(created.id)).toBeUndefined();
+    expect(await graphs.delete(created.id)).toBe(false);
   });
 
   it("returns undefined for unknown graphs", async () => {
     const unknown = "0192f1c0-0000-7000-8000-00000000dead";
 
     expect(await graphs.findById(unknown)).toBeUndefined();
-    expect(await graphs.saveDraft(unknown, {})).toBeUndefined();
+    expect(await graphs.update(unknown, { draft: {} })).toBeUndefined();
   });
 });
 

@@ -1,4 +1,5 @@
 import { type DynamicModule, type Type, Module } from "@nestjs/common";
+import { OpenApiModule } from "./api/openapi/openapi.module.js";
 import { DatabaseModule } from "./database/database.module.js";
 import { GraphsModule } from "./graphs/graphs.module.js";
 import { HealthModule } from "./health/health.module.js";
@@ -13,7 +14,7 @@ const COMMON_MODULES: Type[] = [DatabaseModule, SecretsModule, HealthModule];
 
 /** Which feature modules each mode brings up; the worker side runs the Hub and the agent runtimes. */
 const MODULES_BY_MODE: Record<Exclude<AppMode, "all">, Type[]> = {
-  api: [GraphsModule, RealtimeModule],
+  api: [GraphsModule, RealtimeModule, OpenApiModule],
   worker: [RunsModule],
 };
 

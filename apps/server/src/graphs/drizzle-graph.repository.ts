@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { asc, eq } from "drizzle-orm";
 import { DatabaseService } from "../database/database.service.js";
 import { graphs } from "../database/schema/index.js";
-import type { GraphRepository } from "./graph-repository.js";
+import type { GraphChanges, GraphRepository } from "./graph-repository.js";
 import type { GraphRecord } from "./graph.records.js";
 
 @Injectable()
@@ -26,12 +26,23 @@ export class DrizzleGraphRepository implements GraphRepository {
     return this.database.db.select().from(graphs).orderBy(asc(graphs.createdAt));
   }
 
-  async saveDraft(id: string, draft: unknown): Promise<GraphRecord | undefined> {
+  async update(id: string, changes: GraphChanges): Promise<GraphRecord | undefined> {
     const [row] = await this.database.db
       .update(graphs)
-      .set({ draft })
+      .set({
+        ...(changes.name !== undefined && { name: changes.name }),
+        ...(changes.draft !== undefined && { draft: changes.draft }),
+      })
       .where(eq(graphs.id, id))
       .returning();
     return row;
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const deleted = await this.database.db
+      .delete(graphs)
+      .where(eq(graphs.id, id))
+      .returning({ id: graphs.id });
+    return deleted.length > 0;
   }
 }

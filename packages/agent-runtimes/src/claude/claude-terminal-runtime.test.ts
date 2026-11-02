@@ -62,6 +62,10 @@ describe("ClaudeTerminalRuntime (fake CLI in a PTY)", () => {
     await Promise.all(live.splice(0).map((runtime) => runtime.stop()));
   });
 
+  it("does not report cost: the screen carries no structured usage", () => {
+    expect(create().runtime.reportsCost).toBe(false);
+  });
+
   it("starts idle once the footer shows the input box is free", async () => {
     const { runtime } = await started();
     expect(runtime.state).toBe("idle");

@@ -1,5 +1,6 @@
 import type { GraphDefinition } from "@neurons/graph-schema";
 import type { MessageKind } from "../database/schema/index.js";
+import type { GuardTripDetails } from "../guards/guard-trip.js";
 import { MessageDeniedError } from "./hub.errors.js";
 import type { MessageRecord } from "./message.js";
 
@@ -15,15 +16,19 @@ export interface SendContext {
   replyTo?: MessageRecord;
 }
 
-export type PolicyVerdict = { allowed: true } | { allowed: false; code: string; reason: string };
+export type PolicyVerdict =
+  | { allowed: true }
+  /** `trip` is set by the guards: the refusal also stops the run or the agent, and is logged. */
+  | { allowed: false; code: string; reason: string; trip?: GuardTripDetails };
 
 export const allow = (): PolicyVerdict => ({ allowed: true });
 
 /** @param code Stable machine-readable code (English). @param reason Text for the user (pt-BR). */
-export const deny = (code: string, reason: string): PolicyVerdict => ({
+export const deny = (code: string, reason: string, trip?: GuardTripDetails): PolicyVerdict => ({
   allowed: false,
   code,
   reason,
+  ...(trip && { trip }),
 });
 
 /** One rule of the chain a message goes through before it is stored. */
@@ -39,7 +44,8 @@ export class MessagePolicyChain {
   async enforce(context: SendContext): Promise<void> {
     for (const policy of this.policies) {
       const verdict = await policy.evaluate(context);
-      if (!verdict.allowed) throw new MessageDeniedError(verdict.code, verdict.reason);
+      if (!verdict.allowed)
+        throw new MessageDeniedError(verdict.code, verdict.reason, verdict.trip);
     }
   }
 }

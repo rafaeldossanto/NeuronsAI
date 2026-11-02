@@ -28,6 +28,7 @@ packages/
   graph-schema/  Schemas do grafo (zod)
   providers/     Provedores de modelos de IA
   mcp-neurons/   Servidor MCP dos neurônios
+  api-client/    Cliente tipado da API (gerado do OpenAPI do servidor)
 Docs/            Cofre Obsidian com a documentação do projeto
 ```
 

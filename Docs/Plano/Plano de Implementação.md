@@ -1,6 +1,6 @@
 ---
 tags: [neuronsai, plano, tarefas]
-atualizado: 2026-11-01
+atualizado: 2026-11-02
 ---
 
 # Plano de Implementação
@@ -22,8 +22,8 @@ provada antes de gastar tempo com canvas.
 
 ## Ordem de execução
 
-- Feito: T01, T02, T03, T05, T06, T08, T09, T19, T20.
-- Próxima: T10. Depois: T24 → T11 → T21 → T12–T15 → T22 → T25 → T16–T18.
+- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T19, T20.
+- Próxima: T24. Depois: T11 → T21 → T12–T15 → T22 → T25 → T16–T18.
 - **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16) sai por túnel.
 
 **Paralelismo possível:** T04 e T05 em paralelo com T02–T03. A Fase 2 pode começar assim que
@@ -204,6 +204,43 @@ testes cobrem a fuga de diretório.
 
 **Pronto quando:** testes de cada guarda e um script que inicia `mixed.json` pela API e imprime
 os eventos chegando pelo WebSocket.
+
+**Feito (2026-11-02)** — detalhes em `apps/server/README.md` (seções "API REST", "Guardas",
+"OpenAPI e cliente tipado" e "Demo da API"). Decisões:
+
+- **Guardas como políticas e serviços, sem mexer no Hub.** `maxMessages` da seta (só mensagens que
+  iniciam conversa; `reply` não conta nem é recusado), mensagens por execução (padrão **200**) e
+  pingue-pongue entram na cadeia de `MessagePolicy`. Orçamento (`BudgetGuard`) e ociosidade
+  (`IdleWatchdog`) escutam o Hub e o Supervisor. Toda parada passa pelo `GuardEnforcer`, que grava
+  `GuardTripped` antes de agir. Guarda de execução: `RunFinished { reason: guard_tripped }` e status
+  `failed`; guarda de agente: `AgentFailed` e a execução segue.
+- **Pingue-pongue: N padrão = 20** mensagens seguidas entre o mesmo par, nos dois sentidos, sem
+  terceiro agente, `@human` ou `@trigger` no meio (`NEURONS_PING_PONG_MESSAGES`). Chamadas de
+  ferramenta não entram na conta (a regra do plano falava em "sem ferramenta"; a tarefa pediu só
+  `finish` e terceiros).
+- **Custo desconhecido nunca é 0.** `UsageRecorded.costUsd` é `null` quando o runtime não informa;
+  `AgentRuntime.reportsCost` diz se informa (stream-json sim, PTY não); um `GuardWarning` avisa
+  uma vez por agente quando há orçamento que isso impede de respeitar; `GET /runs/{id}` separa
+  `unknownCostTurns`. **A verificar com o CLI real:** se o `total_cost_usd` do stream-json é por
+  turno ou acumulado na sessão (hoje é somado como por turno; se for acumulado, o orçamento conta
+  em dobro).
+- **Descarga do uso: 4 s** (`NEURONS_USAGE_FLUSH_MS`). O `stop()` do stream-json espera o turno em
+  andamento acabar (o `result` vem depois do `finish`) e o `RunService` agora para os runtimes
+  **antes** de gravar `RunFinished`; o Hub aceita uso de execução que está se encerrando.
+- **Cliente: `openapi-typescript` + `openapi-fetch`** em `packages/api-client`. O OpenAPI é montado
+  dos contratos zod dos controllers (`@Endpoint`), sem `@nestjs/swagger` (que gira em torno de DTO
+  de classe). `pnpm api:generate` regenera; `pnpm api:check` (CI) falha se o commitado ficou velho.
+- **Sem login:** escuta em `127.0.0.1`; outro endereço exige `NEURONS_HOST` **e**
+  `NEURONS_ALLOW_REMOTE=true`.
+- **Demo:** `pnpm --filter @neurons/server demo` usa o `two-terminals.json` (e não o `mixed.json`,
+  cujo agente de API ainda não roda) com o CLI de mentira; `-- --real-claude` usa o Claude Code real.
+  Uma rodada real (haiku, 2026-11-02, custo ≈ US$ 0,005): os dois agentes conversaram, o `finish`
+  veio no meio do turno do Pesquisador e o `UsageRecorded` dele entrou no log **antes** do
+  `RunFinished`, que é o que a descarga do uso corrige.
+- **Correções no caminho:** resposta a uma pergunta (`ask`) do `@human` agora a resolve; no Windows o
+  processo não saía depois de parar um terminal (o node-pty deixava um pipe e uma thread abertos).
+- **Adiado:** a coluna `runs.spent_usd` segue sem uso (o gasto é somado do log); apagar grafo com
+  versões; limite de mensagens por execução só pela configuração do servidor (não por execução).
 
 ---
 

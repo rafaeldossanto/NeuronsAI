@@ -6,8 +6,21 @@ export interface RunRecord {
   id: string;
   graphVersionId: string;
   status: RunStatus;
+  /** Spending limit of the run; null means none. */
+  budgetUsd: number | null;
   startedAt: Date | null;
   finishedAt: Date | null;
+}
+
+/** A run as the listings show it: with the graph its version belongs to. */
+export interface RunSummaryRecord extends RunRecord {
+  graphId: string;
+}
+
+export interface RunListFilter {
+  status?: RunStatus;
+  graphId?: string;
+  limit: number;
 }
 
 /** A run that is still going, with the graph it executes. */
@@ -23,6 +36,7 @@ export interface RunRepository {
   createRunning(
     graphVersionId: string,
     eventsFor: (run: RunRecord) => RunEventDraft[],
+    options?: { budgetUsd?: number },
   ): Promise<Recorded<RunRecord>>;
 
   /**
@@ -37,7 +51,13 @@ export interface RunRepository {
 
   findById(runId: string): Promise<RunRecord | undefined>;
 
+  /** The run as the listings show it. */
+  findSummary(runId: string): Promise<RunSummaryRecord | undefined>;
+
   listRunning(): Promise<ActiveRun[]>;
+
+  /** Newest first. */
+  list(filter: RunListFilter): Promise<RunSummaryRecord[]>;
 }
 
 export const RUN_REPOSITORY = Symbol("RUN_REPOSITORY");

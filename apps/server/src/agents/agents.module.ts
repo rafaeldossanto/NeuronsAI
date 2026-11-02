@@ -14,7 +14,11 @@ import { AGENT_RUNTIME_FACTORY, RoutingAgentRuntimeFactory } from "./agent-runti
         return new RoutingAgentRuntimeFactory({
           terminal: new TerminalRuntimeFactory({
             askTimeoutMs: config.askTimeoutMs,
-            cli: { ...(config.claudeBin && { configuredBinary: config.claudeBin }) },
+            usageFlushMs: config.usageFlushMs,
+            cli: {
+              ...(config.claudeBin && { configuredBinary: config.claudeBin }),
+              ...(config.claudeCommand && { command: config.claudeCommand }),
+            },
             logger: { warn: (m) => logger.warn(m), error: (m) => logger.error(m) },
           }),
         });

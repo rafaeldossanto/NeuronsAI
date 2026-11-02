@@ -5,12 +5,13 @@ import { z } from "zod";
 import type { InboundMessage } from "../contract/agent-runtime.js";
 import type { AgentUsage } from "../contract/usage.js";
 import { killProcessTree } from "../platform/process-tree.js";
-import { settlesWithin } from "./async.js";
+import { settlesWithin, waitUntil } from "./async.js";
 import { ClaudeRuntimeBase, errorMessage, type LaunchContext } from "./claude-runtime-base.js";
 import { formatInboundMessage } from "./inbound-text.js";
 
 const STDERR_TAIL_CHARS = 500;
 const BUDGET_EXHAUSTED = "error_max_budget_usd";
+const DRAIN_POLL_MS = 25;
 
 const counter = z.number().optional();
 
@@ -47,6 +48,7 @@ const resultEvent = z.object({
  */
 export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase {
   protected readonly mode = "stream-json";
+  readonly reportsCost = true;
 
   private child: ChildProcessWithoutNullStreams | undefined;
   private exited: Promise<void> = Promise.resolve();
@@ -102,12 +104,24 @@ export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase {
     });
   }
 
+  /** The `result` event closes the turn and carries its usage: wait for it, up to the flush window. */
+  protected override async drain(flushMs: number): Promise<void> {
+    await waitUntil(() => this.state !== "busy" && this.state !== "waiting_reply", {
+      timeoutMs: flushMs,
+      signal: this.lifetime.signal,
+      pollMs: DRAIN_POLL_MS,
+    });
+  }
+
   protected async terminate(): Promise<void> {
     const child = this.child;
     if (!child?.pid) return;
     child.stdin.end();
     await killProcessTree(child.pid, this.deps.cli.platform);
     await settlesWithin(this.exited, 5_000);
+    // The process is gone, but a pipe whose end was queued behind a dead reader would keep this
+    // process from ever exiting (a server that was asked to shut down would hang).
+    child.stdin.destroy();
   }
 
   // ---- events ----

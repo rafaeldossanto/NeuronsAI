@@ -21,11 +21,21 @@ export function toRunEvent(row: typeof runEvents.$inferSelect): RunEvent {
 export class DrizzleRunEventHistory implements RunEventHistory {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
-  async readFrom(runId: string, fromSeq: number): Promise<RunEvent[]> {
-    const rows = await this.database.db
+  async readFrom(runId: string, fromSeq: number, limit?: number): Promise<RunEvent[]> {
+    const query = this.database.db
       .select()
       .from(runEvents)
       .where(and(eq(runEvents.runId, runId), gte(runEvents.seq, fromSeq)))
+      .orderBy(asc(runEvents.seq));
+    const rows = await (limit === undefined ? query : query.limit(limit));
+    return rows.map(toRunEvent);
+  }
+
+  async readByType(runId: string, type: string): Promise<RunEvent[]> {
+    const rows = await this.database.db
+      .select()
+      .from(runEvents)
+      .where(and(eq(runEvents.runId, runId), eq(runEvents.type, type)))
       .orderBy(asc(runEvents.seq));
     return rows.map(toRunEvent);
   }

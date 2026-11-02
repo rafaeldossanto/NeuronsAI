@@ -99,6 +99,7 @@ export interface TestDepsOptions {
   fakeFlags?: string[];
   host?: HostEnvironment;
   askTimeoutMs?: number;
+  usageFlushMs?: number;
   cli?: ClaudeCliOptions;
 }
 
@@ -115,6 +116,7 @@ export function testDeps(
     }),
     mcpServer: { command: process.execPath, args: [neuronsServerEntry()] },
     askTimeoutMs: options.askTimeoutMs ?? 5_000,
+    ...(options.usageFlushMs !== undefined && { usageFlushMs: options.usageFlushMs }),
     logger,
   };
 }

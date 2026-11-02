@@ -5,6 +5,7 @@ import type { InboundMessage } from "../contract/agent-runtime.js";
 import { Signal, type Unsubscribe } from "../contract/signal.js";
 import type { TerminalAgentRuntime } from "../contract/terminal-runtime.js";
 import { killProcessTree } from "../platform/process-tree.js";
+import { releasePtyHandles } from "../platform/pty-handles.js";
 import { Gate, settlesWithin, sleep, waitUntil } from "./async.js";
 import { ClaudeLoginRequiredError } from "./claude-cli.js";
 import {
@@ -115,6 +116,8 @@ const ECHO_PROBE_CHARS = 25;
  */
 export class ClaudeTerminalRuntime extends ClaudeRuntimeBase implements TerminalAgentRuntime {
   protected readonly mode = "pty";
+  /** The screen of the CLI carries no structured usage. */
+  readonly reportsCost = false;
 
   private readonly timings: TerminalTimings;
   private readonly size: TerminalSize;
@@ -218,6 +221,7 @@ export class ClaudeTerminalRuntime extends ClaudeRuntimeBase implements Terminal
       await killProcessTree(pty.pid, this.deps.cli.platform);
       // Waits for the exit so no process is left when `stop()` resolves.
       await settlesWithin(this.exited, 5_000);
+      releasePtyHandles(pty);
     }
     this.screen?.dispose();
   }

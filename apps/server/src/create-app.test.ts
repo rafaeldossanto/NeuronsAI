@@ -24,7 +24,10 @@ describe("modulesFor", () => {
 
 /** Postgres chosen but no connection variables: the process still boots. */
 const baseConfig = {
+  host: "127.0.0.1",
   port: 0,
+  guards: { runMaxMessages: 200, pingPongMessages: 20 },
+  usageFlushMs: 0,
   askTimeoutMs: 1000,
   dataDir: "unused",
   database: { kind: "postgres" },

@@ -1,12 +1,20 @@
 import { randomUUID } from "node:crypto";
 import type { GraphVersionRepository } from "../../graphs/graph-version-repository.js";
+import type { RunEventHistory } from "../../realtime/run-event-history.js";
 import type { RunEvent } from "../../realtime/run-event.js";
 import type { Recorded, RunEventDraft } from "../run-event-draft.js";
 import type { RunEventLog } from "../run-event-log.js";
-import type { ActiveRun, FinalRunStatus, RunRecord, RunRepository } from "../run-repository.js";
+import type {
+  ActiveRun,
+  FinalRunStatus,
+  RunListFilter,
+  RunRecord,
+  RunRepository,
+  RunSummaryRecord,
+} from "../run-repository.js";
 
 /** Runs and their event log in memory, with the same seq rules as the database. */
-export class InMemoryRunLog implements RunEventLog, RunRepository {
+export class InMemoryRunLog implements RunEventLog, RunRepository, RunEventHistory {
   readonly events: RunEvent[] = [];
   private readonly runs = new Map<string, RunRecord>();
   private readonly lastSeq = new Map<string, number>();
@@ -38,6 +46,17 @@ export class InMemoryRunLog implements RunEventLog, RunRepository {
     return stored;
   }
 
+  readFrom(runId: string, fromSeq: number, limit?: number): Promise<RunEvent[]> {
+    const events = this.eventsOf(runId)
+      .filter((event) => event.seq >= fromSeq)
+      .sort((a, b) => a.seq - b.seq);
+    return Promise.resolve(limit === undefined ? events : events.slice(0, limit));
+  }
+
+  readByType(runId: string, type: string): Promise<RunEvent[]> {
+    return Promise.resolve(this.eventsOf(runId, type).sort((a, b) => a.seq - b.seq));
+  }
+
   eventsOf(runId: string, type?: string): RunEvent[] {
     return this.events.filter(
       (event) => event.runId === runId && (type === undefined || event.type === type),
@@ -47,11 +66,13 @@ export class InMemoryRunLog implements RunEventLog, RunRepository {
   createRunning(
     graphVersionId: string,
     eventsFor: (run: RunRecord) => RunEventDraft[],
+    options: { budgetUsd?: number } = {},
   ): Promise<Recorded<RunRecord>> {
     const record: RunRecord = {
       id: randomUUID(),
       graphVersionId,
       status: "running",
+      budgetUsd: options.budgetUsd ?? null,
       startedAt: new Date(),
       finishedAt: null,
     };
@@ -76,6 +97,24 @@ export class InMemoryRunLog implements RunEventLog, RunRepository {
 
   findById(runId: string): Promise<RunRecord | undefined> {
     return Promise.resolve(this.runs.get(runId));
+  }
+
+  async findSummary(runId: string): Promise<RunSummaryRecord | undefined> {
+    const run = this.runs.get(runId);
+    const version = run && (await this.versions.findById(run.graphVersionId));
+    return run && version && { ...run, graphId: version.graphId };
+  }
+
+  async list(filter: RunListFilter): Promise<RunSummaryRecord[]> {
+    const summaries: RunSummaryRecord[] = [];
+    for (const run of this.runs.values()) {
+      const version = await this.versions.findById(run.graphVersionId);
+      if (!version) continue;
+      if (filter.status && run.status !== filter.status) continue;
+      if (filter.graphId && version.graphId !== filter.graphId) continue;
+      summaries.push({ ...run, graphId: version.graphId });
+    }
+    return summaries.reverse().slice(0, filter.limit);
   }
 
   async listRunning(): Promise<ActiveRun[]> {
