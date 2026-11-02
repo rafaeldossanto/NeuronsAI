@@ -58,7 +58,7 @@ async function loggedSeqs(runId: string): Promise<number[]> {
 const range = (from: number, to: number) =>
   Array.from({ length: to - from + 1 }, (_, i) => from + i);
 
-describe("Hub on Postgres", () => {
+describe("Hub", () => {
   it("stores the message and its MessageSent event in the same transaction", async () => {
     const harness = harnessWith();
     const runId = await openRun(harness);
@@ -282,7 +282,7 @@ describe("Hub on Postgres", () => {
       ).toEqual(expect.arrayContaining(range(1, events.length)));
     });
 
-    it("answers an ask across agents through Postgres", async () => {
+    it("answers an ask across agents through the database", async () => {
       let answer: string | undefined;
       const harness = harnessWith({
         scripts: {
