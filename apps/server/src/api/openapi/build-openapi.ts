@@ -161,5 +161,6 @@ function toOpenApiPath(prefix: string | undefined, path: string): string {
   return `/${joined}`.replace(/:([A-Za-z0-9_]+)/g, "{$1}");
 }
 
+/** By code unit, not `localeCompare`: the document must come out the same on every machine. */
 const sortKeys = <T>(record: Record<string, T>): Record<string, T> =>
-  Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
+  Object.fromEntries(Object.entries(record).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));

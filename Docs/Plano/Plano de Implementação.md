@@ -234,6 +234,9 @@ os eventos chegando pelo WebSocket.
   `NEURONS_ALLOW_REMOTE=true`.
 - **Demo:** `pnpm --filter @neurons/server demo` usa o `two-terminals.json` (e não o `mixed.json`,
   cujo agente de API ainda não roda) com o CLI de mentira; `-- --real-claude` usa o Claude Code real.
+  Uma rodada real (haiku, 2026-11-02, custo ≈ US$ 0,005): os dois agentes conversaram, o `finish`
+  veio no meio do turno do Pesquisador e o `UsageRecorded` dele entrou no log **antes** do
+  `RunFinished`, que é o que a descarga do uso corrige.
 - **Correções no caminho:** resposta a uma pergunta (`ask`) do `@human` agora a resolve; no Windows o
   processo não saía depois de parar um terminal (o node-pty deixava um pipe e uma thread abertos).
 - **Adiado:** a coluna `runs.spent_usd` segue sem uso (o gasto é somado do log); apagar grafo com
