@@ -281,6 +281,30 @@ describe("guards", () => {
       expect(await statusOf(run.id)).toBe("failed");
     });
 
+    it("does not end the run as quiet while the budget guard is still judging a usage report", async () => {
+      // A slow database: the guard reads the log long after the agent went idle.
+      const slow = {
+        ...persistence.history,
+        readFrom: persistence.history.readFrom.bind(persistence.history),
+        readByType: async (runId: string, type: string) => {
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          return persistence.runLog.readByType(runId, type);
+        },
+      };
+      persistence.history = slow;
+      const harness = harnessWith({ scripts: { Alfa: (turn) => turn.usage({ costUsd: 0.5 }) } });
+      const run = await harness.runService.start(await publish(buildTestGraph()), "oi", {
+        budgetUsd: 0.2,
+      });
+
+      await eventually(() => expect(finished(run.id)).toBeDefined());
+
+      expect(finished(run.id)?.payload).toMatchObject({
+        reason: "guard_tripped",
+        guard: "run_budget",
+      });
+    });
+
     it("applies the server's default budget to a run that sets none", async () => {
       const harness = harnessWith({
         scripts: { Alfa: (turn) => turn.usage({ costUsd: 0.5 }) },

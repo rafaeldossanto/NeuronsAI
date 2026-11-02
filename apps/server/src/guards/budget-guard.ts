@@ -34,7 +34,7 @@ export class BudgetGuard {
     @Inject(RunEventRecorder) private readonly recorder: RunEventRecorder,
     @Inject(RUN_EVENT_HISTORY) private readonly history: RunEventHistory,
   ) {
-    hub.usageRecorded.subscribe((report) => this.onUsage(report));
+    hub.usageRecorded.subscribe((report) => hub.track(report.runId, this.onUsage(report)));
     supervisor.agentStarted.subscribe((started) => this.onAgentStarted(started));
     supervisor.runStopped.subscribe((runId) => this.forget(runId));
   }
