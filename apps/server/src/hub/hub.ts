@@ -79,6 +79,8 @@ export class Hub {
   readonly finishRequested = new Signal<FinishRequest>();
   /** An `ask` is no longer open (answered or timed out): the run may have gone quiet. */
   readonly askClosed = new Signal<string>();
+  /** Work registered with {@link track} is done: the run may have gone quiet. */
+  readonly trackedWorkDone = new Signal<string>();
   /** A message was refused by a guard that also stops the run or an agent. */
   readonly guardTripped = new Signal<GuardTrip>();
   /** An agent's usage was recorded. */
@@ -206,6 +208,21 @@ export class Hub {
     let asks = 0;
     for (const ask of this.pendingAsks.values()) if (ask.runId === runId) asks++;
     return (this.sendsInFlight.get(runId) ?? 0) + asks;
+  }
+
+  /**
+   * Registers work done about something that just happened (a guard judging a usage report): the
+   * run is not quiet until it is done, so it cannot end as "quiescent" a moment before a guard
+   * would have stopped it. Call it synchronously from the listener that starts the work.
+   */
+  async track<T>(runId: string, work: Promise<T>): Promise<T> {
+    this.sendStarted(runId);
+    try {
+      return await work;
+    } finally {
+      this.sendFinished(runId);
+      this.trackedWorkDone.emit(runId);
+    }
   }
 
   /** Rejects every open ask of the run (it ended). */

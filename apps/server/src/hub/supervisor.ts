@@ -11,6 +11,7 @@ import { GuardEnforcer } from "../guards/guard-enforcer.js";
 import { TerminalSessions } from "../realtime/terminal-sessions.js";
 import { RunEventRecorder } from "../run-log/run-event-recorder.js";
 import { RUN_REPOSITORY, type RunRepository } from "../run-log/run-repository.js";
+import { settlesWithin } from "../shared/settles-within.js";
 import { Signal, type Unsubscribe } from "../shared/signal.js";
 import { findAgent } from "./agent-lookup.js";
 import { buildBriefing } from "./briefing.js";
@@ -36,6 +37,9 @@ export interface AgentStateChange {
   state: SlotState;
 }
 
+/** How long a stop waits for the hand-over in progress to be acknowledged. */
+const PUMP_SETTLE_MS = 2_000;
+
 /** States in which an agent is still working, so the run cannot be quiet. */
 const ACTIVE_STATES: ReadonlySet<SlotState> = new Set(["starting", "busy", "waiting_reply"]);
 /** States in which an agent will never take another message. */
@@ -58,6 +62,8 @@ interface AgentSlot {
   detachTerminal: Unsubscribe;
   /** The runtime is being stopped (or already is); stopping again waits for the same stop. */
   stopping: Promise<void> | undefined;
+  /** The latest inbox pump; stopping waits for it so no acknowledgement lands after the run ended. */
+  pumpDone: Promise<void>;
 }
 
 /**
@@ -88,6 +94,7 @@ export class Supervisor {
   ) {
     this.hub.messageRecorded.subscribe((message) => this.onMessage(message));
     this.hub.askClosed.subscribe((runId) => this.settled.emit(runId));
+    this.hub.trackedWorkDone.subscribe((runId) => this.settled.emit(runId));
     enforcer.tripped.subscribe((trip) => {
       if (trip.scope === "agent" && trip.agent) {
         return this.abortAgent(trip.runId, trip.agent, trip.reason);
@@ -194,6 +201,7 @@ export class Supervisor {
       unsubscribe: () => undefined,
       detachTerminal: () => undefined,
       stopping: undefined,
+      pumpDone: Promise.resolve(),
     };
     bySlot.set(agentName, slot);
     slot.booted = this.boot(slot, buildBriefing(agent, peersOf(graph, agentName)));
@@ -253,6 +261,9 @@ export class Supervisor {
       this.logger.error(`Falha ao parar "${slot.agent.name}": ${errorMessage(error)}`);
     }
     slot.detachTerminal();
+    // A message handed over just before the stop is acknowledged before the run is closed.
+    // (Bounded: a runtime that never confirms receiving a message must not hold the stop.)
+    await settlesWithin(slot.pumpDone, PUMP_SETTLE_MS);
   }
 
   // ---- inbox ----
@@ -264,7 +275,7 @@ export class Supervisor {
       return;
     }
     slot.pumping = true;
-    void this.pump(slot);
+    slot.pumpDone = this.pump(slot);
   }
 
   private async pump(slot: AgentSlot): Promise<void> {
