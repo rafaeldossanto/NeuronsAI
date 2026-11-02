@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AgentsModule } from "../agents/agents.module.js";
 import { DatabaseModule } from "../database/database.module.js";
+import { RealtimeModule } from "../realtime/realtime.module.js";
 import { RunLogModule } from "../run-log/run-log.module.js";
 import type { AppConfig } from "../shared/config/app-config.js";
 import { APP_CONFIG } from "../shared/config/tokens.js";
@@ -14,7 +15,7 @@ import { RunRegistry } from "./run-registry.js";
 import { Supervisor } from "./supervisor.js";
 
 @Module({
-  imports: [DatabaseModule, RunLogModule, AgentsModule],
+  imports: [DatabaseModule, RunLogModule, AgentsModule, RealtimeModule],
   providers: [
     RunRegistry,
     PermissionPolicy,
