@@ -9,3 +9,4 @@ spikes/
 # Gerados por `pnpm api:generate` (a conferência é o `pnpm api:check`)
 packages/api-client/openapi.json
 packages/api-client/src/schema.gen.ts
+.claude/
