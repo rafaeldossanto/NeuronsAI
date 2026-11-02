@@ -156,6 +156,13 @@ describe("obsidian tools", () => {
       expect(["PATH_FORBIDDEN", "INVALID_INPUT"]).toContain(errorCodeOf(result));
     });
 
+    it.each([".OBSIDIAN/x.md", "sub/.Trash/x.md", ".Obsidian\\plugins\\x"])(
+      "recusa pasta reservada pelo texto do caminho, sem depender do disco: %j",
+      async (requested) => {
+        expect(errorCodeOf(await call(read(), { path: requested }))).toBe("PATH_FORBIDDEN");
+      },
+    );
+
     it("recusa link simbólico de arquivo que aponta para fora do cofre", async (context) => {
       if (unsupported.has("symlink")) return context.skip();
       expect(errorCodeOf(await call(read(), { path: "atalho.md" }))).toBe("PATH_FORBIDDEN");

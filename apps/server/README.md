@@ -1,6 +1,6 @@
 # @neurons/server
 
-Servidor do NeuronsAI: NestJS 12 com adaptador Fastify, Postgres via Drizzle ORM e um gateway WebSocket para eventos de execução. Escuta **somente em `127.0.0.1`**.
+Servidor do NeuronsAI: NestJS 12 com adaptador Fastify, Drizzle ORM sobre um banco embutido (PGlite) ou Postgres, e um gateway WebSocket para eventos de execução. Escuta **somente em `127.0.0.1`**.
 
 O Hub de mensagens (T06) e os runtimes de terminal do Claude Code (T08, pacote `@neurons/agent-runtimes`) estão prontos; o runtime de API chega na T07 e a API REST na T10.
 
@@ -14,6 +14,8 @@ Copie `.env.example` para `.env` (ignorado pelo git) e preencha. Valores vazios 
 | `NEURONS_PORT`            | `3100` | Porta em `127.0.0.1`.                                                                     |
 | `NEURONS_ASK_TIMEOUT_SEC` | `120`  | Segundos que um `ask` espera pela resposta antes de falhar.                               |
 | `NEURONS_CLAUDE_BIN`      | —      | Caminho do executável do Claude Code usado pelos agentes de terminal. Vazio: procura sozinho (PATH, pastas dos instaladores e, no Windows, a CLI embutida no app desktop). |
+| `NEURONS_DB`              | `embedded` | `embedded` (PGlite, dentro do processo) ou `postgres`. As variáveis `NEURONS_DB_*` abaixo só valem com `postgres`. |
+| `NEURONS_DATA_DIR`        | por sistema | Pasta de dados do app (ver abaixo). O banco embutido fica em `<pasta>/db`.            |
 | `NEURONS_DB_URL`          | —      | URL completa do Postgres. Tem prioridade sobre as variáveis abaixo.                       |
 | `NEURONS_DB_HOST`         | —      | Host do banco.                                                                            |
 | `NEURONS_DB_PORT`         | `5432` | Porta do banco.                                                                           |
@@ -22,7 +24,17 @@ Copie `.env.example` para `.env` (ignorado pelo git) e preencha. Valores vazios 
 | `NEURONS_DB_PASSWORD`     | —      | Senha do banco.                                                                           |
 | `NEURONS_MASTER_KEY`      | —      | Chave AES-256 (32 bytes em base64) que cifra os segredos. Sem ela, só os segredos falham. |
 
-Sem nenhuma variável de banco o servidor sobe normalmente e `GET /health` informa `database.status = "not_configured"`. O mesmo vale para a chave mestra. Para gerar uma chave:
+Por padrão (`NEURONS_DB=embedded`) o servidor sobe **sem Postgres nenhum**: o banco é o PGlite e as migrations são aplicadas na partida. Com `NEURONS_DB=postgres` e nenhuma variável `NEURONS_DB_*` o servidor também sobe, e `GET /health` informa `database.status = "not_configured"`. O mesmo vale para a chave mestra.
+
+Pasta de dados padrão (quando `NEURONS_DATA_DIR` está vazio):
+
+| Sistema | Pasta                                                    |
+| ------- | -------------------------------------------------------- |
+| Windows | `%APPDATA%\NeuronsAI`                                    |
+| macOS   | `~/Library/Application Support/NeuronsAI`                |
+| Linux   | `$XDG_DATA_HOME/neuronsai` ou `~/.local/share/neuronsai` |
+
+Senhas de banco nunca saem em logs nem em erros: a URL aparece com a senha trocada por `***`. Para gerar uma chave:
 
 ```bash
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
@@ -40,7 +52,7 @@ Módulos comuns: `database`, `secrets`, `health`. Em qualquer modo o processo es
 
 ## Criar o banco (uma vez)
 
-Requer o Postgres 18 local. O script `db/setup-local.sql` cria o usuário `neurons` e o database `neurons_dev`. Ele é idempotente (pode rodar de novo; a senha do usuário é redefinida) e recebe a senha por parâmetro, sem gravá-la em arquivo. Rode como superusuário `postgres` (o `psql` pede a senha dele):
+Só para o modo `NEURONS_DB=postgres` (o banco embutido não precisa de nada disso). Requer o Postgres 18 local. O script `db/setup-local.sql` cria o usuário `neurons` e o database `neurons_dev`. Ele é idempotente (pode rodar de novo; a senha do usuário é redefinida) e recebe a senha por parâmetro, sem gravá-la em arquivo. Rode como superusuário `postgres` (o `psql` pede a senha dele):
 
 ```powershell
 & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h 127.0.0.1 -v neurons_password="ESCOLHA_UMA_SENHA" -f apps/server/db/setup-local.sql
@@ -49,6 +61,7 @@ Requer o Postgres 18 local. O script `db/setup-local.sql` cria o usuário `neuro
 Depois configure o `.env` do servidor:
 
 ```dotenv
+NEURONS_DB=postgres
 NEURONS_DB_HOST=127.0.0.1
 NEURONS_DB_USER=neurons
 NEURONS_DB_NAME=neurons_dev
@@ -70,15 +83,21 @@ pnpm --filter @neurons/server build    # compila para dist/
 pnpm --filter @neurons/server start    # roda o build
 ```
 
-Verificação rápida: `http://127.0.0.1:3100/health`. Retorna 200 com `status: "ok"` (inclusive sem banco configurado) ou 503 com `status: "degraded"` quando o banco está configurado mas não responde. Erros HTTP têm sempre o formato `{ "code": "...", "message": "..." }`.
+Verificação rápida: `http://127.0.0.1:3100/health`. O campo `database.type` diz qual banco está em uso (`embedded` ou `postgres`) e `database.status` o estado (`up`, `down` ou `not_configured`). Retorna 200 com `status: "ok"` (inclusive sem banco configurado) ou 503 com `status: "degraded"` quando o banco está configurado mas não responde. Erros HTTP têm sempre o formato `{ "code": "...", "message": "..." }`.
 
 ## Banco e migrations
 
-O schema fica em `src/database/schema/` e as migrations versionadas em `drizzle/`.
+O schema fica em `src/database/schema/` e as migrations versionadas em `drizzle/`; as **mesmas** migrations rodam nos dois bancos.
+
+Quem cria o Drizzle é um `DatabaseProvider` (`src/database/database.provider.ts`), com dois adaptadores: `PgliteDatabaseProvider` (`drizzle-orm/pglite`, dados em `<NEURONS_DATA_DIR>/db`) e `PostgresDatabaseProvider` (`pg`). O resto do código recebe um `db` tipado pela base comum do Drizzle (`PgDatabase`) e não sabe qual driver está por trás. O que importa saber:
+
+- **Migrations:** no embutido são aplicadas na partida (o usuário do app não tem como rodar comando); no Postgres, pelo `db:migrate`, para que várias instâncias do servidor na nuvem não disputem a migração.
+- **Concorrência:** o PGlite tem uma conexão só; o cliente enfileira as transações, então `send`s simultâneos do Hub serializam (sem erro e sem `seq` repetido). Dentro de `db.transaction`, use sempre o `tx`: usar o `db` por fora trava esperando a própria transação.
+- **Encerramento:** o PGlite é fechado no shutdown do Nest (`onApplicationShutdown`), o que grava os arquivos de forma consistente. Só um processo por vez pode usar uma pasta de dados.
 
 ```bash
 pnpm --filter @neurons/server db:generate -- --name descricao_curta   # gera uma migration a partir do schema
-pnpm --filter @neurons/server db:migrate                              # aplica as pendentes
+pnpm --filter @neurons/server db:migrate                              # aplica as pendentes no banco da config (com o embutido, o servidor não pode estar rodando)
 ```
 
 Tabelas: `graphs`, `graph_versions`, `runs`, `messages`, `run_events`, `secrets`. Duas regras vivem no próprio banco (migration `immutable_tables`): `graph_versions` e `run_events` rejeitam `UPDATE`, então versões publicadas e o log de eventos são imutáveis mesmo se algum cliente tentar alterá-los.
@@ -105,7 +124,7 @@ Na reconexão o cliente reenvia `subscribe` com `fromSeq`. O histórico vem de `
 src/
   main.ts, create-app.ts, app.module.ts   entrada e composição
   shared/        config (zod), erros de domínio, filtro HTTP
-  database/      pool, schema Drizzle, migrator
+  database/      DatabaseProvider (PGlite e Postgres), schema Drizzle, migrations
   graphs/        GraphVersionService + repositórios (porta e adaptador Drizzle)
   secrets/       SecretsService, cifra AES-GCM, repositório
   realtime/      gateway /ws e registro de assinaturas
@@ -134,8 +153,8 @@ Um runtime novo implementa `AgentRuntime` (`src/agents/agent-runtime.ts`) e é e
 ## Testes
 
 ```bash
-pnpm --filter @neurons/server test               # unitários, sem banco (entram no `turbo test`)
-pnpm --filter @neurons/server test:integration   # migrations, repositórios e Hub em Postgres 18 real
+pnpm --filter @neurons/server test               # unitários + suítes de banco no PGlite, sem Docker (entram no `turbo test`)
+pnpm --filter @neurons/server test:integration   # as mesmas suítes de banco em Postgres 18 real
 ```
 
-Os testes de integração (`*.int.test.ts`) usam Testcontainers e precisam do **Docker Desktop em execução**; ficam fora do `turbo test`. Na primeira vez, baixam a imagem `postgres:18`.
+As suítes de banco (`*.int.test.ts`: migrations, repositórios, segredos e Hub) são escritas uma vez só e rodam nos dois bancos: o Vitest tem um projeto por banco (`provide: { databaseKind }`) e `startTestDatabase()` abre o que o projeto pede. No `test` rodam em PGlite em memória, sem Docker (então rodam também no CI de Windows e macOS). No `test:integration` rodam em Postgres 18 via Testcontainers, que precisa do **Docker Desktop em execução** (na primeira vez baixa a imagem `postgres:18`). Abrir o PGlite leva alguns segundos (WASM + initdb), por isso os timeouts de 60 s.

@@ -17,6 +17,7 @@
     "db:migrate": "tsx --env-file-if-exists=.env src/database/migrate-cli.ts"
   },
   "dependencies": {
+    "@electric-sql/pglite": "0.5.13",
     "@nestjs/common": "12.3.2",
     "@nestjs/core": "12.3.2",
     "@nestjs/platform-fastify": "12.3.2",

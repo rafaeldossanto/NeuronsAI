@@ -1,58 +1,46 @@
-import { Inject, Injectable, Logger, type OnApplicationShutdown } from "@nestjs/common";
-import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import pg from "pg";
-import type { AppConfig, DatabaseConnection } from "../shared/config/app-config.js";
-import { APP_CONFIG } from "../shared/config/tokens.js";
+import { Injectable, Logger, type OnApplicationShutdown } from "@nestjs/common";
+import { sql } from "drizzle-orm";
+import type { DatabaseKind } from "../shared/config/app-config.js";
 import { DatabaseNotConfiguredError } from "./database-not-configured.error.js";
-import * as schema from "./schema/index.js";
+import type { Database, DatabaseProvider } from "./database.provider.js";
 
-export type Database = NodePgDatabase<typeof schema>;
-export type DatabaseTransaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
-
-const CONNECTION_TIMEOUT_MS = 2_000;
-
-export function createPool(connection: DatabaseConnection): pg.Pool {
-  return new pg.Pool({ ...connection, connectionTimeoutMillis: CONNECTION_TIMEOUT_MS });
-}
-
-export function createDatabase(pool: pg.Pool): Database {
-  return drizzle(pool, { schema });
-}
+export type { Database, DatabaseTransaction } from "./database.provider.js";
 
 /**
- * Owns the connection pool. The pool connects lazily, so the process can start (and report
- * the problem on /health) even when the database is not configured or not reachable yet.
+ * What the rest of the app talks to: the chosen {@link DatabaseProvider}, or nothing when Postgres
+ * was chosen without connection variables (the process still starts and /health reports it).
  */
 @Injectable()
 export class DatabaseService implements OnApplicationShutdown {
   private readonly logger = new Logger(DatabaseService.name);
-  private readonly pool?: pg.Pool;
-  private readonly database?: Database;
 
-  constructor(@Inject(APP_CONFIG) config: AppConfig) {
-    if (!config.database) return;
-    this.pool = createPool(config.database);
-    // An error on an idle client would otherwise crash the process.
-    this.pool.on("error", (error) => this.logger.error(`Erro no pool do banco: ${error.message}`));
-    this.database = createDatabase(this.pool);
-  }
+  constructor(
+    readonly kind: DatabaseKind,
+    private readonly provider?: DatabaseProvider,
+  ) {}
 
   get isConfigured(): boolean {
-    return this.database !== undefined;
+    return this.provider !== undefined;
   }
 
-  /** @throws DatabaseNotConfiguredError when no database variables were provided. */
+  /** @throws DatabaseNotConfiguredError when Postgres was chosen without connection variables. */
   get db(): Database {
-    if (!this.database) throw new DatabaseNotConfiguredError();
-    return this.database;
+    if (!this.provider) throw new DatabaseNotConfiguredError();
+    return this.provider.db;
+  }
+
+  /** Masks the connection's credentials in `text`, which a driver may have echoed in an error. */
+  redactSecrets(text: string): string {
+    return this.provider?.redactSecrets(text) ?? text;
   }
 
   async ping(): Promise<void> {
-    if (!this.pool) throw new DatabaseNotConfiguredError();
-    await this.pool.query("select 1");
+    await this.db.execute(sql`select 1`);
   }
 
   async onApplicationShutdown(): Promise<void> {
-    await this.pool?.end();
+    if (!this.provider) return;
+    await this.provider.close();
+    this.logger.log(`Banco fechado (${this.provider.description}).`);
   }
 }

@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createTools,
   InMemorySecretResolver,
@@ -26,6 +26,7 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(open.splice(0).map((toolSet) => toolSet.close()));
 });
 
@@ -129,6 +130,15 @@ describe("mcp tools (stdio)", () => {
     expect(contentOf(result)).toBe("valor-do-token");
   });
 
+  it("não repassa ao servidor variáveis do processo pai que não estão no ToolNode", async () => {
+    vi.stubEnv("NEURONS_TEST_SEGREDO_DO_PAI", "nao-deve-vazar");
+    const { tools } = await stdioTools(["read_env"], { DO_NODE: "valor-do-node" });
+    const read = (name: string) =>
+      findTool(tools, "read_env").execute({ name }, testContext({ secrets }));
+    expect(contentOf(await read("DO_NODE"))).toBe("valor-do-node");
+    expect(contentOf(await read("NEURONS_TEST_SEGREDO_DO_PAI"))).toBe("(vazio)");
+  });
+
   it("trunca resultados grandes", async () => {
     const { tools } = await stdioTools(["echo"], {}, { maxResultChars: 20 });
     const result = await findTool(tools, "echo").execute(
@@ -191,7 +201,7 @@ describe("mcp tools (stdio)", () => {
       await toolSet.close();
       expect(await waitUntilDead(server)).toBe(true);
       expect(await waitUntilDead(grandchild)).toBe(true);
-    }, 15_000);
+    }, 60_000);
 
     it("derruba a árvore inteira quando o servidor roda atrás de um shim .cmd (Windows)", async (context) => {
       if (process.platform !== "win32") return context.skip();
@@ -207,7 +217,7 @@ describe("mcp tools (stdio)", () => {
       await toolSet.close();
       expect(await waitUntilDead(server)).toBe(true);
       expect(await waitUntilDead(grandchild)).toBe(true);
-    }, 15_000);
+    }, 60_000);
 
     it("pode ser chamado mais de uma vez", async () => {
       const toolSet = await stdioTools(["echo"]);

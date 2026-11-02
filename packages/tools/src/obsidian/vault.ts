@@ -38,6 +38,7 @@ function lexicalSegments(requested: string): string[] {
   if (segments.length === 0) throw forbidden("caminho vazio ou inválido");
   if (segments.includes("..")) throw forbidden("não é permitido sair do cofre");
   if (segments.some((segment) => segment.includes(":"))) throw forbidden("caractere inválido");
+  if (segments.some(isForbiddenDir)) throw forbidden("pasta reservada do Obsidian");
   return segments;
 }
 
