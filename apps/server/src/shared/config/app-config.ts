@@ -19,6 +19,8 @@ export interface AppConfig {
   database?: DatabaseConnection;
   /** 32 raw bytes decoded from NEURONS_MASTER_KEY. Absent when not provided. */
   masterKey?: Buffer;
+  /** Path of the Claude Code executable (NEURONS_CLAUDE_BIN); absent means "find it". */
+  claudeBin?: string;
 }
 
 export class ConfigError extends Error {
@@ -47,6 +49,7 @@ const envSchema = z.object({
   NEURONS_DB_USER: unlessEmpty(z.string().trim().min(1).optional()),
   NEURONS_DB_NAME: unlessEmpty(z.string().trim().min(1).optional()),
   NEURONS_DB_PASSWORD: unlessEmpty(z.string().min(1).optional()),
+  NEURONS_CLAUDE_BIN: unlessEmpty(z.string().trim().min(1).optional()),
   NEURONS_MASTER_KEY: unlessEmpty(
     z
       .string()
@@ -99,5 +102,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     askTimeoutMs: values.NEURONS_ASK_TIMEOUT_SEC * 1000,
     ...(database && { database }),
     ...(masterKey && { masterKey: Buffer.from(masterKey, "base64") }),
+    ...(values.NEURONS_CLAUDE_BIN && { claudeBin: values.NEURONS_CLAUDE_BIN }),
   };
 }

@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "id": "0d6b9c1e-7a41-4f53-9d2e-3c58a7b1e4f2",
+  "name": "Dois terminais conversando",
+  "nodes": [
+    {
+      "id": "gatilho-1",
+      "type": "trigger",
+      "position": { "x": 0, "y": 120 },
+      "kind": "manual",
+      "target": "agente-pesquisador"
+    },
+    {
+      "id": "agente-pesquisador",
+      "type": "agent",
+      "position": { "x": 260, "y": 0 },
+      "name": "Pesquisador",
+      "role": "Pesquisa o tema pedido e valida o resumo com o Revisor",
+      "instructions": "Escreva um resumo de uma frase sobre o tema recebido. Antes de concluir, use a ferramenta ask para perguntar ao Revisor se o resumo está correto e espere a resposta. Quando o Revisor responder, chame a ferramenta finish com o resumo final.",
+      "effort": "low",
+      "runtime": {
+        "kind": "terminal",
+        "cli": "claude",
+        "mode": "pty",
+        "args": [],
+        "cwd": "C:\\Users\\exemplo\\Projetos\\meu-projeto"
+      }
+    },
+    {
+      "id": "agente-revisor",
+      "type": "agent",
+      "position": { "x": 560, "y": 0 },
+      "name": "Revisor",
+      "role": "Revisa resumos e responde às perguntas do Pesquisador",
+      "instructions": "Quando o Pesquisador lhe fizer uma pergunta, responda de forma curta usando a ferramenta reply com o id da pergunta. Não chame finish: quem encerra a execução é o Pesquisador.",
+      "effort": "low",
+      "runtime": {
+        "kind": "terminal",
+        "cli": "claude",
+        "mode": "stream-json",
+        "args": [],
+        "cwd": "C:\\Users\\exemplo\\Projetos\\meu-projeto"
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "ligacao-1",
+      "from": "agente-pesquisador",
+      "to": "agente-revisor",
+      "kind": "talk",
+      "bidirectional": true,
+      "maxMessages": 10
+    }
+  ],
+  "annotations": []
+}

@@ -2,7 +2,7 @@
 
 Servidor do NeuronsAI: NestJS 12 com adaptador Fastify, Postgres via Drizzle ORM e um gateway WebSocket para eventos de execução. Escuta **somente em `127.0.0.1`**.
 
-O Hub de mensagens (T06) está pronto; os runtimes reais de agentes (API e terminal) chegam nas tarefas T07 e T08 e a API REST na T10.
+O Hub de mensagens (T06) e os runtimes de terminal do Claude Code (T08, pacote `@neurons/agent-runtimes`) estão prontos; o runtime de API chega na T07 e a API REST na T10.
 
 ## Variáveis de ambiente
 
@@ -13,6 +13,7 @@ Copie `.env.example` para `.env` (ignorado pelo git) e preencha. Valores vazios 
 | `NEURONS_MODE`            | `all`  | `api`, `worker` ou `all`. Por ora só decide quais módulos sobem (ver abaixo).             |
 | `NEURONS_PORT`            | `3100` | Porta em `127.0.0.1`.                                                                     |
 | `NEURONS_ASK_TIMEOUT_SEC` | `120`  | Segundos que um `ask` espera pela resposta antes de falhar.                               |
+| `NEURONS_CLAUDE_BIN`      | —      | Caminho do executável do Claude Code usado pelos agentes de terminal. Vazio: procura sozinho (PATH, pastas dos instaladores e, no Windows, a CLI embutida no app desktop). |
 | `NEURONS_DB_URL`          | —      | URL completa do Postgres. Tem prioridade sobre as variáveis abaixo.                       |
 | `NEURONS_DB_HOST`         | —      | Host do banco.                                                                            |
 | `NEURONS_DB_PORT`         | `5432` | Porta do banco.                                                                           |

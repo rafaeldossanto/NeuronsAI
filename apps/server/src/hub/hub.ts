@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { AgentUsage } from "@neurons/agent-runtimes";
 import { peersOf, type AgentPeers, type GraphDefinition } from "@neurons/graph-schema";
 import type { MessageKind } from "../database/schema/index.js";
 import { RunEventRecorder } from "../run-log/run-event-recorder.js";
@@ -142,6 +143,13 @@ export class Hub {
     if (!findAgent(graph, agent)) return Promise.reject(unknownAgent("unknown_sender", agent));
     this.finishRequested.emit({ runId, agent, result });
     return Promise.resolve();
+  }
+
+  /** Writes what an agent's turn consumed to the run log. */
+  async reportUsage(runId: string, agent: string, usage: AgentUsage): Promise<void> {
+    const { graph } = this.registry.require(runId);
+    if (!findAgent(graph, agent)) throw unknownAgent("unknown_sender", agent);
+    await this.recorder.record(runId, [HubEvents.usageRecorded(agent, usage)]);
   }
 
   // ---- delivery bookkeeping, used by the Supervisor ----

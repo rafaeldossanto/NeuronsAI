@@ -16,7 +16,7 @@ Todo bloco tem `id` e `position: { x, y }`. Os blocos (`GraphNode`) são uma uni
 | `agent`   | `name` (endereço do `send_message`, `^[A-Za-z][A-Za-z0-9_-]{0,39}$`), `role`, `instructions`, `effort` (`low`…`max`), `budgetUsd?`, `idleTimeoutSec?`, `runtime` |
 | `tool`    | `name` e `tool`: `mcp` (`stdio` ou `http`, com `allowedTools`), `http` (`method`, `url`, `headers`, `bodySchema?`) ou `obsidian` (`vaultPath`, `readOnly: true`) |
 
-`runtime` do agente: `{ kind: "api", provider, model }` ou `{ kind: "terminal", cli, command?, args, cwd }` (`cli`: `claude`, `codex`, `gemini` ou `custom`; `command` é obrigatório em `custom`; `cwd` é um caminho absoluto, Windows ou POSIX).
+`runtime` do agente: `{ kind: "api", provider, model }` ou `{ kind: "terminal", cli, mode, command?, args, cwd }` (`cli`: `claude`, `codex`, `gemini` ou `custom`; `mode`: `pty` (padrão, a tela da CLI que o usuário vê e digita) ou `stream-json` (sessão estruturada, sem tela); `command` é obrigatório em `custom`; `cwd` é um caminho absoluto, Windows ou POSIX).
 
 **Ligações (`Link`)**: `{ id, from, to, kind, bidirectional (padrão false), maxMessages? }`.
 

@@ -1,8 +1,12 @@
+import type {
+  AgentCommunication,
+  AgentRuntime,
+  AgentRuntimeFactory,
+  AgentRuntimeState,
+  InboundMessage,
+} from "@neurons/agent-runtimes";
 import type { AgentNode, AgentPeers } from "@neurons/graph-schema";
 import { Signal, type Unsubscribe } from "../../shared/signal.js";
-import type { AgentCommunication } from "../agent-communication.js";
-import type { AgentRuntimeFactory } from "../agent-runtime-factory.js";
-import type { AgentRuntime, AgentRuntimeState, InboundMessage } from "../agent-runtime.js";
 
 /** What a scripted agent can do while it handles one message. */
 export interface FakeTurn {

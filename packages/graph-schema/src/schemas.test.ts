@@ -45,6 +45,21 @@ describe("agentNodeSchema", () => {
     );
   });
 
+  it("defaults the terminal mode to pty, so graphs saved before the field keep working", () => {
+    const parsed = agentNodeSchema.parse(withRuntime(terminalRuntime));
+    expect(parsed.runtime).toMatchObject({ kind: "terminal", mode: "pty" });
+  });
+
+  it.each(["pty", "stream-json"])("accepts the terminal mode %s", (mode) => {
+    const parsed = agentNodeSchema.parse(withRuntime({ ...terminalRuntime, mode }));
+    expect(parsed.runtime).toMatchObject({ kind: "terminal", mode });
+  });
+
+  it("rejects an unknown terminal mode", () => {
+    const result = agentNodeSchema.safeParse(withRuntime({ ...terminalRuntime, mode: "web" }));
+    expect(result.success).toBe(false);
+  });
+
   it("defaults terminal args to an empty list", () => {
     const parsed = agentNodeSchema.parse(withRuntime(terminalRuntime));
     expect(parsed.runtime).toMatchObject({ kind: "terminal", args: [] });

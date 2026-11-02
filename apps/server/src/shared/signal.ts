@@ -1,34 +1,14 @@
 import { Logger } from "@nestjs/common";
+import { Signal as BaseSignal } from "@neurons/agent-runtimes";
 
-export type Unsubscribe = () => void;
-
-type Listener<T> = (value: T) => void | Promise<void>;
+export type { Unsubscribe } from "@neurons/agent-runtimes";
 
 const logger = new Logger("Signal");
 
-/**
- * Minimal synchronous event source. A failing listener (thrown or rejected) is logged and never
- * affects the emitter nor the other listeners.
- */
-export class Signal<T> {
-  private readonly listeners = new Set<Listener<T>>();
-
-  subscribe(listener: Listener<T>): Unsubscribe {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  }
-
-  emit(value: T): void {
-    for (const listener of [...this.listeners]) {
-      try {
-        const outcome = listener(value);
-        if (outcome) outcome.catch(logListenerError);
-      } catch (error) {
-        logListenerError(error);
-      }
-    }
+/** The runtimes' signal, with listener failures going to the Nest logger. */
+export class Signal<T> extends BaseSignal<T> {
+  constructor() {
+    super(logListenerError);
   }
 }
 

@@ -1,3 +1,4 @@
+import type { AgentUsage } from "@neurons/agent-runtimes";
 import type { RunEventDraft } from "../run-log/run-event-draft.js";
 import type { MessageRecord } from "./message.js";
 
@@ -33,6 +34,13 @@ export const HubEvents = {
     type: "AgentStarted",
     agent,
     payload: { briefing },
+  }),
+
+  /** What one turn of an agent consumed, as its runtime reports it. */
+  usageRecorded: (agent: string, usage: AgentUsage): RunEventDraft => ({
+    type: "UsageRecorded",
+    agent,
+    payload: usage,
   }),
 
   agentFailed: (agent: string, reason: string): RunEventDraft => ({

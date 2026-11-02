@@ -19,6 +19,13 @@ describe("loadConfig", () => {
     expect(config).toEqual({ mode: "all", port: 3100, askTimeoutMs: 120_000 });
   });
 
+  it("reads the path of the Claude Code executable, which is optional", () => {
+    expect(loadConfig({ NEURONS_CLAUDE_BIN: " C:\Tools\claude.exe " }).claudeBin).toBe(
+      "C:\Tools\claude.exe",
+    );
+    expect(loadConfig({ NEURONS_CLAUDE_BIN: "" })).not.toHaveProperty("claudeBin");
+  });
+
   it("reads the ask timeout in seconds", () => {
     expect(loadConfig({ NEURONS_ASK_TIMEOUT_SEC: "30" }).askTimeoutMs).toBe(30_000);
   });

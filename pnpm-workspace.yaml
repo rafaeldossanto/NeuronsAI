@@ -4,5 +4,9 @@ packages:
 allowBuilds:
   cpu-features: false
   esbuild: false
+  # node-pty: on Windows the prebuilt binary in the package is enough, but its install script is what
+  # compiles it on Linux (no prebuild there) and its postinstall makes spawn-helper executable on
+  # macOS. With a prebuild present the script exits at once, so Windows needs no compiler.
+  node-pty: true
   protobufjs: false
   ssh2: false

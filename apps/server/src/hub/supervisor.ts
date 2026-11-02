@@ -1,10 +1,13 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import { peersOf, type AgentNode } from "@neurons/graph-schema";
 import {
-  AGENT_RUNTIME_FACTORY,
+  isTerminalRuntime,
+  type AgentRuntime,
   type AgentRuntimeFactory,
-} from "../agents/agent-runtime-factory.js";
-import type { AgentRuntime, AgentRuntimeState } from "../agents/agent-runtime.js";
+  type AgentRuntimeState,
+} from "@neurons/agent-runtimes";
+import { peersOf, type AgentNode } from "@neurons/graph-schema";
+import { AGENT_RUNTIME_FACTORY } from "../agents/agent-runtime-factory.js";
+import { TerminalSessions } from "../realtime/terminal-sessions.js";
 import { RunEventRecorder } from "../run-log/run-event-recorder.js";
 import { RUN_REPOSITORY, type RunRepository } from "../run-log/run-repository.js";
 import { Signal, type Unsubscribe } from "../shared/signal.js";
@@ -36,6 +39,8 @@ interface AgentSlot {
   /** Something changed while pumping: look at the inbox once more. */
   repump: boolean;
   unsubscribe: Unsubscribe;
+  /** Stops publishing the terminal output of a terminal runtime. */
+  detachTerminal: Unsubscribe;
 }
 
 /**
@@ -56,6 +61,7 @@ export class Supervisor {
     @Inject(RunRegistry) private readonly registry: RunRegistry,
     @Inject(RUN_REPOSITORY) private readonly runs: RunRepository,
     @Inject(RunEventRecorder) private readonly recorder: RunEventRecorder,
+    @Inject(TerminalSessions) private readonly terminals: TerminalSessions,
   ) {
     this.hub.messageRecorded.subscribe((message) => this.onMessage(message));
     this.hub.askClosed.subscribe((runId) => this.settled.emit(runId));
@@ -136,6 +142,7 @@ export class Supervisor {
       pumping: false,
       repump: false,
       unsubscribe: () => undefined,
+      detachTerminal: () => undefined,
     };
     bySlot.set(agentName, slot);
     slot.booted = this.boot(slot, buildBriefing(agent, peersOf(graph, agentName)));
@@ -148,6 +155,10 @@ export class Supervisor {
       const runtime = this.factory.create(slot.agent, communication);
       slot.runtime = runtime;
       slot.unsubscribe = runtime.onStateChange((state) => this.onStateChange(slot, state));
+      // Before `start`, so what the CLI prints while booting (dialogs, login) is watchable too.
+      if (isTerminalRuntime(runtime)) {
+        slot.detachTerminal = this.terminals.attach(slot.runId, slot.agent.name, runtime);
+      }
       await this.recorder.record(slot.runId, [HubEvents.agentStarted(slot.agent.name, briefing)]);
       await runtime.start(briefing);
     } catch (error) {
@@ -183,6 +194,7 @@ export class Supervisor {
     } catch (error) {
       this.logger.error(`Falha ao parar "${slot.agent.name}": ${errorMessage(error)}`);
     }
+    slot.detachTerminal();
   }
 
   // ---- inbox ----

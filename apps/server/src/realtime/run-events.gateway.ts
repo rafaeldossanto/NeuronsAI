@@ -9,6 +9,7 @@ import type { WebSocket } from "ws";
 import type { ZodError } from "zod";
 import type { EventSink } from "./run-event.js";
 import { RunSubscriptions } from "./run-subscriptions.js";
+import { TerminalSessions } from "./terminal-sessions.js";
 import { subscribeMessageSchema, unsubscribeMessageSchema } from "./subscribe-message.js";
 
 type Reply = WsResponse<unknown>;
@@ -16,11 +17,15 @@ type Reply = WsResponse<unknown>;
 /**
  * WebSocket endpoint at /ws. Wire format is `{ event, data }` in both directions:
  *   client -> `subscribe { runId, fromSeq? }` | `unsubscribe { runId }`
- *   server -> `subscribed`, `unsubscribed`, `error { code, message }` and `run.event { ...RunEvent }`
+ *   server -> `subscribed`, `unsubscribed`, `error { code, message }`, `run.event { ...RunEvent }` and
+ *             `run.ephemeral { ...EphemeralRunEvent }` (live only: terminal output, never stored)
  */
 @WebSocketGateway({ path: "/ws" })
 export class RunEventsGateway implements OnGatewayDisconnect {
-  constructor(@Inject(RunSubscriptions) private readonly subscriptions: RunSubscriptions) {}
+  constructor(
+    @Inject(RunSubscriptions) private readonly subscriptions: RunSubscriptions,
+    @Inject(TerminalSessions) private readonly terminals: TerminalSessions,
+  ) {}
 
   @SubscribeMessage("subscribe")
   async subscribe(client: WebSocket, payload: unknown): Promise<Reply> {
@@ -28,7 +33,9 @@ export class RunEventsGateway implements OnGatewayDisconnect {
     if (!parsed.success) return invalidMessage("subscribe", parsed.error);
 
     const { runId, fromSeq } = parsed.data;
-    await this.subscriptions.subscribe(socketSink(client), runId, fromSeq);
+    const sink = socketSink(client);
+    await this.subscriptions.subscribe(sink, runId, fromSeq);
+    this.terminals.replayTo(sink, runId);
     return { event: "subscribed", data: { runId } };
   }
 
@@ -52,7 +59,10 @@ const sinks = new WeakMap<WebSocket, EventSink>();
 function socketSink(socket: WebSocket): EventSink {
   let sink = sinks.get(socket);
   if (!sink) {
-    sink = { send: (event) => socket.send(JSON.stringify({ event: "run.event", data: event })) };
+    sink = {
+      send: (event) => socket.send(JSON.stringify({ event: "run.event", data: event })),
+      sendEphemeral: (event) => socket.send(JSON.stringify({ event: "run.ephemeral", data: event })),
+    };
     sinks.set(socket, sink);
   }
   return sink;
