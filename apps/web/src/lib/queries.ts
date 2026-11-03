@@ -1,0 +1,71 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { unwrap, useApi } from "./api";
+
+const LIVE_STATUSES = new Set(["pending", "running"]);
+
+export function useGraphs() {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["graphs"],
+    queryFn: () => unwrap(api.GET("/graphs")).then((r) => r.items),
+  });
+}
+
+export function useCreateGraph() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => unwrap(api.POST("/graphs", { body: { name } })),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"] }),
+  });
+}
+
+export function useGraph(id: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["graphs", id],
+    queryFn: () => unwrap(api.GET("/graphs/{id}", { params: { path: { id } } })),
+  });
+}
+
+export function useGraphVersions(id: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["graphs", id, "versions"],
+    queryFn: () =>
+      unwrap(api.GET("/graphs/{id}/versions", { params: { path: { id } } })).then((r) => r.items),
+  });
+}
+
+export function useRuns() {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["runs"],
+    queryFn: () =>
+      unwrap(api.GET("/runs", { params: { query: { limit: 100 } } })).then((r) => r.items),
+    refetchInterval: (query) =>
+      query.state.data?.some((run) => LIVE_STATUSES.has(run.status)) ? 3000 : false,
+  });
+}
+
+export function useRun(id: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["runs", id],
+    queryFn: () => unwrap(api.GET("/runs/{id}", { params: { path: { id } } })),
+    refetchInterval: (query) =>
+      query.state.data && LIVE_STATUSES.has(query.state.data.status) ? 2000 : false,
+  });
+}
+
+export function useRunEvents(id: string, live: boolean) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["runs", id, "events"],
+    queryFn: () =>
+      unwrap(
+        api.GET("/runs/{id}/events", { params: { path: { id }, query: { limit: 500 } } }),
+      ).then((r) => r.items),
+    refetchInterval: live ? 2000 : false,
+  });
+}
