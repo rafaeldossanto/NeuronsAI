@@ -1,0 +1,69 @@
+@import "tailwindcss";
+@import "@fontsource-variable/manrope";
+
+/* Design tokens (from the landing page): the one place where colors, type and radii are defined.
+   Names follow shadcn/ui's CSS variables. No blue anywhere. */
+:root {
+  --background: #f7f7f4;
+  --foreground: #1d1f26;
+  --card: #fdfdfb;
+  --card-foreground: #1d1f26;
+  --muted: #efefea;
+  --muted-foreground: #73747f;
+  --border: #e1e1da;
+  --input: #d6d6cd;
+  --primary: #1d1f26;
+  --primary-foreground: #f7f7f4;
+  --accent: #e9a15c;
+  --accent-foreground: #1d1f26;
+  --destructive: #b4452f;
+  --ring: #e9a15c;
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-ring: var(--ring);
+  --font-sans: "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: 1rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@keyframes pulse-amber {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
