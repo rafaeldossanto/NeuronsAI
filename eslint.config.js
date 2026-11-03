@@ -42,6 +42,7 @@ export default tseslint.config(
     files: [
       "apps/server/src/shared/config/**",
       "packages/mcp-neurons/src/config.ts",
+      "packages/runner/src/config.ts",
       "packages/agent-runtimes/src/platform/host-environment.ts",
       "packages/tools/test/fixtures/**",
     ],

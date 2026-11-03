@@ -10,6 +10,8 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     askTimeoutMs: 5_000,
     usageFlushMs: 0,
     guards: { runMaxMessages: 200, pingPongMessages: 20 },
+    profile: "local",
+    runners: { graceMs: 60_000, heartbeatMs: 15_000, waitMs: 1_000 },
     dataDir: "unused",
     database: { kind: "embedded" },
     masterKey: randomBytes(32),

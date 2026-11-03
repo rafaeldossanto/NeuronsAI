@@ -2,33 +2,37 @@
 
 Servidor do NeuronsAI: NestJS 12 com adaptador Fastify, Drizzle ORM sobre um banco embutido (PGlite) ou Postgres, e um gateway WebSocket para eventos de execução. Escuta **somente em endereços locais** (`127.0.0.1` por padrão) porque ainda não há login.
 
-O Hub de mensagens (T06), os runtimes de terminal do Claude Code (T08, pacote `@neurons/agent-runtimes`), as guardas e a API REST (T10) estão prontos; o runtime de API chega na T07.
+O Hub de mensagens (T06), os runtimes de terminal do Claude Code (T08, pacote `@neurons/agent-runtimes`), as guardas e a API REST (T10) e o protocolo de runner (T24, os agentes rodam num runner embutido ou separado) estão prontos; o runtime de API chega na T07.
 
 ## Variáveis de ambiente
 
 Copie `.env.example` para `.env` (ignorado pelo git) e preencha. Valores vazios contam como "não definido". Qualquer valor inválido derruba o processo na partida, com uma mensagem listando todos os problemas.
 
-| Variável                     | Padrão      | Descrição                                                                                                                                                                  |
-| ---------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NEURONS_MODE`               | `all`       | `api`, `worker` ou `all`. Por ora só decide quais módulos sobem (ver abaixo).                                                                                              |
-| `NEURONS_HOST`               | `127.0.0.1` | Onde escutar. Qualquer endereço que não seja local (`127.x`, `::1`, `localhost`) exige também `NEURONS_ALLOW_REMOTE=true`: sem login, quem alcança a porta usa a API.      |
-| `NEURONS_ALLOW_REMOTE`       | `false`     | Confirma que o servidor pode escutar fora desta máquina.                                                                                                                   |
-| `NEURONS_PORT`               | `3100`      | Porta do servidor.                                                                                                                                                         |
-| `NEURONS_RUN_MAX_MESSAGES`   | `200`       | Mensagens (de qualquer tipo) que uma execução troca antes de ser parada pela guarda.                                                                                       |
-| `NEURONS_PING_PONG_MESSAGES` | `20`        | Mensagens seguidas entre os mesmos dois agentes, sem ninguém mais, até a guarda de pingue-pongue parar a execução (mínimo 2).                                              |
-| `NEURONS_RUN_BUDGET_USD`     | —           | Orçamento em US$ de uma execução que não define o seu. Vazio: sem limite.                                                                                                  |
-| `NEURONS_USAGE_FLUSH_MS`     | `4000`      | Ao parar, quanto tempo esperar o turno que estava em andamento terminar e informar o uso (o custo da última resposta chega depois do `finish`).                            |
-| `NEURONS_ASK_TIMEOUT_SEC`    | `120`       | Segundos que um `ask` espera pela resposta antes de falhar.                                                                                                                |
-| `NEURONS_CLAUDE_BIN`         | —           | Caminho do executável do Claude Code usado pelos agentes de terminal. Vazio: procura sozinho (PATH, pastas dos instaladores e, no Windows, a CLI embutida no app desktop). |
-| `NEURONS_DB`                 | `embedded`  | `embedded` (PGlite, dentro do processo) ou `postgres`. As variáveis `NEURONS_DB_*` abaixo só valem com `postgres`.                                                         |
-| `NEURONS_DATA_DIR`           | por sistema | Pasta de dados do app (ver abaixo). O banco embutido fica em `<pasta>/db`.                                                                                                 |
-| `NEURONS_DB_URL`             | —           | URL completa do Postgres. Tem prioridade sobre as variáveis abaixo.                                                                                                        |
-| `NEURONS_DB_HOST`            | —           | Host do banco.                                                                                                                                                             |
-| `NEURONS_DB_PORT`            | `5432`      | Porta do banco.                                                                                                                                                            |
-| `NEURONS_DB_USER`            | —           | Usuário do banco.                                                                                                                                                          |
-| `NEURONS_DB_NAME`            | —           | Nome do database.                                                                                                                                                          |
-| `NEURONS_DB_PASSWORD`        | —           | Senha do banco.                                                                                                                                                            |
-| `NEURONS_MASTER_KEY`         | —           | Chave AES-256 (32 bytes em base64) que cifra os segredos. Sem ela, só os segredos falham.                                                                                  |
+| Variável                       | Padrão      | Descrição                                                                                                                                                                          |
+| ------------------------------ | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEURONS_MODE`                 | `all`       | `api`, `worker` ou `all`. Por ora só decide quais módulos sobem (ver abaixo).                                                                                                      |
+| `NEURONS_HOST`                 | `127.0.0.1` | Onde escutar. Qualquer endereço que não seja local (`127.x`, `::1`, `localhost`) exige também `NEURONS_ALLOW_REMOTE=true`: sem login, quem alcança a porta usa a API.              |
+| `NEURONS_ALLOW_REMOTE`         | `false`     | Confirma que o servidor pode escutar fora desta máquina.                                                                                                                           |
+| `NEURONS_PORT`                 | `3100`      | Porta do servidor.                                                                                                                                                                 |
+| `NEURONS_RUN_MAX_MESSAGES`     | `200`       | Mensagens (de qualquer tipo) que uma execução troca antes de ser parada pela guarda.                                                                                               |
+| `NEURONS_PING_PONG_MESSAGES`   | `20`        | Mensagens seguidas entre os mesmos dois agentes, sem ninguém mais, até a guarda de pingue-pongue parar a execução (mínimo 2).                                                      |
+| `NEURONS_RUN_BUDGET_USD`       | —           | Orçamento em US$ de uma execução que não define o seu. Vazio: sem limite.                                                                                                          |
+| `NEURONS_USAGE_FLUSH_MS`       | `4000`      | Ao parar, quanto tempo esperar o turno que estava em andamento terminar e informar o uso (o custo da última resposta chega depois do `finish`).                                    |
+| `NEURONS_ASK_TIMEOUT_SEC`      | `120`       | Segundos que um `ask` espera pela resposta antes de falhar.                                                                                                                        |
+| `NEURONS_PROFILE`              | `local`     | Onde os agentes rodam: `local` (runner embutido neste processo), `hybrid` (runners que se conectam a `/runner`) ou `hosted` (igual ao `hybrid` até a T26). Ver "Runners e perfis". |
+| `NEURONS_RUNNER_GRACE_SEC`     | `60`        | Quanto tempo um runner que perdeu a conexão pode levar para voltar antes de seus agentes falharem.                                                                                 |
+| `NEURONS_RUNNER_HEARTBEAT_SEC` | `15`        | Intervalo do sinal de vida entre servidor e runner (3 perdidos fecham a conexão) e da checagem de token revogado.                                                                  |
+| `NEURONS_RUNNER_WAIT_SEC`      | `30`        | Quanto tempo iniciar um agente espera por um runner conectado antes de falhar.                                                                                                     |
+| `NEURONS_CLAUDE_BIN`           | —           | Caminho do executável do Claude Code usado pelos agentes de terminal. Vazio: procura sozinho (PATH, pastas dos instaladores e, no Windows, a CLI embutida no app desktop).         |
+| `NEURONS_DB`                   | `embedded`  | `embedded` (PGlite, dentro do processo) ou `postgres`. As variáveis `NEURONS_DB_*` abaixo só valem com `postgres`.                                                                 |
+| `NEURONS_DATA_DIR`             | por sistema | Pasta de dados do app (ver abaixo). O banco embutido fica em `<pasta>/db`.                                                                                                         |
+| `NEURONS_DB_URL`               | —           | URL completa do Postgres. Tem prioridade sobre as variáveis abaixo.                                                                                                                |
+| `NEURONS_DB_HOST`              | —           | Host do banco.                                                                                                                                                                     |
+| `NEURONS_DB_PORT`              | `5432`      | Porta do banco.                                                                                                                                                                    |
+| `NEURONS_DB_USER`              | —           | Usuário do banco.                                                                                                                                                                  |
+| `NEURONS_DB_NAME`              | —           | Nome do database.                                                                                                                                                                  |
+| `NEURONS_DB_PASSWORD`          | —           | Senha do banco.                                                                                                                                                                    |
+| `NEURONS_MASTER_KEY`           | —           | Chave AES-256 (32 bytes em base64) que cifra os segredos. Sem ela, só os segredos falham.                                                                                          |
 
 Por padrão (`NEURONS_DB=embedded`) o servidor sobe **sem Postgres nenhum**: o banco é o PGlite e as migrations são aplicadas na partida. Com `NEURONS_DB=postgres` e nenhuma variável `NEURONS_DB_*` o servidor também sobe, e `GET /health` informa `database.status = "not_configured"`. O mesmo vale para a chave mestra.
 
@@ -55,6 +59,32 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 | `all`    | tudo                                                         |
 
 Módulos comuns: `database`, `secrets`, `health`. Em qualquer modo o processo escuta HTTP em `NEURONS_HOST` (local por padrão).
+
+## Runners e perfis
+
+Os agentes de terminal (Claude Code) não rodam no Hub: rodam num **runner**, que o servidor comanda pelo protocolo de [`@neurons/runner-protocol`](../../packages/runner-protocol/README.md) (decisão D14: onde o agente roda é configuração, não código). O Hub, o Supervisor e as guardas falam com um `RemoteAgentRuntime`, que implementa a mesma `AgentRuntime` de sempre.
+
+| Perfil (`NEURONS_PROFILE`) | Quem hospeda os agentes                                                                                                                                          |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `local` (padrão)           | Um runner **embutido** neste processo, ligado por um canal em memória que usa o mesmo protocolo. Não aceita runners de fora (`/runner` responde `not_accepted`). |
+| `hybrid`                   | Runners **separados** que abrem uma conexão de saída para `ws://<servidor>/runner`, cada um com seu token. Nada roda no servidor.                                |
+| `hosted`                   | Igual ao `hybrid` por enquanto; muda quando os runners passarem a ser operados na nuvem (T26).                                                                   |
+
+**Token por runner.** O servidor emite, o runner apresenta, o servidor confere. Só o SHA-256 fica no banco (tabela `runners`):
+
+```bash
+pnpm --filter @neurons/server runner:token create meu-notebook   # mostra o token uma única vez
+pnpm --filter @neurons/server runner:token list                  # nome, ativo/revogado, última conexão
+pnpm --filter @neurons/server runner:token revoke meu-notebook   # recusa o runner e derruba o conectado
+```
+
+O token vai no cabeçalho `Authorization: Bearer` do upgrade do WebSocket (nunca no endereço) e não aparece em log, evento nem frame; o runner é configurado como em [`@neurons/runner`](../../packages/runner/README.md). Com o banco embutido, o comando precisa que o servidor não esteja rodando (só um processo por pasta de dados): num servidor de verdade use Postgres. O servidor continua escutando só em `127.0.0.1`; para um runner de outra máquina alcançá-lo é preciso `NEURONS_HOST` + `NEURONS_ALLOW_REMOTE=true` (ou um proxy com TLS na frente).
+
+**Escolha do runner.** Um agente novo vai ao runner conectado com menos agentes; se não há nenhum, espera até `NEURONS_RUNNER_WAIT_SEC` e falha com `no_runner_available`.
+
+**Conexão que cai.** Os agentes do runner continuam rodando. O servidor espera `NEURONS_RUNNER_GRACE_SEC` pelo runner: ao voltar, ele manda o estado dos agentes que ainda tem, o servidor reenvia o que ele não respondeu (iniciar, entregar, parar) e o runner reenvia as chamadas ao Hub sem resposta. Cada reenvio é idempotente (por id), então nenhuma mensagem se perde nem chega duas vezes. Se o prazo passa, ou se o runner volta sem o agente (reiniciou), o agente vira `AgentFailed` no log com o motivo, como qualquer outra falha. A saída do terminal é efêmera: o que passou durante a queda não é reenviado.
+
+**Revogação.** Revogar um token recusa novas conexões e derruba a ativa na próxima checagem (a cada `NEURONS_RUNNER_HEARTBEAT_SEC`). Um runner recusado (`unauthorized`, `unsupported_protocol`, `not_accepted`) não tenta de novo.
 
 ## Criar o banco (uma vez)
 
@@ -122,6 +152,8 @@ Parar uma execução (ou um agente) por exceder um limite nunca é silencioso: o
 | `agent_budget`      | `BudgetGuard`, ao registrar o uso | Custo conhecido do agente >= `budgetUsd` do bloco: **só esse agente** é parado.                                                                                                                                                                              |
 | `idle_timeout`      | `IdleWatchdog`                    | Agente `busy` por `idleTimeoutSec` sem sinal de vida (mensagem, `ask`, `reply`, `list_peers`, uso ou `finish` recomeçam a contagem). Em `waiting_reply` o relógio para (o `ask` tem timeout próprio). Para só o agente.                                      |
 
+**O `total_cost_usd` do stream-json é acumulado na sessão** (medido com o Claude Code real na T24), então o runtime reporta a diferença entre um `result` e o anterior: o `UsageRecorded` de cada turno traz o custo daquele turno, e a soma dos turnos é o total, o mesmo número que o `--max-budget-usd` do CLI compara.
+
 **Custo desconhecido nunca vira zero.** O evento `UsageRecorded` grava `costUsd: null` quando o runtime não informou o preço; esses turnos ficam à parte (`unknownCostTurns`, visível em `GET /runs/{id}`, onde `costUsd` passa a ser um limite inferior). Quando há um orçamento que isso impede de respeitar, um `GuardWarning` avisa uma vez por agente: `runtime_without_cost` (o runtime nunca informa custo: o terminal em modo PTY, `AgentRuntime.reportsCost = false`) ou `cost_unknown` (um turno veio sem custo). O orçamento só vale para o custo que o runtime informa; o stream-json informa, e o CLI recebe também `--max-budget-usd`.
 
 **O último uso não se perde.** O `finish` chega no meio de um turno e o `result` do stream-json (com o uso) vem depois. Por isso o `RunService` para os runtimes **antes** de gravar `RunFinished`, o `stop()` do stream-json espera até `NEURONS_USAGE_FLUSH_MS` (**4 s**) o turno terminar, e o Hub aceita o uso de uma execução que está se encerrando.
@@ -139,6 +171,8 @@ pnpm api:check      # falha se o que está commitado ficou velho (roda no CI)
 
 `pnpm --filter @neurons/server demo` sobe o servidor no próprio processo, publica o `two-terminals.json` (dois agentes de terminal) e roda a execução **pela API**, imprimindo os eventos que chegam pelo WebSocket. O CLI é o de mentira (`packages/agent-runtimes/test-fixtures/fake-claude.mjs`, injetado por `AppConfig.claudeCommand`): não gasta nada e termina em segundos. O código de saída é 0 só se a execução terminar com `finish`. Com `-- --real-claude` usa o Claude Code de verdade (modelo `haiku`, os dois agentes em `stream-json`): **gasta a cota da assinatura**, rode uma vez.
 
+`-- --profile=hybrid` roda **a mesma execução** com o runner em **outro processo** (`demo/runner-process.ts`, que usa o `@neurons/runner`): a demo emite um token, inicia o processo, espera ele se conectar por WebSocket e imprime os mesmos eventos. Só o perfil muda.
+
 ## Banco e migrations
 
 O schema fica em `src/database/schema/` e as migrations versionadas em `drizzle/`; as **mesmas** migrations rodam nos dois bancos.
@@ -154,7 +188,7 @@ pnpm --filter @neurons/server db:generate -- --name descricao_curta   # gera uma
 pnpm --filter @neurons/server db:migrate                              # aplica as pendentes no banco da config (com o embutido, o servidor não pode estar rodando)
 ```
 
-Tabelas: `graphs`, `graph_versions`, `runs`, `messages`, `run_events`, `secrets`. Duas regras vivem no próprio banco (migration `immutable_tables`): `graph_versions` e `run_events` rejeitam `UPDATE`, então versões publicadas e o log de eventos são imutáveis mesmo se algum cliente tentar alterá-los.
+Tabelas: `graphs`, `graph_versions`, `runs`, `messages`, `run_events`, `secrets`, `runners`. Duas regras vivem no próprio banco (migration `immutable_tables`): `graph_versions` e `run_events` rejeitam `UPDATE`, então versões publicadas e o log de eventos são imutáveis mesmo se algum cliente tentar alterá-los.
 
 Os segredos são cifrados com AES-256-GCM (IV aleatório por valor, o nome do segredo entra como dado autenticado). O banco guarda só `ciphertext`, `iv` e `auth_tag`.
 
@@ -187,6 +221,7 @@ src/
   agents/        porta AgentRuntime (+ fábrica) e o FakeAgentRuntime dos testes
   run-log/       execuções e log de eventos (seq por execução), publicação após o commit
   hub/           Hub, políticas de mensagem, Supervisor, briefing
+  runners/       RemoteAgentRuntime, RunnerLink/RunnerRegistry, gateway /runner, runner embutido, tokens
   runs/          RunService (início e fim), consultas, controller e contrato de /runs
   health/        GET /health
 demo/            api-demo.ts: a execução pela API, com os eventos do WebSocket
@@ -205,7 +240,7 @@ Agentes ligados por seta conversam direto; o Hub é só o carteiro. Seta A→B: 
 - **`ask`** devolve uma promessa resolvida pelo `reply` correspondente (que não vai ao runtime) ou rejeitada por `AskTimeoutError`. Uma resposta tardia chega ao agente como mensagem comum. O runtime reporta `waiting_reply` enquanto o `ask` dele está aberto.
 - **Fim da execução** (`RunService`): `finish` de um agente (`reason: finished`), quiescência (todos ociosos, sem mensagem pendente nem `ask` aberto: `quiescent`) parada manual (`stopped`) ou guarda (`guard_tripped`). Ao terminar, todos os runtimes são parados (antes de `RunFinished` ser gravado, para o último uso entrar no log).
 
-Um runtime novo implementa `AgentRuntime` (do pacote `@neurons/agent-runtimes`) e é entregue pela `AgentRuntimeFactory`; enquanto o runtime de API (T07) não existe, a fábrica recusa agentes `api`.
+Um runtime novo implementa `AgentRuntime` (do pacote `@neurons/agent-runtimes`) e é entregue pela `AgentRuntimeFactory`. Os agentes de terminal vêm do `RemoteRuntimeFactory` (rodam num runner, ver "Runners e perfis"); enquanto o runtime de API (T07) não existe, a fábrica recusa agentes `api`.
 
 ## Testes
 

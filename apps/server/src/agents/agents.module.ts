@@ -1,29 +1,31 @@
-import { Logger, Module } from "@nestjs/common";
-import { TerminalRuntimeFactory } from "@neurons/agent-runtimes/claude";
+import { Module } from "@nestjs/common";
+import { RemoteRuntimeFactory } from "../runners/remote-runtime-factory.js";
+import { RunnerRegistry } from "../runners/runner-registry.js";
+import { RunnersModule } from "../runners/runners.module.js";
 import type { AppConfig } from "../shared/config/app-config.js";
 import { APP_CONFIG } from "../shared/config/tokens.js";
 import { AGENT_RUNTIME_FACTORY, RoutingAgentRuntimeFactory } from "./agent-runtime-factory.js";
 
-/** Where the runtime factories plug in: terminal (T08) today, API (T07) next. */
+/** On top of a runner's own wait for the closing turn: killing the process tree and answering. */
+const STOP_MARGIN_MS = 20_000;
+
+/**
+ * Where the runtime factories plug in. Agents of the `terminal` kind (T08) run in a runner,
+ * embedded or remote, chosen by the profile (T24); the API runtime (T07) will run here.
+ */
 @Module({
+  imports: [RunnersModule],
   providers: [
     {
       provide: AGENT_RUNTIME_FACTORY,
-      useFactory: (config: AppConfig) => {
-        const logger = new Logger("AgentRuntime");
-        return new RoutingAgentRuntimeFactory({
-          terminal: new TerminalRuntimeFactory({
-            askTimeoutMs: config.askTimeoutMs,
-            usageFlushMs: config.usageFlushMs,
-            cli: {
-              ...(config.claudeBin && { configuredBinary: config.claudeBin }),
-              ...(config.claudeCommand && { command: config.claudeCommand }),
-            },
-            logger: { warn: (m) => logger.warn(m), error: (m) => logger.error(m) },
+      useFactory: (config: AppConfig, runners: RunnerRegistry) =>
+        new RoutingAgentRuntimeFactory({
+          terminal: new RemoteRuntimeFactory(runners, {
+            settings: { askTimeoutMs: config.askTimeoutMs, usageFlushMs: config.usageFlushMs },
+            stopWaitMs: config.usageFlushMs + STOP_MARGIN_MS,
           }),
-        });
-      },
-      inject: [APP_CONFIG],
+        }),
+      inject: [APP_CONFIG, RunnerRegistry],
     },
   ],
   exports: [AGENT_RUNTIME_FACTORY],

@@ -155,6 +155,8 @@ async function main() {
 function streamJsonMode(work) {
   const emit = (event) => process.stdout.write(JSON.stringify(event) + NEWLINE);
   let started = false;
+  // Like the real CLI, `total_cost_usd` is the cost of the whole session so far.
+  let sessionCost = 0;
   let queue = Promise.resolve();
   let buffered = "";
   process.stdin.setEncoding("utf8");
@@ -174,13 +176,14 @@ function streamJsonMode(work) {
           });
         }
         await work(JSON.parse(line).message.content);
+        sessionCost += 0.0123;
         emit({
           type: "result",
           subtype: "success",
           is_error: false,
           duration_ms: 12,
           num_turns: 2,
-          total_cost_usd: 0.0123,
+          total_cost_usd: sessionCost,
           usage: {
             input_tokens: 10,
             output_tokens: 20,
