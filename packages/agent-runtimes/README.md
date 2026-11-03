@@ -31,6 +31,8 @@ Dois pontos de entrada:
   uma linha JSON no stdin; o evento `result` é o fim do turno e traz uso e custo, repassados por `communication.reportUsage` (o servidor
   grava `UsageRecorded`) antes de o agente voltar a `idle`. Sem tela; sem permissões interativas (`--permission-prompts none`).
 
+**O custo é por turno (T24).** O `total_cost_usd` de cada `result` do stream-json é o custo da _sessão inteira até ali_, não do turno (medido com o Claude Code 2.1.309: totais de 0,00099, 0,00155 e 0,00200 em três turnos, o do meio com 4 tokens de saída; `modelUsage` também soma os turnos, só `usage` é por turno). O runtime guarda o total anterior e reporta a diferença (`costOfTurn`), então o `UsageRecorded` de cada turno traz o custo daquele turno e a soma dos turnos fecha com o total.
+
 **Custo e descarga do uso (T10).** `AgentRuntime.reportsCost` diz se o runtime informa o que cada turno custou: o stream-json sim, o
 PTY não (a tela não traz o uso). Quem aplica orçamento precisa saber disso para não tratar "sem custo" como zero. Como o `finish`
 chega no meio de um turno e o `result` só vem depois, `stop()` do stream-json espera o turno em andamento terminar por até

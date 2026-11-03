@@ -27,6 +27,8 @@ const baseConfig = {
   host: "127.0.0.1",
   port: 0,
   guards: { runMaxMessages: 200, pingPongMessages: 20 },
+  profile: "local",
+  runners: { graceMs: 60_000, heartbeatMs: 15_000, waitMs: 1_000 },
   usageFlushMs: 0,
   askTimeoutMs: 1000,
   dataDir: "unused",

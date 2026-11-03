@@ -11,7 +11,7 @@ import {
   untilState,
 } from "../testing/fake-claude-support.js";
 import { ClaudeLoginRequiredError } from "./claude-cli.js";
-import { ClaudeStreamJsonRuntime } from "./claude-stream-json-runtime.js";
+import { ClaudeStreamJsonRuntime, costOfTurn } from "./claude-stream-json-runtime.js";
 
 const message = (body: string, overrides: Partial<InboundMessage> = {}): InboundMessage => ({
   id: "m-1",
@@ -86,6 +86,18 @@ describe("ClaudeStreamJsonRuntime (fake CLI)", () => {
         turns: 2,
       },
     ]);
+  });
+
+  it("reports the cost of each turn, not the session total the CLI carries in every result", async () => {
+    const { runtime } = await started();
+
+    for (const text of ["!peers", "!peers", "!peers"]) {
+      await runtime.deliver(message(text));
+      await untilState(runtime, "idle");
+    }
+
+    // The fake CLI adds 0.0123 per turn to its running total, like the real one.
+    expect(communication.usage.map((usage) => usage.costUsd)).toEqual([0.0123, 0.0123, 0.0123]);
   });
 
   it("reports its usage on the cost, as a runtime that knows the price", () => {
@@ -230,5 +242,25 @@ describe("ClaudeStreamJsonRuntime (fake CLI)", () => {
   it("warns and ignores the effort when the CLI has no such flag", async () => {
     const { deps } = await started({ fakeFlags: ["--no-effort"] });
     expect(deps.logger.warnings.join("\n")).toMatch(/--effort/);
+  });
+});
+
+describe("costOfTurn", () => {
+  // The totals are what the real Claude Code reported for a Haiku session of three turns.
+  const totals = [0.00099091, 0.00155041, 0.00199978];
+
+  it("turns the session totals into the cost of each turn", () => {
+    const turns = totals.map((total, index) => costOfTurn(total, totals[index - 1] ?? 0));
+
+    expect(turns).toEqual([0.00099091, 0.0005595, 0.00044937]);
+    expect(turns.reduce((sum, turn) => sum + turn, 0)).toBeCloseTo(0.00199978, 10);
+  });
+
+  it("takes a total that went down as a counter that restarted", () => {
+    expect(costOfTurn(0.002, 0.01)).toBe(0.002);
+  });
+
+  it("is zero for a turn that cost nothing", () => {
+    expect(costOfTurn(0.5, 0.5)).toBe(0);
   });
 });

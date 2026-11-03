@@ -415,9 +415,9 @@ describe("guards", () => {
         scripts: {
           Alfa: async (turn) => {
             await turn.work(4_000);
-            turn.peers();
+            await turn.peers();
             await turn.work(4_000);
-            turn.peers();
+            await turn.peers();
             await turn.work(600_000);
           },
         },

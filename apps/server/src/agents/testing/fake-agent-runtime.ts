@@ -27,7 +27,7 @@ export interface FakeTurn {
   /** Answers the message being handled. */
   reply(text: string): Promise<{ messageId: string }>;
   finish(result: string): Promise<void>;
-  peers(): AgentPeers;
+  peers(): AgentPeers | Promise<AgentPeers>;
   /** Reports what the turn consumed, as stream-json does at the end of a turn. */
   usage(usage: { costUsd: number } & Partial<Omit<AgentUsage, "costUsd">>): Promise<void>;
   /** Reports a turn whose price is unknown. */

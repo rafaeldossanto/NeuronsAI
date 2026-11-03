@@ -1,5 +1,6 @@
 import js from "@eslint/js";
 import prettier from "eslint-config-prettier";
+import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -42,10 +43,15 @@ export default tseslint.config(
     files: [
       "apps/server/src/shared/config/**",
       "packages/mcp-neurons/src/config.ts",
+      "packages/runner/src/config.ts",
       "packages/agent-runtimes/src/platform/host-environment.ts",
       "packages/tools/test/fixtures/**",
     ],
     rules: { "no-restricted-syntax": "off" },
+  },
+  {
+    files: ["apps/web/**/*.{ts,tsx}"],
+    ...reactHooks.configs.flat["recommended-latest"],
   },
   prettier,
 );

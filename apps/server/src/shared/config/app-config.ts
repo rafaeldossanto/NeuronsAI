@@ -6,10 +6,18 @@ import { type DatabaseConfig, databaseEnvShape, resolveDatabase } from "./databa
 import { type GuardLimits, guardEnvShape, resolveGuardLimits } from "./guard-config.js";
 import { port, unlessEmpty } from "./env-schema.js";
 import { listenEnvShape, resolveListenHost } from "./listen-config.js";
+import {
+  type Profile,
+  type RunnerLimits,
+  resolveRunnerLimits,
+  runnerEnvShape,
+} from "./runner-config.js";
 
 export { ConfigError } from "./config-error.js";
 export { DATABASE_KINDS } from "./database-config.js";
 export type { GuardLimits } from "./guard-config.js";
+export { PROFILES } from "./runner-config.js";
+export type { Profile, RunnerLimits } from "./runner-config.js";
 export type { DatabaseConfig, DatabaseKind, PostgresConnection } from "./database-config.js";
 
 export const APP_MODES = ["api", "worker", "all"] as const;
@@ -23,6 +31,9 @@ export interface AppConfig {
   /** How long an agent's `ask` waits for the answer before failing. */
   askTimeoutMs: number;
   guards: GuardLimits;
+  /** Where the agents run (see {@link Profile}). */
+  profile: Profile;
+  runners: RunnerLimits;
   /** How long stopping a run waits for the agents' last usage report (see `NEURONS_USAGE_FLUSH_MS`). */
   usageFlushMs: number;
   /** Folder where the app keeps its data (the embedded database lives in its `db` subfolder). */
@@ -49,6 +60,7 @@ const envSchema = z.object({
   NEURONS_DATA_DIR: unlessEmpty(z.string().trim().min(1).optional()),
   ...databaseEnvShape,
   ...guardEnvShape,
+  ...runnerEnvShape,
   NEURONS_CLAUDE_BIN: unlessEmpty(z.string().trim().min(1).optional()),
   NEURONS_MASTER_KEY: unlessEmpty(
     z
@@ -84,6 +96,8 @@ export function loadConfig(
     port: values.NEURONS_PORT,
     askTimeoutMs: values.NEURONS_ASK_TIMEOUT_SEC * 1000,
     guards: resolveGuardLimits(values),
+    profile: values.NEURONS_PROFILE,
+    runners: resolveRunnerLimits(values),
     usageFlushMs: values.NEURONS_USAGE_FLUSH_MS,
     dataDir: resolveDataDir(values.NEURONS_DATA_DIR, env, host),
     database: resolveDatabase(values),

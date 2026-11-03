@@ -15,7 +15,8 @@ export interface AgentCommunication {
   /** Answers a message received earlier; goes to whoever wrote it. */
   reply(messageId: string, text: string): Promise<{ messageId: string }>;
 
-  listPeers(): AgentPeers;
+  /** Synchronous when the Hub is in this process; a runner hosted elsewhere has to ask for it. */
+  listPeers(): AgentPeers | Promise<AgentPeers>;
 
   /** Declares the whole run done. */
   finish(result: string): Promise<void>;

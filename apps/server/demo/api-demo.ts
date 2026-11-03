@@ -5,6 +5,8 @@
  *
  *   pnpm --filter @neurons/server demo                 fake Claude Code CLI: free, takes seconds
  *   pnpm --filter @neurons/server demo -- --real-claude  the real CLI: spends the subscription quota
+ *   pnpm --filter @neurons/server demo -- --profile=hybrid  the same run, with the agents in a runner
+ *                                          that is another process and connects by WebSocket
  *
  * Both agents are terminals ("Pesquisador" asks "Revisor", who answers, then "Pesquisador" calls
  * `finish`). The fake CLI works on directive lines in the prompt (see
@@ -12,6 +14,7 @@
  * real CLI gets a plain request; it is run with the cheapest model and, being headless, without the
  * "trust this folder" dialog a PTY would stop at. Run it once, not in a loop.
  */
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -20,6 +23,8 @@ import type { AddressInfo } from "node:net";
 import { createApiClient } from "@neurons/api-client";
 import { WebSocket } from "ws";
 import { createApp } from "../src/create-app.js";
+import { RunnerRegistry } from "../src/runners/runner-registry.js";
+import { RunnerTokens } from "../src/runners/runner-tokens.service.js";
 import { loadConfig, type AppConfig } from "../src/shared/config/app-config.js";
 
 const FIXTURE = fileURLToPath(
@@ -29,7 +34,11 @@ const FAKE_CLAUDE = fileURLToPath(
   new URL("../../../packages/agent-runtimes/test-fixtures/fake-claude.mjs", import.meta.url),
 );
 
+const RUNNER_PROCESS = fileURLToPath(new URL("./runner-process.ts", import.meta.url));
+const SERVER_DIR = fileURLToPath(new URL("..", import.meta.url));
+
 const realClaude = process.argv.includes("--real-claude");
+const profile = process.argv.includes("--profile=hybrid") ? "hybrid" : "local";
 const RUN_TIMEOUT_MS = realClaude ? 8 * 60_000 : 90_000;
 
 /** What the first message says: directives for the fake CLI, a plain request for the real one. */
@@ -132,12 +141,53 @@ function demoConfig(dataDir: string): AppConfig {
   return {
     ...base,
     mode: "all",
+    profile,
     port: 0,
     dataDir,
     database: { kind: "embedded" },
     askTimeoutMs: realClaude ? 180_000 : 60_000,
-    ...(!realClaude && { claudeCommand: { command: process.execPath, args: [FAKE_CLAUDE] } }),
+    // In `hybrid` the CLI belongs to the runner process, which gets the fake on its command line.
+    ...(!realClaude &&
+      profile === "local" && { claudeCommand: { command: process.execPath, args: [FAKE_CLAUDE] } }),
   };
+}
+
+/** `hybrid`: issues a token and starts the runner as a separate process that connects by WebSocket. */
+async function startRemoteRunner(
+  app: Awaited<ReturnType<typeof createApp>>,
+  port: number,
+): Promise<ChildProcess> {
+  const { token } = await app.get(RunnerTokens).issue("demo");
+  const child = spawn(
+    process.execPath,
+    ["--import", "tsx", RUNNER_PROCESS, ...(realClaude ? [] : ["--fake-claude", FAKE_CLAUDE])],
+    {
+      cwd: SERVER_DIR,
+      stdio: ["pipe", "inherit", "inherit"],
+      env: {
+        ...process.env,
+        NEURONS_SERVER_URL: `http://127.0.0.1:${port}`,
+        NEURONS_RUNNER_TOKEN: token,
+        NEURONS_RUNNER_NAME: "demo",
+      },
+    },
+  );
+  const registry = app.get(RunnerRegistry);
+  for (let waited = 0; registry.connected().length === 0; waited += 100) {
+    if (waited > 30_000) throw new Error("O runner não se conectou em 30 s.");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  log(`runner conectado (processo ${child.pid}, outro processo que este servidor)`);
+  return child;
+}
+
+/** Asks the runner to leave (its stdin closes) and waits; kills it only if it does not. */
+async function stopRemoteRunner(child: ChildProcess): Promise<void> {
+  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  child.stdin?.end();
+  const timer = setTimeout(() => child.kill(), 15_000);
+  await exited;
+  clearTimeout(timer);
 }
 
 /** The CLI may hold its working folder for a moment after it exits (Windows). */
@@ -149,11 +199,15 @@ async function main(): Promise<number> {
   const workdir = path.join(scratch, "work");
   await mkdir(workdir);
   const app = await createApp(demoConfig(path.join(scratch, "data")));
+  let runner: ChildProcess | undefined;
   try {
     await app.listen(0, "127.0.0.1");
     const port = (app.getHttpServer().address() as AddressInfo).port;
     const api = createApiClient(`http://127.0.0.1:${port}`);
-    log(`servidor em http://127.0.0.1:${port} (CLI ${realClaude ? "REAL" : "de mentira"})`);
+    log(
+      `servidor em http://127.0.0.1:${port} (perfil ${profile}, CLI ${realClaude ? "REAL" : "de mentira"})`,
+    );
+    if (profile === "hybrid") runner = await startRemoteRunner(app, port);
 
     const created = await api.POST("/graphs", { body: { name: "Demo: dois terminais" } });
     if (!created.data) throw new Error(`POST /graphs: ${JSON.stringify(created.error)}`);
@@ -193,8 +247,9 @@ async function main(): Promise<number> {
     );
     return ok ? 0 : 1;
   } finally {
-    // Stops every agent the run left behind, then the server, then the scratch folder.
+    // Stops every agent the run left behind, then the runner, the server and the scratch folder.
     await app.close();
+    if (runner) await stopRemoteRunner(runner);
     await removeScratch(scratch);
   }
 }
