@@ -1,0 +1,371 @@
+import { Logger } from "@nestjs/common";
+import { PROTOCOL_VERSION, createMemoryChannelPair } from "@neurons/runner-protocol";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { HUMAN } from "../hub/addresses.js";
+import { delay, eventually } from "../hub/testing/async-helpers.js";
+import { createHubWiring, inMemoryPersistence } from "../hub/testing/hub-harness.js";
+import { RemoteAgentRuntime } from "./remote-agent-runtime.js";
+import { createRunnerRig } from "./testing/runner-rig.js";
+
+let persistence: ReturnType<typeof inMemoryPersistence>;
+let rig: ReturnType<typeof createRunnerRig>;
+
+beforeAll(() => {
+  Logger.overrideLogger(false);
+});
+
+beforeEach(() => {
+  persistence = inMemoryPersistence();
+});
+
+afterEach(() => {
+  rig.dispose();
+});
+
+/** The Hub and Supervisor of the server, with every agent living in the rig's runner. */
+function start(options: Parameters<typeof createRunnerRig>[0] = {}) {
+  rig = createRunnerRig(options);
+  rig.connect();
+  return createHubWiring(persistence, rig.factory);
+}
+
+const received = (agent: string): string[] =>
+  rig.fakes.runtimeOf(agent)?.received.map((message) => message.body) ?? [];
+
+describe("agents hosted by a runner", () => {
+  it("talk through the Hub as if they were in the same process: ask, reply and the answer back", async () => {
+    let answer = "";
+    const wiring = start({
+      scripts: {
+        Alfa: async (turn) => {
+          answer = await turn.ask("Beta", "tudo bem?");
+        },
+        Beta: async (turn) => {
+          await turn.reply("sim");
+        },
+      },
+    });
+    const runId = await wiring.openRun();
+
+    await wiring.hub.send(runId, HUMAN, "Alfa", "message", "comece");
+
+    await eventually(() => expect(answer).toBe("sim"));
+    expect(rig.fakes.runtimeOf("Beta")?.received).toMatchObject([
+      { from: "Alfa", kind: "ask", body: "tudo bem?" },
+    ]);
+    await eventually(() =>
+      expect(persistence.messageStore.allOf(runId).every((message) => message.ackedAt)).toBe(true),
+    );
+  });
+
+  it("mirror the state the runner reports, and the Hub only hands over the next message when they are idle", async () => {
+    const wiring = start({ scripts: { Beta: (turn) => turn.work(80) } });
+    const runId = await wiring.openRun();
+
+    for (const body of ["a", "b", "c"]) {
+      await wiring.hub.send(runId, HUMAN, "Beta", "message", body);
+    }
+
+    await eventually(() => expect(received("Beta")).toEqual(["a", "b", "c"]));
+  });
+
+  it("carry the usage of a turn to the run log, with the cost the runner measured", async () => {
+    const wiring = start({
+      scripts: { Beta: (turn) => turn.usage({ costUsd: 0.0123, inputTokens: 7 }) },
+    });
+    const runId = await wiring.openRun();
+
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+
+    await eventually(() =>
+      expect(persistence.runLog.eventsOf(runId, "UsageRecorded")).toMatchObject([
+        { agent: "Beta", payload: { costUsd: 0.0123, inputTokens: 7 } },
+      ]),
+    );
+  });
+
+  it("carry an error of the Hub back to the agent that called it", async () => {
+    let failure = "";
+    const wiring = start({
+      scripts: {
+        Alfa: async (turn) => {
+          try {
+            await turn.send("Delta", "não tenho seta para Delta");
+          } catch (error) {
+            failure = (error as Error).message;
+          }
+        },
+      },
+    });
+    const runId = await wiring.openRun();
+
+    await wiring.hub.send(runId, HUMAN, "Alfa", "message", "tente");
+
+    await eventually(() => expect(failure).toContain("Delta"));
+  });
+
+  it("stop with the run: the runner stops the agent and the server forgets it", async () => {
+    const wiring = start();
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+    await eventually(() => expect(received("Beta")).toEqual(["oi"]));
+
+    await wiring.supervisor.stopRun(runId);
+
+    expect(rig.fakes.runtimeOf("Beta")?.stopCount).toBe(1);
+    expect(rig.fakes.runtimeOf("Beta")?.state).toBe("stopped");
+    expect(rig.link?.load).toBe(0);
+  });
+
+  it("report the last usage of a turn that ends while the agent is stopped", async () => {
+    const wiring = start({ runtimeOptions: { Beta: { usageOnStop: 0.5 } } });
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+    await eventually(() => expect(received("Beta")).toEqual(["oi"]));
+
+    await wiring.supervisor.stopRun(runId);
+
+    expect(persistence.runLog.eventsOf(runId, "UsageRecorded")).toMatchObject([
+      { agent: "Beta", payload: { costUsd: 0.5 } },
+    ]);
+  });
+});
+
+describe("when the connection to the runner drops", () => {
+  it("delivers what piled up while the agent was away, once and in order", async () => {
+    const wiring = start({ scripts: { Beta: (turn) => turn.work(120) } });
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "m1");
+    await eventually(() => expect(received("Beta")).toEqual(["m1"]));
+
+    rig.sever();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "m2");
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "m3");
+    // The agent finishes m1 while nobody is listening: its `idle` is lost with the connection.
+    await delay(250);
+    expect(received("Beta")).toEqual(["m1"]);
+
+    rig.connect();
+
+    await eventually(() => expect(received("Beta")).toEqual(["m1", "m2", "m3"]));
+    await eventually(() =>
+      expect(persistence.messageStore.allOf(runId).every((message) => message.ackedAt)).toBe(true),
+    );
+  });
+
+  it("delivers a message sent to an idle agent while the runner was away", async () => {
+    const wiring = start();
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "antes");
+    await eventually(() => expect(received("Beta")).toEqual(["antes"]));
+
+    rig.sever();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "durante");
+    await delay(50);
+    expect(received("Beta")).toEqual(["antes"]);
+
+    rig.connect();
+
+    await eventually(() => expect(received("Beta")).toEqual(["antes", "durante"]));
+    await eventually(() =>
+      expect(persistence.messageStore.allOf(runId).every((message) => message.ackedAt)).toBe(true),
+    );
+  });
+
+  it("completes a tool call the agent made while disconnected, exactly once", async () => {
+    const wiring = start({
+      scripts: {
+        Alfa: async (turn) => {
+          await turn.work(100);
+          await turn.send("Beta", "enviada durante a queda");
+        },
+      },
+    });
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Alfa", "message", "vá");
+    await eventually(() => expect(received("Alfa")).toEqual(["vá"]));
+
+    rig.sever();
+    await delay(250);
+    expect(received("Beta")).toEqual([]);
+
+    rig.connect();
+
+    await eventually(() => expect(received("Beta")).toEqual(["enviada durante a queda"]));
+    const fromAlfa = persistence.messageStore.allOf(runId).filter((m) => m.from === "Alfa");
+    expect(fromAlfa).toHaveLength(1);
+  });
+
+  it("keeps an ask open across the drop and answers it when the runner is back", async () => {
+    let answer = "";
+    const wiring = start({
+      scripts: {
+        Alfa: async (turn) => {
+          answer = await turn.ask("Beta", "responde depois?");
+        },
+        Beta: async (turn) => {
+          await turn.reply("respondi");
+        },
+      },
+    });
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Alfa", "message", "pergunte");
+    await eventually(() => expect(received("Beta")).toEqual(["responde depois?"]));
+
+    // The answer is on its way back when the connection falls.
+    rig.sever();
+    await delay(100);
+    rig.connect();
+
+    await eventually(() => expect(answer).toBe("respondi"));
+  });
+
+  it("fails the agents only after the grace period, with the reason in the log", async () => {
+    const wiring = start({ runners: { graceMs: 80 } });
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+    await eventually(() => expect(received("Beta")).toEqual(["oi"]));
+
+    rig.sever();
+    await delay(30);
+    expect(persistence.runLog.eventsOf(runId, "AgentFailed")).toEqual([]);
+
+    await eventually(() =>
+      expect(persistence.runLog.eventsOf(runId, "AgentFailed")).toMatchObject([
+        { agent: "Beta", payload: { reason: expect.stringContaining("não voltou") as string } },
+      ]),
+    );
+  });
+
+  it("fails an agent the restarted runner no longer has", async () => {
+    const wiring = start();
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+    await eventually(() => expect(received("Beta")).toEqual(["oi"]));
+
+    rig.sever();
+    rig.restartRunner();
+    rig.connect();
+
+    await eventually(() =>
+      expect(persistence.runLog.eventsOf(runId, "AgentFailed")).toMatchObject([
+        {
+          agent: "Beta",
+          payload: { reason: expect.stringContaining("perdeu o agente") as string },
+        },
+      ]),
+    );
+  });
+
+  it("makes the runner stop the agents of a run the server no longer knows", async () => {
+    const wiring = start();
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+    await eventually(() => expect(received("Beta")).toEqual(["oi"]));
+
+    // The server restarted: it has a registry that never heard of this agent.
+    rig.sever();
+    const restartedServer = createRunnerRig();
+    const { server, runner } = createMemoryChannelPair();
+    restartedServer.registry.accept(rig.identity, server);
+    rig.host.attach(runner);
+
+    await eventually(() => expect(rig.fakes.runtimeOf("Beta")?.stopCount).toBe(1));
+    restartedServer.dispose();
+  });
+});
+
+describe("choosing the runner", () => {
+  it("waits for a runner to connect when none is there yet", async () => {
+    rig = createRunnerRig({ runners: { waitMs: 2_000 } });
+    const wiring = createHubWiring(persistence, rig.factory);
+    const runId = await wiring.openRun();
+
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+    await delay(50);
+    expect(received("Beta")).toEqual([]);
+    rig.connect();
+
+    await eventually(() => expect(received("Beta")).toEqual(["oi"]));
+  });
+
+  it("fails the agent with a message for the user when no runner shows up in time", async () => {
+    rig = createRunnerRig({ runners: { waitMs: 30 } });
+    const wiring = createHubWiring(persistence, rig.factory);
+    const runId = await wiring.openRun();
+
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+
+    await eventually(() =>
+      expect(persistence.runLog.eventsOf(runId, "AgentFailed")).toMatchObject([
+        { agent: "Beta", payload: { reason: expect.stringContaining("Nenhum runner") as string } },
+      ]),
+    );
+  });
+});
+
+describe("the link to a runner", () => {
+  it("answers a call the runner repeats with the first outcome, without running it twice", async () => {
+    rig = createRunnerRig();
+    const sent: string[] = [];
+    const communication = {
+      sendMessage: (_to: string, text: string) => {
+        sent.push(text);
+        return Promise.resolve({ messageId: `m${sent.length}` });
+      },
+    } as never;
+
+    // A bare protocol conversation: the test plays the runner.
+    const { server, runner } = createMemoryChannelPair();
+    const frames: { type: string; callId?: string; result?: unknown }[] = [];
+    runner.onFrame((frame) => frames.push(frame));
+    rig.registry.accept(rig.identity, server);
+    runner.send({
+      v: PROTOCOL_VERSION,
+      type: "register",
+      runner: { name: "teste" },
+      capabilities: { terminal: true, streamJson: true },
+      agents: [],
+    });
+    await eventually(() => expect(rig.link?.connected).toBe(true));
+    const runtime = new RemoteAgentRuntime(
+      { name: "Alfa", runtime: { kind: "api" } } as never,
+      communication,
+      rig.registry,
+      { settings: { askTimeoutMs: 1000, usageFlushMs: 0 }, stopWaitMs: 100 },
+    );
+    rig.link?.bind(runtime);
+
+    const call = {
+      v: PROTOCOL_VERSION as 1,
+      type: "call" as const,
+      callId: "c-1",
+      instanceId: runtime.instanceId,
+      call: { method: "send_message" as const, to: "Beta", text: "uma vez só" },
+    };
+    runner.send(call);
+    runner.send(call);
+
+    await eventually(() => expect(frames.filter((f) => f.type === "call.result")).toHaveLength(2));
+    expect(sent).toEqual(["uma vez só"]);
+    const [first, second] = frames.filter((f) => f.type === "call.result");
+    expect(first).toEqual(second);
+    expect(first?.result).toEqual({ messageId: "m1" });
+  });
+
+  it("closes a connection that stops sending frames", async () => {
+    rig = createRunnerRig({ runners: { heartbeatMs: 20 } });
+    const { server, runner } = createMemoryChannelPair();
+    rig.registry.accept(rig.identity, server);
+    runner.send({
+      v: PROTOCOL_VERSION,
+      type: "register",
+      runner: { name: "mudo" },
+      capabilities: { terminal: true, streamJson: true },
+      agents: [],
+    });
+    const closed = new Promise<number>((resolve) => runner.onClose((info) => resolve(info.code)));
+
+    await expect(closed).resolves.toBe(4408);
+  });
+});

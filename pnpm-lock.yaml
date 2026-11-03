@@ -220,6 +220,12 @@ importers:
       '@neurons/graph-schema':
         specifier: workspace:*
         version: link:../../packages/graph-schema
+      '@neurons/runner':
+        specifier: workspace:*
+        version: link:../../packages/runner
+      '@neurons/runner-protocol':
+        specifier: workspace:*
+        version: link:../../packages/runner-protocol
       drizzle-orm:
         specifier: 0.45.4
         version: 0.45.4(@electric-sql/pglite@0.5.13)(@types/pg@8.23.1)(pg@8.23.1)
@@ -397,6 +403,47 @@ importers:
         version: 24.19.2
 
   packages/providers: {}
+
+  packages/runner:
+    dependencies:
+      '@neurons/agent-runtimes':
+        specifier: workspace:*
+        version: link:../agent-runtimes
+      '@neurons/graph-schema':
+        specifier: workspace:*
+        version: link:../graph-schema
+      '@neurons/runner-protocol':
+        specifier: workspace:*
+        version: link:../runner-protocol
+      ws:
+        specifier: 8.22.1
+        version: 8.22.1
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: ^24.19.2
+        version: 24.19.2
+      '@types/ws':
+        specifier: 8.18.2
+        version: 8.18.2
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+
+  packages/runner-protocol:
+    dependencies:
+      '@neurons/graph-schema':
+        specifier: workspace:*
+        version: link:../graph-schema
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: ^24.19.2
+        version: 24.19.2
 
   packages/tools:
     dependencies:

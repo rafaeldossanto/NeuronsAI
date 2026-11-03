@@ -15,6 +15,18 @@ const DRAIN_POLL_MS = 25;
 
 const counter = z.number().optional();
 
+/**
+ * `total_cost_usd` of a `result` event is the cost of the whole session so far, not of that turn
+ * (measured with the real CLI, 2.1.309: two turns of a Haiku session reported 0.0006 and 0.0018,
+ * and `modelUsage` adds up the tokens of every turn). The Hub sums the costs of the turns, so each
+ * turn reports the difference. A total that went down means the counter restarted: the new value
+ * is all there is.
+ */
+export function costOfTurn(sessionTotal: number, previousTotal: number): number {
+  const turn = sessionTotal >= previousTotal ? sessionTotal - previousTotal : sessionTotal;
+  return Math.round(turn * 1e10) / 1e10; // subtracting floats leaves dust that would show in the log
+}
+
 const initEvent = z.object({
   type: z.literal("system"),
   subtype: z.literal("init"),
@@ -54,6 +66,8 @@ export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase {
   private exited: Promise<void> = Promise.resolve();
   private stderrTail = "";
   private model: string | undefined;
+  /** The session total the last `result` event reported. */
+  private sessionCostUsd = 0;
 
   get processId(): number | undefined {
     return this.child?.pid;
@@ -157,7 +171,7 @@ export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase {
 
   private async onResult(event: z.infer<typeof resultEvent>): Promise<void> {
     try {
-      await this.reportUsage(toUsage(event, this.model));
+      await this.reportUsage(toUsage(event, this.model, this.takeTurnCost(event)));
     } catch (error) {
       // The run may already be over; a missing cost record must not take the agent down.
       this.deps.logger.warn(
@@ -177,6 +191,14 @@ export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase {
     if (this.state === "busy" || this.state === "waiting_reply") this.setState("idle");
   }
 
+  /** The cost of the turn that just ended, out of the session total its `result` event carries. */
+  private takeTurnCost(event: z.infer<typeof resultEvent>): number | undefined {
+    if (event.total_cost_usd === undefined) return undefined;
+    const cost = costOfTurn(event.total_cost_usd, this.sessionCostUsd);
+    this.sessionCostUsd = event.total_cost_usd;
+    return cost;
+  }
+
   // ---- stdin ----
 
   private writeLine(payload: unknown): Promise<void> {
@@ -193,7 +215,11 @@ export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase {
   }
 }
 
-function toUsage(event: z.infer<typeof resultEvent>, model: string | undefined): AgentUsage {
+function toUsage(
+  event: z.infer<typeof resultEvent>,
+  model: string | undefined,
+  costUsd: number | undefined,
+): AgentUsage {
   const usage = event.usage;
   const modelName = model ?? Object.keys(event.modelUsage ?? {})[0];
   return {
@@ -202,7 +228,7 @@ function toUsage(event: z.infer<typeof resultEvent>, model: string | undefined):
     outputTokens: usage?.output_tokens ?? 0,
     cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
     cacheCreationTokens: usage?.cache_creation_input_tokens ?? 0,
-    ...(event.total_cost_usd !== undefined && { costUsd: event.total_cost_usd }),
+    ...(costUsd !== undefined && { costUsd }),
     ...(event.duration_ms !== undefined && { durationMs: event.duration_ms }),
     ...(event.num_turns !== undefined && { turns: event.num_turns }),
   };

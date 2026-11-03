@@ -41,6 +41,7 @@ describe("migrations", () => {
         "messages",
         "run_events",
         "secrets",
+        "runners",
       ]),
     );
   });

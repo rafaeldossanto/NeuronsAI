@@ -13,6 +13,8 @@ const defaults = {
   host: "127.0.0.1",
   port: 3100,
   guards: { runMaxMessages: 200, pingPongMessages: 20 },
+  profile: "local",
+  runners: { graceMs: 60_000, heartbeatMs: 15_000, waitMs: 30_000 },
   usageFlushMs: 4_000,
   askTimeoutMs: 120_000,
   dataDir: "/home/ana/.local/share/neuronsai",
@@ -36,6 +38,32 @@ describe("loadConfig", () => {
     });
 
     expect(config).toEqual(defaults);
+  });
+
+  it("reads the profile and the runner timings", () => {
+    const config = loadConfig({
+      NEURONS_PROFILE: "hybrid",
+      NEURONS_RUNNER_GRACE_SEC: "90",
+      NEURONS_RUNNER_HEARTBEAT_SEC: "5",
+      NEURONS_RUNNER_WAIT_SEC: "0",
+    });
+
+    expect(config.profile).toBe("hybrid");
+    expect(config.runners).toEqual({ graceMs: 90_000, heartbeatMs: 5_000, waitMs: 0 });
+  });
+
+  it("rejects a profile that does not exist, together with the other problems", () => {
+    const message = (() => {
+      try {
+        loadConfig({ NEURONS_PROFILE: "nuvem", NEURONS_PORT: "0" });
+      } catch (error) {
+        return (error as Error).message;
+      }
+      return "";
+    })();
+
+    expect(message).toContain("NEURONS_PROFILE");
+    expect(message).toContain("NEURONS_PORT");
   });
 
   it("reads the path of the Claude Code executable, which is optional", () => {

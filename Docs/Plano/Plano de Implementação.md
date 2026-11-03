@@ -22,8 +22,8 @@ provada antes de gastar tempo com canvas.
 
 ## Ordem de execução
 
-- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T19, T20.
-- Próxima: T24. Depois: T21 → T12–T15 → T22 → T25 → T16–T18.
+- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T19, T20, T24.
+- Próxima: T21. Depois: T12–T15 → T22 → T25 → T16–T18.
 - **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16) sai por túnel.
 
 **Paralelismo possível:** T04 e T05 em paralelo com T02–T03. A Fase 2 pode começar assim que
@@ -221,9 +221,8 @@ os eventos chegando pelo WebSocket.
 - **Custo desconhecido nunca é 0.** `UsageRecorded.costUsd` é `null` quando o runtime não informa;
   `AgentRuntime.reportsCost` diz se informa (stream-json sim, PTY não); um `GuardWarning` avisa
   uma vez por agente quando há orçamento que isso impede de respeitar; `GET /runs/{id}` separa
-  `unknownCostTurns`. **A verificar com o CLI real:** se o `total_cost_usd` do stream-json é por
-  turno ou acumulado na sessão (hoje é somado como por turno; se for acumulado, o orçamento conta
-  em dobro).
+  `unknownCostTurns`. **Resolvido na T24:** o `total_cost_usd` do stream-json é **acumulado na
+  sessão**, não por turno (ver "Feito" da T24); o runtime passou a reportar a diferença.
 - **Descarga do uso: 4 s** (`NEURONS_USAGE_FLUSH_MS`). O `stop()` do stream-json espera o turno em
   andamento acabar (o `result` vem depois do `finish`) e o `RunService` agora para os runtimes
   **antes** de gravar `RunFinished`; o Hub aceita uso de execução que está se encerrando.
@@ -398,6 +397,18 @@ digitar no terminal do Claude Code.
 - Reconexão sem perder mensagem (o Hub já reentrega o que não teve confirmação).
 
 **Pronto quando:** a mesma execução do `mixed.json` roda com o runner no mesmo processo e com o runner em outro processo, mudando só a configuração.
+
+**Feito (2026-11-02)** — detalhes em `packages/runner-protocol/README.md`, `packages/runner/README.md` e `apps/server/README.md` (seção "Runners e perfis"). Decisões:
+
+- **Prova com o `two-terminals.json`, não com o `mixed.json`** (o agente de API, T07, ficou para o fim por ter custo). `pnpm --filter @neurons/server demo` roda a execução com o runner embutido (perfil `local`); `demo -- --profile=hybrid` roda a mesma execução com o runner **em outro processo**, conectado por WebSocket. Mesmos 11 eventos, mesmo resultado; só o perfil muda. O `mixed.json` entra quando a T07 existir.
+- **Protocolo v1, em zod** (`packages/runner-protocol`, fonte única). Todo frame é JSON com `v` e `type`; um `v` desconhecido é recusado antes de qualquer outra leitura. Runner → servidor: `register`, `heartbeat`, `agent.state`, `agent.output`, `call`, `response`. Servidor → runner: `registered`, `reject`, `heartbeat`, `agent.start`, `agent.deliver`, `agent.stop`, `agent.input`, `call.result`. Além dos oito itens do plano, entraram `call`/`call.result` (as ferramentas do agente — `send_message`, `ask`, `reply`, `list_peers`, `finish`, `report_usage` — precisam chegar ao Hub, que fica no servidor) e `agent.input` (o usuário digita no terminal do agente). `AgentCommunication.listPeers` passou a poder devolver uma promessa.
+- **Reconexão sem perder mensagem.** Tudo que cruza a conexão é idempotente por id: o servidor reenvia o pedido que o runner não respondeu (`agent.start`, `agent.deliver`, `agent.stop`), o runner responde a repetição com o que já fez (um `message.id` já entregue não é entregue de novo) e o runner reenvia o `call` sem resultado (o servidor responde com o desfecho da primeira execução, sem enviar a mensagem duas vezes; guarda os últimos 2000). O `register` de cada conexão lista os agentes vivos do runner: o servidor atualiza os estados perdidos (um `idle` perdido volta a acionar a entrega da caixa de entrada) e responde com `keep`, a lista que ainda quer; o runner para os demais (órfãos de um servidor que reiniciou).
+- **Carência de 60 s** (`NEURONS_RUNNER_GRACE_SEC`): a conexão que cai não falha os agentes; só se o runner não voltar nesse prazo é que viram `AgentFailed` ("não voltou"). Um runner que volta sem o agente (reiniciou) também o falha ("perdeu o agente"). Heartbeat nos dois sentidos a cada 15 s; 3 batidas perdidas fecham a conexão. O runner reconecta com espera crescente (0,5 s até 15 s) e desiste só se o servidor o recusar.
+- **Perfis** (`NEURONS_PROFILE`): `local` (padrão) hospeda os agentes num **runner embutido** que fala o mesmo protocolo por um canal em memória; `hybrid` não hospeda nada e aceita runners em `/runner`; `hosted` se comporta como `hybrid` até a T26. Um agente novo vai ao runner conectado com menos agentes, esperando até 30 s por um (`NEURONS_RUNNER_WAIT_SEC`) antes de falhar com "Nenhum runner conectado".
+- **Token por runner.** Emitido pelo servidor (`pnpm --filter @neurons/server runner:token create <nome>`), mostrado **uma única vez** e guardado só como SHA-256 (tabela `runners`, migration `0003_runners`; o token é longo e aleatório, 256 bits, `nrn_...`, então hash rápido basta). Vai no cabeçalho `Authorization: Bearer` do upgrade do WebSocket, nunca no endereço, em log ou em frame. Revogar (`runner:token revoke <nome>`) recusa o runner e derruba o conectado na próxima checagem (a cada batida). O runner se recusa a mandar o token em `ws://` para outra máquina (precisa de `wss://` ou `NEURONS_RUNNER_ALLOW_INSECURE=true`). Sem REST de emissão por enquanto: a API ainda não tem login, e emitir token por ela entregaria o acesso a qualquer um que alcance a porta; a T25 vincula o runner a uma conta.
+- **Código.** `packages/runner-protocol` (frames, codec, canais, canal em memória), `packages/runner` (`RunnerHost`, que hospeda os runtimes da T08; `RunnerConnection`, o cliente WebSocket que reconecta; programa `neurons-runner`) e, no servidor, `src/runners/` (`RemoteAgentRuntime`, `RunnerLink`, `RunnerRegistry`, `RunnerGateway`, `EmbeddedRunner`, tokens). O Hub e o Supervisor não mudaram: o `RemoteAgentRuntime` implementa a mesma `AgentRuntime`.
+- **`total_cost_usd` é acumulado na sessão** (resposta à pergunta da T10). Medido com o Claude Code 2.1.309 e Haiku, em sessões stream-json: com turnos de 586, 4 e 4 tokens de saída os totais foram 0,00099 → 0,00155 → 0,00200 (crescem mesmo com um turno minúsculo no meio) e `modelUsage` soma os tokens dos turnos (586 → 590 → 594), enquanto `usage` é por turno. Antes o orçamento contava o custo em dobro (ou mais) a cada turno. O `ClaudeStreamJsonRuntime` agora reporta a diferença para o total anterior (`costOfTurn`); o CLI falso passou a acumular como o real. Custo das duas rodadas reais: ≈ US$ 0,004 no total. O `--max-budget-usd` do CLI compara com esse mesmo total acumulado, então continua coerente.
+- **Adiado:** a demo real (`--real-claude`) no perfil `hybrid` (a cota das rodadas reais foi usada na medição do custo); REST/UI para emitir e revogar tokens (T25); escolher o runner de cada agente no grafo (hoje o menos carregado); reenviar a saída do terminal perdida durante uma queda (o servidor guarda só o que chegou); o runtime de API (T07) rodando num runner.
 
 ### T25 — Contas e multiusuário
 

@@ -28,6 +28,8 @@ packages/
   graph-schema/  Schemas do grafo (zod)
   providers/     Provedores de modelos de IA
   mcp-neurons/   Servidor MCP dos neurônios
+  runner-protocol/  Protocolo (zod) entre o servidor e os runners
+  runner/        Runner: hospeda os agentes de terminal e conecta ao servidor
   api-client/    Cliente tipado da API (gerado do OpenAPI do servidor)
 Docs/            Cofre Obsidian com a documentação do projeto
 ```
