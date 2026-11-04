@@ -69,3 +69,24 @@ export function useRunEvents(id: string, live: boolean) {
     refetchInterval: live ? 2000 : false,
   });
 }
+
+export function useSaveDraft(id: string) {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name?: string; draft: unknown }) =>
+      unwrap(api.PATCH("/graphs/{id}", { params: { path: { id } }, body })),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"] }),
+  });
+}
+
+/** Freezes the saved draft as a new version (the request has no body: the server publishes the draft). */
+export function usePublishVersion(id: string) {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      unwrap(api.POST("/graphs/{id}/versions", { params: { path: { id } }, body: {} })),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"] }),
+  });
+}
