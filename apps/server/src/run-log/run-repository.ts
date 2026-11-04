@@ -17,10 +17,43 @@ export interface RunSummaryRecord extends RunRecord {
   graphId: string;
 }
 
+/** A listed run with what its log says it consumed (same rules as `GET /runs/{id}`). */
+export interface RunListItem extends RunSummaryRecord {
+  graphName: string;
+  /** The number of the version, as in `GET /graphs/{id}/versions`. */
+  graphVersion: number;
+  /** Sum of the turns whose cost is known; a lower bound when `unknownCostTurns` > 0. Never a guess. */
+  costUsd: number;
+  turns: number;
+  unknownCostTurns: number;
+}
+
+export const RUN_SORTS = ["startedAt", "costUsd"] as const;
+export type RunSort = (typeof RUN_SORTS)[number];
+
 export interface RunListFilter {
   status?: RunStatus;
   graphId?: string;
+  graphVersionId?: string;
+  /** Bounds on the known cost, inclusive. Runs with unknown-cost turns are compared by their known part. */
+  minCostUsd?: number;
+  maxCostUsd?: number;
+  /** Bounds on `startedAt`, inclusive; runs that never started never match when one is given. */
+  from?: Date;
+  to?: Date;
+  /** Defaults to `startedAt`. */
+  sort?: RunSort;
+  /** Defaults to `desc` (newest / dearest first). */
+  order?: "asc" | "desc";
   limit: number;
+  /** Defaults to 0. */
+  offset?: number;
+}
+
+/** One page of the listing and how many runs match the filter in all. */
+export interface RunListPage {
+  items: RunListItem[];
+  total: number;
 }
 
 /** A run that is still going, with the graph it executes. */
@@ -56,8 +89,8 @@ export interface RunRepository {
 
   listRunning(): Promise<ActiveRun[]>;
 
-  /** Newest first. */
-  list(filter: RunListFilter): Promise<RunSummaryRecord[]>;
+  /** Newest first unless the filter sorts otherwise; the cost comes aggregated from the event log. */
+  list(filter: RunListFilter): Promise<RunListPage>;
 }
 
 export const RUN_REPOSITORY = Symbol("RUN_REPOSITORY");

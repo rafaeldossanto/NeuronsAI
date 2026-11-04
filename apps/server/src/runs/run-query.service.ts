@@ -8,6 +8,7 @@ import { RunNotFoundError } from "../run-log/run-log.errors.js";
 import {
   RUN_REPOSITORY,
   type RunListFilter,
+  type RunListPage,
   type RunRepository,
   type RunSummaryRecord,
 } from "../run-log/run-repository.js";
@@ -35,7 +36,7 @@ export class RunQueryService {
     @Inject(MESSAGE_STORE) private readonly messages: MessageStore,
   ) {}
 
-  list(filter: RunListFilter): Promise<RunSummaryRecord[]> {
+  list(filter: RunListFilter): Promise<RunListPage> {
     return this.runs.list(filter);
   }
 

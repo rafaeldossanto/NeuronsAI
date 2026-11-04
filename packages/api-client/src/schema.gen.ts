@@ -147,7 +147,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Lista as execuções, das mais novas para as mais antigas. */
+        /** Lista as execuções com filtros e paginação (offset); das mais novas para as mais antigas por padrão. */
         get: operations["runs_list"];
         put?: never;
         /** Inicia uma execução de uma versão publicada do grafo. */
@@ -514,7 +514,7 @@ export interface components {
             guard?: string;
             message?: string;
         };
-        RunSummary: {
+        RunListItem: {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
@@ -526,6 +526,12 @@ export interface components {
             budgetUsd: number | null;
             startedAt: string | null;
             finishedAt: string | null;
+            graphName: string;
+            graphVersion: number;
+            durationMs: number | null;
+            costUsd: number;
+            turns: number;
+            unknownCostTurns: number;
         };
         UsageTotals: {
             costUsd: number;
@@ -1210,7 +1216,15 @@ export interface operations {
             query?: {
                 status?: "pending" | "running" | "succeeded" | "failed" | "cancelled";
                 graphId?: string;
+                graphVersionId?: string;
+                minCostUsd?: number;
+                maxCostUsd?: number;
+                from?: string;
+                to?: string;
+                sort?: "startedAt" | "costUsd";
+                order?: "asc" | "desc";
                 limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -1225,7 +1239,10 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        items: components["schemas"]["RunSummary"][];
+                        items: components["schemas"]["RunListItem"][];
+                        total: number;
+                        limit: number;
+                        offset: number;
                     };
                 };
             };

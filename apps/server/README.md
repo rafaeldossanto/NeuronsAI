@@ -129,17 +129,37 @@ Verificação rápida: `http://127.0.0.1:3100/health`. O campo `database.type` d
 
 Sem login ainda. Cada endpoint declara o seu contrato em zod (`*.contract.ts`: parâmetros, query, corpo e resposta) e o `@Endpoint(contrato)` do controller usa **esse mesmo** schema para validar o pedido, conferir a resposta e gerar o OpenAPI: não há DTO escrito à mão. Um pedido fora do contrato recebe `400`; um campo que o schema de resposta não nomeia nunca sai do servidor.
 
-| Método e caminho                                    | O que faz                                                                                                                                                                      |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET/POST /graphs`, `GET/PATCH/DELETE /graphs/{id}` | CRUD de grafos (nome e rascunho). Só apaga grafo sem versões publicadas (`409 graph_has_versions`).                                                                            |
-| `GET /graphs/{id}/versions`, `GET .../{version}`    | Versões publicadas (imutáveis).                                                                                                                                                |
-| `POST /graphs/{id}/versions`                        | Valida com o `validateGraph` e congela a próxima versão. Sem `definition`, publica o rascunho. Inválido: `400 invalid_graph` com `details` apontando o que corrigir.           |
-| `POST /runs`, `GET /runs`, `GET /runs/{id}`         | Inicia uma execução de uma versão (`graphVersionId`, `input`, `triggerId?`, `budgetUsd?`), lista (`status`, `graphId`, `limit`) e detalha (motivo do fim, consumo por agente). |
-| `POST /runs/{id}/stop`                              | Para a execução: encerra os runtimes e os terminais (`RunService` → `Supervisor.stopRun`). Pode repetir.                                                                       |
-| `POST /runs/{id}/messages`                          | Manda uma mensagem como `@human` a qualquer agente da execução (as setas não valem para você).                                                                                 |
-| `GET /runs/{id}/messages`, `GET /runs/{id}/events`  | Mensagens e eventos em ordem (`afterSeq`/`fromSeq`, `limit`): o mesmo log que o WebSocket transmite.                                                                           |
-| `GET /secrets`, `PUT /secrets/{name}`               | **Só** nomes e escrita. O valor entra e nunca volta: nenhum schema de resposta o carrega, e erros de validação não repetem o que foi enviado.                                  |
-| `GET /openapi.json`, `GET /health`                  | Documento OpenAPI e saúde.                                                                                                                                                     |
+| Método e caminho                                    | O que faz                                                                                                                                                                                   |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET/POST /graphs`, `GET/PATCH/DELETE /graphs/{id}` | CRUD de grafos (nome e rascunho). Só apaga grafo sem versões publicadas (`409 graph_has_versions`).                                                                                         |
+| `GET /graphs/{id}/versions`, `GET .../{version}`    | Versões publicadas (imutáveis).                                                                                                                                                             |
+| `POST /graphs/{id}/versions`                        | Valida com o `validateGraph` e congela a próxima versão. Sem `definition`, publica o rascunho. Inválido: `400 invalid_graph` com `details` apontando o que corrigir.                        |
+| `POST /runs`, `GET /runs`, `GET /runs/{id}`         | Inicia uma execução de uma versão (`graphVersionId`, `input`, `triggerId?`, `budgetUsd?`), [lista com filtros](#get-runs-lista-de-execuções) e detalha (motivo do fim, consumo por agente). |
+| `POST /runs/{id}/stop`                              | Para a execução: encerra os runtimes e os terminais (`RunService` → `Supervisor.stopRun`). Pode repetir.                                                                                    |
+| `POST /runs/{id}/messages`                          | Manda uma mensagem como `@human` a qualquer agente da execução (as setas não valem para você).                                                                                              |
+| `GET /runs/{id}/messages`, `GET /runs/{id}/events`  | Mensagens e eventos em ordem (`afterSeq`/`fromSeq`, `limit`): o mesmo log que o WebSocket transmite.                                                                                        |
+| `GET /secrets`, `PUT /secrets/{name}`               | **Só** nomes e escrita. O valor entra e nunca volta: nenhum schema de resposta o carrega, e erros de validação não repetem o que foi enviado.                                               |
+| `GET /openapi.json`, `GET /health`                  | Documento OpenAPI e saúde.                                                                                                                                                                  |
+
+### `GET /runs`: lista de execuções
+
+Todos os parâmetros são opcionais e se combinam com **E**:
+
+| Parâmetro                    | O que faz                                                                                                                                                |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`                     | `pending`, `running`, `succeeded`, `failed` ou `cancelled`.                                                                                              |
+| `graphId` / `graphVersionId` | Só as execuções desse grafo / dessa versão publicada (o id da versão, de `GET /graphs/{id}/versions`).                                                   |
+| `minCostUsd` / `maxCostUsd`  | Faixa do **custo conhecido**, inclusive nos dois lados (`min <= max`, senão `400`).                                                                      |
+| `from` / `to`                | Faixa do **início** (`startedAt`), inclusive, em ISO 8601 UTC (`2026-11-02T00:00:00Z`). Quem nunca começou (`pending`) não entra quando um dos dois vem. |
+| `sort` / `order`             | `startedAt` (padrão) ou `costUsd`; `desc` (padrão: mais recentes ou mais caras primeiro) ou `asc`. Desempate por início e `id`, então a ordem é estável. |
+| `limit` / `offset`           | Página de 50 por padrão (1 a 200) e quantas execuções pular.                                                                                             |
+
+A resposta é `{ items, total, limit, offset }`; `total` conta tudo o que casa com os filtros, ignorando a página. Cada item traz o necessário para uma tabela: `graphId`, `graphName`, `graphVersionId`, `graphVersion` (o número), `status`, `startedAt`, `finishedAt`, `durationMs` (nulo enquanto não terminou), `costUsd`, `turns` e `unknownCostTurns`.
+
+- **Paginação por `offset`**, não por cursor: a tela precisa de "página 3 de 8" e de pular para uma página, e o `total` vem de graça. O custo é que, se entrar uma execução enquanto se navega, as páginas se deslocam; como a ordem padrão é por início decrescente, isso só empurra itens para a página seguinte. Com milhares de execuções um cursor (`startedAt`, `id`) seria mais barato, mas a lista local não chega lá.
+- **Custo desconhecido nunca vira 0 e o filtro de custo vale para a parte conhecida.** `costUsd` é a soma dos turnos que informaram preço e `unknownCostTurns` conta os que não informaram (como em `GET /runs/{id}`). `minCostUsd`/`maxCostUsd` comparam esse `costUsd`: uma execução com `costUsd` 0,50 e 2 turnos sem preço entra em `minCostUsd=0.4` e em `maxCostUsd=1`, embora o gasto real possa ser maior; uma sem nenhum turno conhecido tem `costUsd` 0 e entra em `maxCostUsd=0`, mas o item mostra `unknownCostTurns > 0` para a tela avisar ("≥ US$ 0,50 + 2 turnos sem custo", "Desconhecido"). Execuções sem nenhum turno de uso têm `turns: 0`. Quem precisa só das totalmente conhecidas filtra no cliente por `unknownCostTurns === 0`.
+- **Sem N+1:** o custo vem de uma única agregação (`sum ... filter`, `count`) sobre os eventos `UsageRecorded`, unida às execuções; o total é uma segunda consulta com os mesmos filtros. A coluna `runs.spent_usd` continua sem uso: o log é a fonte.
+- **Índices** (migration `0004_run_listing_indexes`): `runs(graph_version_id)`, `runs(started_at desc, id desc)` e, parcial, `run_events(run_id) where type = 'UsageRecorded'`, que alimenta a agregação.
 
 **Erros**: sempre `{ code, message, details? }`. `code` é estável e em inglês (o cliente decide por ele), `message` é pt-BR e `details` lista `{ path, code, message }` de cada campo errado (`body.name`, `params.id`...). Um corpo que não é JSON recebe `400 bad_request` sem citar o corpo. Códigos comuns: `graph_not_found`, `run_not_found` (404), `run_not_active` (409), `unknown_recipient` (400), `master_key_not_configured` (503).
 
