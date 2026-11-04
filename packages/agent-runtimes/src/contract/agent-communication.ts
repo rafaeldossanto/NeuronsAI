@@ -27,4 +27,10 @@ export interface AgentCommunication {
 
   /** Records that the agent called a tool (not one of these): it enters the run log as `ToolCalled`. */
   reportToolCall(report: ToolCallReport): Promise<void>;
+
+  /** Only graph-authorized tools; optional for older runtimes and protocol revisions. */
+  listTools?(): Promise<
+    { nodeId: string; name: string; description: string; inputSchema: Record<string, unknown> }[]
+  >;
+  useTool?(nodeId: string, name: string, input: Record<string, unknown>): Promise<unknown>;
 }

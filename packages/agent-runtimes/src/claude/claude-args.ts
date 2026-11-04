@@ -55,6 +55,7 @@ export interface ClaudeArgsInput {
   settingsFile?: string;
   /** `undefined` when the agent has none or the CLI has no such flag. */
   effort?: string;
+  model?: string;
   maxBudgetUsd?: number;
   /** The agent's own `args`, already checked by {@link assertAllowedUserArgs}. */
   userArgs: readonly string[];
@@ -100,6 +101,7 @@ export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
   );
 
   if (input.effort && !hasFlag(input.userArgs, "--effort")) args.push("--effort", input.effort);
+  if (input.model && !hasFlag(input.userArgs, "--model")) args.push("--model", input.model);
   if (input.maxBudgetUsd && input.mode === "stream-json") {
     args.push("--max-budget-usd", String(input.maxBudgetUsd));
   }

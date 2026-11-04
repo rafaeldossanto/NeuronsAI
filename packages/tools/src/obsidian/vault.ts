@@ -1,7 +1,8 @@
-import { readFile, realpath, stat } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export type VaultErrorCode = "PATH_FORBIDDEN" | "NOT_FOUND" | "FILE_TOO_LARGE";
+export type VaultErrorCode = "PATH_FORBIDDEN" | "NOT_FOUND" | "FILE_TOO_LARGE" | "CONFLICT";
 
 export class VaultError extends Error {
   constructor(
@@ -13,7 +14,7 @@ export class VaultError extends Error {
   }
 }
 
-const FORBIDDEN_DIRS = new Set([".obsidian", ".trash"]);
+const FORBIDDEN_DIRS = new Set([".obsidian", ".trash", ".git", ".neurons"]);
 const NOTE_EXTENSION = ".md";
 
 export function isForbiddenDir(name: string): boolean {
@@ -38,6 +39,17 @@ function lexicalSegments(requested: string): string[] {
   if (segments.length === 0) throw forbidden("caminho vazio ou inválido");
   if (segments.includes("..")) throw forbidden("não é permitido sair do cofre");
   if (segments.some((segment) => segment.includes(":"))) throw forbidden("caractere inválido");
+  if (
+    segments.some(
+      (segment) =>
+        /[<>"|?*]/.test(segment) ||
+        Array.from(segment).some((char) => char.charCodeAt(0) < 32) ||
+        /[. ]$/.test(segment) ||
+        /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(segment),
+    )
+  ) {
+    throw forbidden("nome de arquivo inválido");
+  }
   if (segments.some(isForbiddenDir)) throw forbidden("pasta reservada do Obsidian");
   return segments;
 }
@@ -49,7 +61,7 @@ function withNoteExtension(segments: string[]): string[] {
 }
 
 /**
- * Read-only access to the notes of one vault. Every requested path goes through
+ * Confined access to the notes of one vault. Every requested path goes through
  * `resolveNote`, the single place that decides what may leave the vault directory.
  */
 export class Vault {
@@ -89,6 +101,67 @@ export class Vault {
       );
     }
     return readFile(file, "utf8");
+  }
+
+  /** Creates a new note, never overwrites one. Every parent is canonicalized before use. */
+  async createNote(requested: string, content: string): Promise<void> {
+    this.assertSize(content);
+    const segments = withNoteExtension(lexicalSegments(requested));
+    let parent = this.root;
+    for (const segment of segments.slice(0, -1)) {
+      const candidate = path.join(parent, segment);
+      await mkdir(candidate).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "EEXIST") throw error;
+      });
+      parent = await realpath(candidate);
+      this.assertInside(parent);
+    }
+    const destination = path.join(parent, segments.at(-1)!);
+    this.assertReadable(destination);
+    try {
+      await writeFile(destination, content, { encoding: "utf8", flag: "wx" });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        throw new VaultError("CONFLICT", "A nota já existe. Use a edição para alterá-la.");
+      }
+      throw error;
+    }
+  }
+
+  /** Compare-and-replace: a stale agent cannot silently overwrite a note changed in the meantime. */
+  async editNote(requested: string, previous: string, content: string): Promise<void> {
+    this.assertSize(content);
+    const file = await this.resolveNote(requested);
+    if ((await this.readResolved(file)) !== previous) {
+      throw new VaultError("CONFLICT", "A nota mudou. Leia a versão atual antes de editar.");
+    }
+    const temporary = path.join(path.dirname(file), `.neurons-${randomUUID()}.tmp`);
+    try {
+      await writeFile(temporary, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
+      await rename(temporary, file);
+    } finally {
+      await rm(temporary, { force: true });
+    }
+  }
+
+  private assertSize(content: string): void {
+    if (Buffer.byteLength(content, "utf8") > this.maxNoteBytes) {
+      throw new VaultError(
+        "FILE_TOO_LARGE",
+        `A nota excede o limite de ${this.maxNoteBytes} bytes.`,
+      );
+    }
+  }
+
+  private assertInside(real: string): void {
+    const relative = path.relative(this.root, real);
+    if (
+      relative.startsWith("..") ||
+      path.isAbsolute(relative) ||
+      relative.split(path.sep).some(isForbiddenDir)
+    ) {
+      throw forbidden("fora do cofre ou pasta reservada");
+    }
   }
 
   private async canonical(candidate: string): Promise<string> {

@@ -121,6 +121,12 @@ async function main() {
         case "peers":
           await callTool("list_peers", {});
           break;
+        case "tools":
+          await callTool("list_tools", {});
+          break;
+        case "tool":
+          await callTool("use_tool", JSON.parse(text(0)));
+          break;
         case "sleep":
           await new Promise((resolve) => setTimeout(resolve, Number(words[0])));
           break;

@@ -16,7 +16,9 @@ Electron (processo principal)
 
 - **Pasta de dados e CLI do Claude:** vêm da configuração do servidor ([`apps/server`](../server/README.md): `NEURONS_DATA_DIR`, `NEURONS_CLAUDE_BIN`, ...). Padrão: `%APPDATA%\NeuronsAI`, `~/Library/Application Support/NeuronsAI` ou `~/.local/share/neuronsai`. O banco fica em `<pasta>/db` e os arquivos do próprio Electron em `<pasta>/electron`.
 - **Duas travas:** só uma instância do app (`requestSingleInstanceLock`; abrir de novo traz a janela para a frente) e uma trava por arquivo (`<pasta>/db.lock`, com o PID) que impede dois processos de abrirem o mesmo banco, inclusive o servidor avulso. Uma trava deixada por um processo que morreu é retomada sozinha.
-- **Segurança:** `contextIsolation`, `sandbox`, sem `nodeIntegration` e sem preload; CSP restritiva (enviada pelo servidor); todo pedido da janela que não vá ao servidor local é cancelado; permissões negadas; `window.open` e navegação para fora são bloqueados (links `http(s)` abrem no navegador do sistema).
+- **Segurança:** `contextIsolation`, `sandbox`, sem `nodeIntegration` e preload com ponte limitada a minimizar, maximizar, fechar e selecionar pasta; CSP restritiva (enviada pelo servidor); todo pedido da janela que não vá ao servidor local é cancelado; permissões negadas; `window.open` e navegação para fora são bloqueados (links `http(s)` abrem no navegador do sistema).
+- **Moldura:** janela transparente com cantos de 12 px, barra compacta, título central e controles à esquerda. O preload CJS roda no sandbox e valida origem/frame em cada chamada. Maximizar remove os cantos; restaurar repõe a moldura.
+- **Chaves de API:** chave mestra gerada no primeiro uso e cifrada pelo `safeStorage` do sistema em `<pasta>/secrets-key.enc`. Se o sistema não oferece proteção adequada, o armazenamento fica desabilitado; `NEURONS_MASTER_KEY` explícita continua suportada.
 - **Menu e atalhos** (`src/menu.ts`) em pt-BR, com a diferença de cada sistema num lugar só. Ferramentas do desenvolvedor só fora do build empacotado.
 - O servidor MCP `neurons` (que o Claude Code inicia) roda com o próprio executável do app como Node (`ELECTRON_RUN_AS_NODE=1`).
 
@@ -35,7 +37,7 @@ $env:NEURONS_DESKTOP_CLAUDE_ARGS = '["packages/agent-runtimes/test-fixtures/fake
 pnpm --filter @neurons/desktop start
 ```
 
-Teste de aceitação (abre o app de verdade com pasta de dados temporária, publica `two-terminals.json`, roda e confere que a execução termina e que a trava é liberada ao sair):
+Teste de aceitação (executa o app real oculto com pasta temporária, verifica preload e controles, publica um projeto com dois agentes, grava uma nota na memória pelo MCP/runner e confere a liberação da trava ao sair):
 
 ```bash
 pnpm --filter @neurons/desktop smoke                          # do código-fonte

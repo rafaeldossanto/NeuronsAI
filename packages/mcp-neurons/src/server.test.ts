@@ -82,12 +82,41 @@ describe("neurons MCP server", () => {
     await bridge.stop();
   });
 
-  it("exposes exactly the five communication tools", async () => {
+  it("exposes communication and graph-authorized tool access", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name).sort()).toEqual(
-      ["ask", "finish", "list_peers", "reply", "send_message"].sort(),
+      ["ask", "finish", "list_peers", "reply", "send_message", "list_tools", "use_tool"].sort(),
     );
     expect(mcpToolName("ask")).toBe("mcp__neurons__ask");
+  });
+
+  it("forwards a memory call by graph node id, without a filesystem path supplied by the model", async () => {
+    bridge.handler = (call, res) =>
+      json(
+        res,
+        200,
+        call.route === BRIDGE_ROUTES.listTools
+          ? [
+              {
+                nodeId: "memoria",
+                name: "obsidian_read",
+                description: "Ler notas",
+                inputSchema: { type: "object" },
+              },
+            ]
+          : { ok: true, content: "Contexto" },
+      );
+    const listed = await client.callTool({ name: "list_tools" });
+    expect(textOf(listed)).toContain("memoria");
+    const result = await client.callTool({
+      name: "use_tool",
+      arguments: { nodeId: "memoria", name: "obsidian_read", input: { path: "Nota.md" } },
+    });
+    expect(textOf(result)).toContain("Contexto");
+    expect(bridge.calls.at(-1)).toMatchObject({
+      route: BRIDGE_ROUTES.useTool,
+      body: { nodeId: "memoria", name: "obsidian_read", input: { path: "Nota.md" } },
+    });
   });
 
   it("forwards send_message with the bridge token", async () => {

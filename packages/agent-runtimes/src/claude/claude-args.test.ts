@@ -7,11 +7,11 @@ import { formatInboundMessage } from "./inbound-text.js";
 const base = { mcpConfigFile: "mcp.json", briefingFile: "briefing.md", userArgs: [] };
 
 describe("buildClaudeArgs", () => {
-  it("pre-approves only the five neurons tools, never skipping permissions", () => {
+  it("pre-approves only neurons communication and authorized graph tools, never skipping permissions", () => {
     const args = buildClaudeArgs({ ...base, mode: "pty", settingsFile: "settings.json" });
     const allowed = args[args.indexOf("--allowedTools") + 1];
     expect(allowed?.split(",").sort()).toEqual(
-      ["ask", "finish", "list_peers", "reply", "send_message"]
+      ["ask", "finish", "list_peers", "reply", "send_message", "list_tools", "use_tool"]
         .map((t) => `mcp__neurons__${t}`)
         .sort(),
     );

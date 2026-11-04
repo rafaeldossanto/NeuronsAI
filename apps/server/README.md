@@ -250,6 +250,8 @@ src/
   api/           @Endpoint (contrato zod), validação, conferência da resposta e OpenAPI
   graphs/        GraphService, GraphVersionService e repositórios; controller e contrato
   secrets/       SecretsService, cifra AES-GCM, repositório; controller e contrato
+  connections/   estado de autenticação e login oficial Claude Code local
+  memories/      catálogo, importação e autorização de ferramentas por agente
   guards/        políticas de mensagem, BudgetGuard, IdleWatchdog, GuardEnforcer
   realtime/      gateway /ws e registro de assinaturas
   agents/        porta AgentRuntime (+ fábrica) e o FakeAgentRuntime dos testes
@@ -274,7 +276,7 @@ Agentes ligados por seta conversam direto; o Hub é só o carteiro. Seta A→B: 
 - **`ask`** devolve uma promessa resolvida pelo `reply` correspondente (que não vai ao runtime) ou rejeitada por `AskTimeoutError`. Uma resposta tardia chega ao agente como mensagem comum. O runtime reporta `waiting_reply` enquanto o `ask` dele está aberto, mas o estado gravado em `AgentStateChanged` vem da contagem de `ask` abertos do Hub (`Hub.openAsksOf`).
 - **Fim da execução** (`RunService`): `finish` de um agente (`reason: finished`), quiescência (todos ociosos, sem mensagem pendente nem `ask` aberto: `quiescent`) parada manual (`stopped`) ou guarda (`guard_tripped`). Ao terminar, todos os runtimes são parados (antes de `RunFinished` ser gravado, para o último uso entrar no log).
 
-Um runtime novo implementa `AgentRuntime` (do pacote `@neurons/agent-runtimes`) e é entregue pela `AgentRuntimeFactory`. Os agentes de terminal vêm do `RemoteRuntimeFactory` (rodam num runner, ver "Runners e perfis"); enquanto o runtime de API (T07) não existe, a fábrica recusa agentes `api`.
+Um runtime novo implementa `AgentRuntime` (do pacote `@neurons/agent-runtimes`) e é entregue pela `AgentRuntimeFactory`. Os agentes de terminal vêm do `RemoteRuntimeFactory` (rodam num runner, ver "Runners e perfis"); agentes de API usam `ApiRuntimeFactory`, com os SDKs oficiais OpenAI Responses e Anthropic Messages, chave nomeada em `secretName` e o mesmo conjunto de ferramentas de comunicação e memória. O código foi validado com clientes simulados; chamadas pagas com contas reais continuam pendentes.
 
 ## Testes
 
@@ -284,3 +286,16 @@ pnpm --filter @neurons/server test:integration   # as mesmas suítes de banco em
 ```
 
 As suítes de banco (`*.int.test.ts`: migrations, repositórios, segredos e Hub) são escritas uma vez só e rodam nos dois bancos: o Vitest tem um projeto por banco (`provide: { databaseKind }`) e `startTestDatabase()` abre o que o projeto pede. No `test` rodam em PGlite em memória, sem Docker (então rodam também no CI de Windows e macOS). No `test:integration` rodam em Postgres 18 via Testcontainers, que precisa do **Docker Desktop em execução** (na primeira vez baixa a imagem `postgres:18`). Abrir o PGlite leva alguns segundos (WASM + initdb), por isso os timeouts de 60 s.
+
+## Modelador, conexões e memórias (2026-11-04)
+
+O editor abre em `/new` e cria um projeto vazio. Para servir landing e aplicativo no mesmo processo, faça o build e configure `NEURONS_UI_DIR=apps/web/dist` e `NEURONS_LANDING_DIR=apps/site/dist` com caminhos absolutos. A landing atende `/`, o editor `/new` e `/graphs/:id`, e a API fica sob `/api`. Sem landing configurada, o desktop continua abrindo diretamente a lista de projetos.
+
+- `GET /connections` informa perfil, disponibilidade dos segredos e estado da CLI. `POST /connections/claude/login` inicia o login oficial no computador local. Em perfil híbrido, o login deve ser feito na CLI do runner. Não coleta nem reutiliza tokens privados de assinatura. ChatGPT por assinatura permanece indisponível até implementar e habilitar a integração oficial aplicável.
+- `GET/POST /memories` lista e cadastra memórias por UUID. Cofre local só é resolvido no perfil local. Memória de servidor fica em `<dataDir>/memories/<id>/vault`; o manifesto é persistido após a importação completa. Para futura hospedagem, esse diretório precisa de volume persistente. Contas, isolamento entre usuários e sincronização contínua seguem fora desta entrega.
+- Importação aceita pasta/ZIP pela interface, com limite de 20 MB e 1000 arquivos, incluindo anexos. Preserva subpastas e links relativos, recusa duplicidade, fuga de diretório e pastas reservadas. Importar cria cópia; não sincroniza. Os agentes leem notas Markdown e links; anexos são preservados, mas não interpretados como conteúdo multimodal.
+- O bloco e a ligação `uses` autorizam leitura/escrita. A restrição mais forte prevalece. As ferramentas `list_tools` e `use_tool` passam pelo servidor e usam a versão imutável do grafo da execução. Criar/editar notas não permite exclusão; edição exige conteúdo anterior para detectar conflito. O log guarda operação, bloco e caminho, sem gravar o conteúdo da nota.
+- Protocolo do runner: revisão **3**, ainda na versão 1. Runners antigos não recebem chamadas novas ou credenciais de API. Atualize servidor e runner juntos para usar memórias remotas ou chave de API no Claude Code. Credenciais só atravessam o início do agente e não são guardadas no grafo nem no cache do runner.
+- Agentes de API registram tokens, mas o custo USD é desconhecido: os SDKs não devolvem a fatura e ainda não há catálogo versionado de preços. As guardas mantêm o aviso de custo desconhecido; não tratar limite em USD como teto garantido nesses agentes.
+
+Detalhes e verificações em [Interface e memórias aprovadas](../../Docs/Plano/Interface%20e%20memorias%20aprovadas.md).

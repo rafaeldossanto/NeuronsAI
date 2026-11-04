@@ -4,6 +4,7 @@ export {
   PROTOCOL_REVISION,
   PROTOCOL_VERSION,
   REVISION_TOOL_CALLS,
+  REVISION_GRAPH_TOOLS,
   SUPPORTED_VERSIONS,
   revisionOf,
 } from "./version.js";

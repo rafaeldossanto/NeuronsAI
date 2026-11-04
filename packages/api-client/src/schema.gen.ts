@@ -1,4 +1,38 @@
 export interface paths {
+    "/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Estado das conexões de IA sem expor credenciais. */
+        get: operations["connections_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/connections/claude/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Abre o login oficial do Claude Code no computador local. */
+        post: operations["connections_signIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/graphs": {
         parameters: {
             query?: never;
@@ -63,6 +97,41 @@ export interface paths {
         };
         /** Mostra uma versão publicada, com a definição congelada. */
         get: operations["graphs_getVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/memories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lista as memórias cadastradas. */
+        get: operations["memories_list"];
+        put?: never;
+        /** Conecta um cofre local ou cria/importa uma memória no servidor. */
+        post: operations["memories_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/memories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detalha uma memória. */
+        get: operations["memories_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -274,11 +343,15 @@ export interface components {
                         kind: "api";
                         provider: string;
                         model: string;
+                        /** @enum {string} */
+                        access?: "api-key" | "subscription";
+                        secretName?: string;
                     } | {
                         /** @constant */
                         kind: "terminal";
                         /** @enum {string} */
                         cli: "claude" | "codex" | "gemini" | "custom";
+                        model?: string;
                         /**
                          * @default pty
                          * @enum {string}
@@ -288,6 +361,9 @@ export interface components {
                         /** @default [] */
                         args: string[];
                         cwd: string;
+                        /** @enum {string} */
+                        access?: "subscription" | "api-key";
+                        secretName?: string;
                     };
                 } | {
                     id: string;
@@ -331,9 +407,10 @@ export interface components {
                     } | {
                         /** @constant */
                         kind: "obsidian";
-                        vaultPath: string;
-                        /** @constant */
-                        readOnly: true;
+                        vaultPath?: string;
+                        /** Format: uuid */
+                        memoryId?: string;
+                        readOnly: boolean;
                     };
                 })[];
                 links: {
@@ -345,6 +422,7 @@ export interface components {
                     /** @default false */
                     bidirectional: boolean;
                     maxMessages?: number;
+                    readOnly?: boolean;
                 }[];
                 annotations: {
                     id: string;
@@ -463,6 +541,71 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    connections_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        profile: "local" | "hybrid" | "hosted";
+                        secretsEnabled: boolean;
+                        claude: {
+                            installed: boolean;
+                            connected: boolean;
+                            signingIn: boolean;
+                            message: string;
+                        };
+                        chatgpt: {
+                            available: boolean;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    connections_signIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        started: boolean;
+                    };
+                };
+            };
+            /** @description Indisponível no momento. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     graphs_list: {
         parameters: {
             query?: never;
@@ -747,11 +890,15 @@ export interface operations {
                                 kind: "api";
                                 provider: string;
                                 model: string;
+                                /** @enum {string} */
+                                access?: "api-key" | "subscription";
+                                secretName?: string;
                             } | {
                                 /** @constant */
                                 kind: "terminal";
                                 /** @enum {string} */
                                 cli: "claude" | "codex" | "gemini" | "custom";
+                                model?: string;
                                 /**
                                  * @default pty
                                  * @enum {string}
@@ -761,6 +908,9 @@ export interface operations {
                                 /** @default [] */
                                 args?: string[];
                                 cwd: string;
+                                /** @enum {string} */
+                                access?: "subscription" | "api-key";
+                                secretName?: string;
                             };
                         } | {
                             id: string;
@@ -804,9 +954,10 @@ export interface operations {
                             } | {
                                 /** @constant */
                                 kind: "obsidian";
-                                vaultPath: string;
-                                /** @constant */
-                                readOnly: true;
+                                vaultPath?: string;
+                                /** Format: uuid */
+                                memoryId?: string;
+                                readOnly: boolean;
                             };
                         })[];
                         links: {
@@ -818,6 +969,7 @@ export interface operations {
                             /** @default false */
                             bidirectional?: boolean;
                             maxMessages?: number;
+                            readOnly?: boolean;
                         }[];
                         annotations: {
                             id: string;
@@ -894,6 +1046,143 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GraphVersion"];
+                };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    memories_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            /** @enum {string} */
+                            storage: "local" | "server";
+                            vaultPath?: string;
+                            runner?: string;
+                            fileCount: number;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    memories_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    /** @enum {string} */
+                    storage: "local" | "server";
+                    vaultPath?: string;
+                    files?: {
+                        path: string;
+                        data: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description Sucesso. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        name: string;
+                        /** @enum {string} */
+                        storage: "local" | "server";
+                        vaultPath?: string;
+                        runner?: string;
+                        fileCount: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    memories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        name: string;
+                        /** @enum {string} */
+                        storage: "local" | "server";
+                        vaultPath?: string;
+                        runner?: string;
+                        fileCount: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
                 };
             };
             /** @description Requisição inválida. */

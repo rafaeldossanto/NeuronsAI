@@ -20,8 +20,9 @@ export interface TerminalFactoryOptions {
 export function terminalFactoryProvider(
   options: TerminalFactoryOptions = {},
 ): RuntimeFactoryProvider {
-  return (settings) =>
+  return (settings, credentials) =>
     new TerminalRuntimeFactory({
+      ...(credentials && { apiKey: credentials.apiKey }),
       askTimeoutMs: settings.askTimeoutMs,
       usageFlushMs: settings.usageFlushMs,
       cli: {

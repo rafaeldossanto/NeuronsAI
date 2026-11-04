@@ -24,10 +24,55 @@ const FAKE_CLAUDE = path.join(
   "fake-claude.mjs",
 );
 const DEBUG_PORT = 9333 + Math.floor(Math.random() * 500);
-const packagedExecutable = process.argv.slice(2).find((argument) => argument !== "--");
+const packagedExecutable = process.argv.slice(2).find((argument) => !argument.startsWith("--"));
 
 const log = (line) => console.log(`[smoke] ${line}`);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function inspectPage(page, inspect) {
+  const WebSocket = createRequire(path.join(root, "apps", "server", "package.json"))("ws");
+  const socket = new WebSocket(page.webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => {
+    socket.once("open", resolve);
+    socket.once("error", reject);
+  });
+  let sequence = 0;
+  const pending = new Map();
+  socket.on("message", (data) => {
+    const message = JSON.parse(String(data));
+    const waiter = pending.get(message.id);
+    if (waiter) {
+      pending.delete(message.id);
+      message.error
+        ? waiter.reject(new Error(message.error.message))
+        : waiter.resolve(message.result);
+    }
+  });
+  const call = (method, params = {}) =>
+    new Promise((resolve, reject) => {
+      const id = ++sequence;
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(`CDP: ${method} excedeu 15 segundos`));
+      }, 15_000);
+      pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      });
+      socket.send(JSON.stringify({ id, method, params }));
+    });
+  try {
+    return await inspect(call);
+  } finally {
+    socket.close();
+  }
+}
 
 async function until(label, probe, timeoutMs) {
   const limit = Date.now() + timeoutMs;
@@ -48,6 +93,7 @@ async function main() {
   const command = packagedExecutable ?? createRequire(import.meta.url)("electron");
   const args = [
     ...(packagedExecutable ? [] : [path.resolve(here, "..")]),
+    "--smoke-hidden",
     `--remote-debugging-port=${DEBUG_PORT}`,
   ];
   const env = {
@@ -84,6 +130,28 @@ async function main() {
     if (!html.ok || !csp.includes("default-src 'self'"))
       throw new Error("A interface não veio com a CSP.");
     log("interface servida com CSP restritiva");
+    await inspectPage(page, async (call) => {
+      await until(
+        "a moldura e o preload isolado",
+        async () => {
+          const result = await call("Runtime.evaluate", {
+            expression:
+              "Boolean(window.neuronsDesktop && document.querySelector('.desktop-titlebar'))",
+            returnByValue: true,
+          });
+          return result.result.value;
+        },
+        15_000,
+      );
+      const state = await call("Runtime.evaluate", {
+        expression: "window.neuronsDesktop.isMaximized()",
+        awaitPromise: true,
+        returnByValue: true,
+      });
+      if (typeof state.result.value !== "boolean")
+        throw new Error("A ponte dos controles de janela não respondeu.");
+    });
+    log("moldura desktop e IPC isolado verificados");
 
     const outside = await fetch(`${origin.replace("127.0.0.1", "localhost")}/api/health`).catch(
       () => undefined,
@@ -109,10 +177,30 @@ async function main() {
     const created = await api("POST", "/graphs", { name: "Smoke: dois terminais" });
     graph.id = created.id;
     for (const node of graph.nodes) if (node.type === "agent") node.runtime.cwd = workdir;
+    const memory = await api("POST", "/memories", {
+      name: "Memória de validação",
+      storage: "server",
+    });
+    const firstAgent = graph.nodes.find((node) => node.type === "agent");
+    graph.nodes.push({
+      id: "memory-smoke",
+      type: "tool",
+      name: "Memória de validação",
+      position: { x: 250, y: 260 },
+      tool: { kind: "obsidian", memoryId: memory.id, readOnly: false },
+    });
+    graph.links.push({
+      id: "uses-memory-smoke",
+      from: firstAgent.id,
+      to: "memory-smoke",
+      kind: "uses",
+      bidirectional: false,
+    });
+    await api("PATCH", `/graphs/${created.id}`, { draft: graph });
     const version = await api("POST", `/graphs/${created.id}/versions`, { definition: graph });
     const run = await api("POST", "/runs", {
       graphVersionId: version.id,
-      input: "!ask Revisor !reply certo\n!finish resumo validado: $last",
+      input: `!tools\n!tool ${JSON.stringify({ nodeId: "memory-smoke", name: "obsidian_create", input: { path: "Resultado.md", content: "Nota criada pelo agente de teste." } })}\n!ask Revisor !reply certo\n!finish resumo validado: $last`,
     });
     log(`execução ${run.id} iniciada`);
 
@@ -135,6 +223,13 @@ async function main() {
     const lock = path.join(dataDir, "db.lock");
     await stat(lock);
     log("trava do banco presente enquanto o app roda");
+    const note = await readFile(
+      path.join(dataDir, "memories", memory.id, "vault", "Resultado.md"),
+      "utf8",
+    );
+    if (note !== "Nota criada pelo agente de teste.")
+      throw new Error("O agente não gravou a memória.");
+    log("memória do servidor gravada pelo agente via MCP/runner");
 
     return { scratch, app, exited, ok: true };
   } catch (error) {

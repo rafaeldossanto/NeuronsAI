@@ -37,8 +37,8 @@ async function guarded(work: () => Promise<ToolResult>, signal: AbortSignal): Pr
   }
 }
 
-function buildTools(vault: Vault, deps: ResolvedDeps): Tool[] {
-  return [
+function buildTools(vault: Vault, deps: ResolvedDeps, readOnly: boolean): Tool[] {
+  const readers = [
     defineTool({
       name: "obsidian_search",
       description:
@@ -77,6 +77,31 @@ function buildTools(vault: Vault, deps: ResolvedDeps): Tool[] {
         }, ctx.signal),
     }),
   ];
+  if (readOnly) return readers;
+  return [
+    ...readers,
+    defineTool({
+      name: "obsidian_create",
+      description: "Cria uma nota Markdown no cofre. Não substitui notas existentes.",
+      schema: pathInput.extend({ content: z.string() }),
+      run: ({ path, content }, ctx) =>
+        guarded(async () => {
+          await vault.createNote(path, content);
+          return success("Nota criada.");
+        }, ctx.signal),
+    }),
+    defineTool({
+      name: "obsidian_edit",
+      description:
+        "Edita uma nota. Informe o conteúdo anterior obtido com obsidian_read para evitar sobrescrever alterações recentes.",
+      schema: pathInput.extend({ previous: z.string(), content: z.string() }),
+      run: ({ path, previous, content }, ctx) =>
+        guarded(async () => {
+          await vault.editNote(path, previous, content);
+          return success("Nota atualizada.");
+        }, ctx.signal),
+    }),
+  ];
 }
 
 export async function createObsidianTools(
@@ -85,6 +110,7 @@ export async function createObsidianTools(
 ): Promise<ToolSet> {
   let vault: Vault;
   try {
+    if (!node.tool.vaultPath) throw new Error("A memória precisa ser resolvida pelo servidor.");
     vault = await Vault.open(node.tool.vaultPath, deps.limits.maxNoteBytes);
   } catch (cause) {
     throw new ToolSetupError(
@@ -93,5 +119,5 @@ export async function createObsidianTools(
       { cause },
     );
   }
-  return { tools: buildTools(vault, deps), close: () => Promise.resolve() };
+  return { tools: buildTools(vault, deps, node.tool.readOnly), close: () => Promise.resolve() };
 }

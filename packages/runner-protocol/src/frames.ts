@@ -86,6 +86,13 @@ export const callSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal("report_usage"), usage: usageSchema }),
   /** Revision 2. Sent only to a server that announced revision 2 or later. */
   z.object({ method: z.literal("report_tool_call"), report: toolCallReportSchema }),
+  z.object({ method: z.literal("list_tools") }),
+  z.object({
+    method: z.literal("use_tool"),
+    nodeId: z.string().min(1),
+    name: z.string().min(1),
+    input: z.record(z.string(), z.unknown()),
+  }),
 ]);
 export type Call = z.infer<typeof callSchema>;
 
@@ -162,6 +169,8 @@ export const agentStartFrame = frame("agent.start", {
   agent: agentNodeSchema,
   briefing: z.string(),
   settings: startSettingsSchema,
+  /** Transient execution credential, never a graph field or log payload. Revision 3+. */
+  credentials: z.object({ apiKey: z.string().min(1).max(16384) }).optional(),
 });
 
 export const agentDeliverFrame = frame("agent.deliver", {

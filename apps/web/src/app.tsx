@@ -3,6 +3,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import { Layout } from "@/components/layout";
+import { DesktopFrame } from "@/components/desktop-frame";
+import { WorkspaceProvider } from "@/workspace/resources";
+import { NewProjectPage } from "@/routes/new-project-page";
 import { EmptyState } from "@/components/states";
 import { ApiProvider } from "@/lib/api";
 import { GraphEditorPage } from "@/routes/graph-editor-page";
@@ -22,16 +25,21 @@ export function App({ api, queryClient }: { api: ApiClient; queryClient?: QueryC
   return (
     <ApiProvider api={api}>
       <QueryClientProvider client={client}>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route index element={<Navigate to="/graphs" replace />} />
-            <Route path="graphs" element={<GraphsPage />} />
-            <Route path="graphs/:id" element={<GraphEditorPage />} />
-            <Route path="runs" element={<RunsPage />} />
-            <Route path="runs/:id" element={<RunDetailPage />} />
-            <Route path="*" element={<EmptyState title="Página não encontrada" />} />
-          </Route>
-        </Routes>
+        <WorkspaceProvider>
+          <DesktopFrame>
+            <Routes>
+              <Route element={<Layout />}>
+                <Route index element={<Navigate to="/graphs" replace />} />
+                <Route path="new" element={<NewProjectPage />} />
+                <Route path="graphs" element={<GraphsPage />} />
+                <Route path="graphs/:id" element={<GraphEditorPage />} />
+                <Route path="runs" element={<RunsPage />} />
+                <Route path="runs/:id" element={<RunDetailPage />} />
+                <Route path="*" element={<EmptyState title="Página não encontrada" />} />
+              </Route>
+            </Routes>
+          </DesktopFrame>
+        </WorkspaceProvider>
       </QueryClientProvider>
     </ApiProvider>
   );

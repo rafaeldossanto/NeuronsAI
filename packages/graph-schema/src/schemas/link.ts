@@ -10,6 +10,8 @@ export const linkSchema = z.object({
   kind: linkKindSchema,
   bidirectional: z.boolean().default(false),
   maxMessages: z.number().int().positive().optional(),
+  /** Restricts this agent's access to a memory even when its block permits writes. */
+  readOnly: z.boolean().optional(),
 });
 
 export type LinkKind = z.infer<typeof linkKindSchema>;
