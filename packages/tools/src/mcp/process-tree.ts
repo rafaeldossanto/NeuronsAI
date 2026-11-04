@@ -57,6 +57,9 @@ async function descendantsOf(root: number): Promise<number[]> {
   return found;
 }
 
+/** A killed process leaves the table at once; this is only the slack for a loaded machine. */
+const SETTLE_MS = 5_000;
+
 async function waitForExit(pid: number, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (isProcessAlive(pid)) {
@@ -71,6 +74,6 @@ export async function ensureGone(pid: number, graceMs: number, attempts: number)
   if (await waitForExit(pid, graceMs)) return;
   for (let attempt = 0; attempt < attempts; attempt++) {
     await killProcessTree(pid);
-    if (await waitForExit(pid, 500)) return;
+    if (await waitForExit(pid, SETTLE_MS)) return;
   }
 }

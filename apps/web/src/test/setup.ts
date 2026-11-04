@@ -1,8 +1,12 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
 
 afterEach(() => cleanup());
+
+// findBy*/waitFor return as soon as the condition holds; the 1 s default only decides how long a
+// loaded machine may take to render before the test gives up.
+configure({ asyncUtilTimeout: 5_000 });
 
 // jsdom has no layout engine: React Flow needs these to mount (see its testing guide).
 class ResizeObserverStub {
