@@ -3,6 +3,7 @@ import {
   isTerminalRuntime,
   silentLogger,
   type AgentCommunication,
+  type ToolCallReport,
   type AgentRuntime,
   type AgentRuntimeFactory,
   type AgentUsage,
@@ -13,7 +14,10 @@ import type { AgentPeers } from "@neurons/graph-schema";
 import {
   CLOSE_HEARTBEAT,
   CLOSE_PROTOCOL,
+  PROTOCOL_REVISION,
   PROTOCOL_VERSION,
+  REVISION_TOOL_CALLS,
+  revisionOf,
   type AgentDeliverFrame,
   type AgentStartFrame,
   type AgentStopFrame,
@@ -87,6 +91,8 @@ export class RunnerHost {
   private lastHeardAt = 0;
   /** The agents that existed when the current connection opened: the only ones `keep` can discard. */
   private snapshotIds = new Set<string>();
+  /** Protocol revision the server announced on this connection (1 until it does). */
+  private serverRevision = 1;
 
   constructor(private readonly options: RunnerHostOptions) {
     this.logger = options.logger ?? silentLogger;
@@ -121,6 +127,7 @@ export class RunnerHost {
   attach(channel: RunnerChannel): void {
     this.detach();
     this.channel = channel;
+    this.serverRevision = 1;
     this.snapshotIds = new Set(this.instances.keys());
     this.channelSubscriptions = [
       channel.onFrame((frame) => this.onFrame(frame)),
@@ -140,6 +147,7 @@ export class RunnerHost {
         ...(this.options.platform && { platform: this.options.platform }),
       },
       capabilities: { terminal: true, streamJson: true },
+      revision: PROTOCOL_REVISION,
       agents: [...this.instances.values()].map((instance) => ({
         instanceId: instance.id,
         state: instance.runtime.state,
@@ -193,6 +201,7 @@ export class RunnerHost {
 
   private handleRegistered(frame: RegisteredFrame): void {
     this.lastHeardAt = Date.now();
+    this.serverRevision = revisionOf(frame.revision);
     const wanted = new Set(frame.keep);
     for (const id of this.snapshotIds) {
       const instance = this.instances.get(id);
@@ -339,6 +348,11 @@ export class RunnerHost {
     });
   }
 
+  /** Whether the server on this connection understands `call`s of that revision. */
+  serverSupports(revision: number): boolean {
+    return this.serverRevision >= revision;
+  }
+
   private onCallResult(frame: CallResultFrame): void {
     const pending = this.pendingCalls.get(frame.callId);
     if (!pending) return; // already answered through an earlier connection
@@ -394,6 +408,21 @@ class RemoteCommunication implements AgentCommunication {
 
   async reportUsage(usage: AgentUsage): Promise<void> {
     await this.call({ method: "report_usage", usage });
+  }
+
+  async reportToolCall(report: ToolCallReport): Promise<void> {
+    // A server that predates the call would drop the connection over a frame it does not know.
+    if (!this.host.serverSupports(REVISION_TOOL_CALLS)) return;
+    await this.call({
+      method: "report_tool_call",
+      report: {
+        tool: report.tool,
+        inputSummary: report.inputSummary,
+        durationMs: Math.round(report.durationMs),
+        ok: report.ok,
+        ...(report.errorCode !== undefined && { errorCode: report.errorCode }),
+      },
+    });
   }
 
   private call(call: Call): Promise<unknown> {

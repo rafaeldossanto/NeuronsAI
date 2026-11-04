@@ -1,16 +1,16 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { TerminalAgentRuntime } from "@neurons/agent-runtimes";
-import { DomainError, type DomainErrorKind } from "../shared/errors/domain-error.js";
+import type { GraphDefinition } from "@neurons/graph-schema";
 import type { Unsubscribe } from "../shared/signal.js";
 import type { EventSink } from "./run-event.js";
 import { RunSubscriptions } from "./run-subscriptions.js";
+import { TerminalNotFoundError } from "./terminal-errors.js";
 
-export class TerminalNotFoundError extends DomainError {
-  readonly kind: DomainErrorKind = "not_found";
+export { TerminalNotFoundError } from "./terminal-errors.js";
 
-  constructor(agent: string) {
-    super("terminal_not_found", `O agente "${agent}" não tem um terminal aberto nesta execução.`);
-  }
+/** The runs this process is driving, so a terminal can be told apart from "the run is not running". */
+export interface ActiveRunLookup {
+  find(runId: string): { graph: GraphDefinition } | undefined;
 }
 
 /**
@@ -21,8 +21,19 @@ export class TerminalNotFoundError extends DomainError {
 @Injectable()
 export class TerminalSessions {
   private readonly sessions = new Map<string, Map<string, TerminalAgentRuntime>>();
+  private runLookup: ActiveRunLookup | undefined;
 
   constructor(@Inject(RunSubscriptions) private readonly subscriptions: RunSubscriptions) {}
+
+  /** Who knows the active runs and their graphs; set by whoever drives the runs (the Supervisor). */
+  useRunLookup(lookup: ActiveRunLookup): void {
+    this.runLookup = lookup;
+  }
+
+  /** The graph of the run while it is running in this process. */
+  activeGraph(runId: string): GraphDefinition | undefined {
+    return this.runLookup?.find(runId)?.graph;
+  }
 
   /** Starts publishing the runtime's output; the returned function ends it. */
   attach(runId: string, agent: string, runtime: TerminalAgentRuntime): Unsubscribe {

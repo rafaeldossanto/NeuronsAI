@@ -3,6 +3,7 @@ import {
   CLOSE_HEARTBEAT,
   CLOSE_PROTOCOL,
   CLOSE_REPLACED,
+  PROTOCOL_REVISION,
   PROTOCOL_VERSION,
   type CallFrame,
   type InstanceSnapshot,
@@ -110,6 +111,7 @@ export class RunnerLink implements RunnerEndpoint {
       v: PROTOCOL_VERSION,
       type: "registered",
       runnerId: this.identity.id,
+      revision: PROTOCOL_REVISION,
       heartbeatIntervalMs: this.limits.heartbeatMs,
       keep: [...this.runtimes.keys()],
     });
@@ -214,8 +216,10 @@ export class RunnerLink implements RunnerEndpoint {
     });
   }
 
-  sendInput(instanceId: string, data: string): void {
-    this.channel?.send({ v: PROTOCOL_VERSION, type: "agent.input", instanceId, data });
+  sendInput(instanceId: string, data: string): boolean {
+    if (!this.channel?.isOpen) return false;
+    this.channel.send({ v: PROTOCOL_VERSION, type: "agent.input", instanceId, data });
+    return true;
   }
 
   // ---- frames from the runner ----

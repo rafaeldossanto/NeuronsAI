@@ -44,6 +44,17 @@ export const usageSchema = z.object({
   turns: z.number().optional(),
 });
 
+/** A tool call as it enters the run log: bounded, so a peer cannot flood the log with one event. */
+export const MAX_TOOL_NAME_CHARS = 100;
+export const MAX_TOOL_INPUT_SUMMARY_CHARS = 1_000;
+export const toolCallReportSchema = z.object({
+  tool: z.string().min(1).max(MAX_TOOL_NAME_CHARS),
+  inputSummary: z.string().max(MAX_TOOL_INPUT_SUMMARY_CHARS),
+  durationMs: z.number().int().nonnegative(),
+  ok: z.boolean(),
+  errorCode: z.string().max(100).optional(),
+});
+
 /** Settings of the server that a runner needs to build the runtimes the way the server expects. */
 export const startSettingsSchema = z.object({
   askTimeoutMs: z.number().int().positive(),
@@ -73,6 +84,8 @@ export const callSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal("list_peers") }),
   z.object({ method: z.literal("finish"), result: z.string() }),
   z.object({ method: z.literal("report_usage"), usage: usageSchema }),
+  /** Revision 2. Sent only to a server that announced revision 2 or later. */
+  z.object({ method: z.literal("report_tool_call"), report: toolCallReportSchema }),
 ]);
 export type Call = z.infer<typeof callSchema>;
 
@@ -84,6 +97,8 @@ export const registerFrame = frame("register", {
     platform: z.string().max(50).optional(),
   }),
   capabilities: z.object({ terminal: z.boolean(), streamJson: z.boolean() }),
+  /** Protocol revision of the runner (see `PROTOCOL_REVISION`); absent means 1. */
+  revision: z.number().int().positive().optional(),
   /** The agents the runner still hosts: after a reconnection this is how the server catches up. */
   agents: z.array(instanceSnapshotSchema),
 });
@@ -127,6 +142,8 @@ export type RunnerFrame = z.infer<typeof runnerFrameSchema>;
 
 export const registeredFrame = frame("registered", {
   runnerId: z.string().min(1),
+  /** Protocol revision of the server (see `PROTOCOL_REVISION`); absent means 1. */
+  revision: z.number().int().positive().optional(),
   heartbeatIntervalMs: z.number().int().positive(),
   /** Agents the server still wants; the runner stops any other it hosts (orphans of a lost run). */
   keep: z.array(instanceId),

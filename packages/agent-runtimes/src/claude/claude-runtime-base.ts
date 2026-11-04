@@ -232,6 +232,7 @@ export abstract class ClaudeRuntimeBase implements AgentRuntime {
       listPeers: () => inner.listPeers(),
       finish: (result) => inner.finish(result),
       reportUsage: (usage) => inner.reportUsage(usage),
+      reportToolCall: (report) => inner.reportToolCall(report),
       ask: async (to, question, options) => {
         this.askOpened();
         try {

@@ -1,5 +1,5 @@
 import type { AgentPeers } from "@neurons/graph-schema";
-import type { AgentCommunication, AgentUsage } from "@neurons/agent-runtimes";
+import type { AgentCommunication, AgentUsage, ToolCallReport } from "@neurons/agent-runtimes";
 import type { Hub } from "./hub.js";
 
 /** The communication tools of one agent of one run, backed by the Hub. */
@@ -34,5 +34,9 @@ export class HubAgentCommunication implements AgentCommunication {
 
   reportUsage(usage: AgentUsage): Promise<void> {
     return this.hub.reportUsage(this.runId, this.agent, usage);
+  }
+
+  reportToolCall(report: ToolCallReport): Promise<void> {
+    return this.hub.reportToolCall(this.runId, this.agent, report);
   }
 }

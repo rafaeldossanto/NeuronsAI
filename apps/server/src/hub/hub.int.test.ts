@@ -56,6 +56,17 @@ async function loggedSeqs(runId: string): Promise<number[]> {
   return rows.map((row) => row.seq);
 }
 
+/** How many events of each type the run's log holds. */
+async function loggedTypes(runId: string): Promise<Record<string, number>> {
+  const rows = await db()
+    .select({ type: runEvents.type })
+    .from(runEvents)
+    .where(eq(runEvents.runId, runId));
+  const counts: Record<string, number> = {};
+  for (const { type } of rows) counts[type] = (counts[type] ?? 0) + 1;
+  return counts;
+}
+
 const range = (from: number, to: number) =>
   Array.from({ length: to - from + 1 }, (_, i) => from + i);
 
@@ -134,8 +145,15 @@ describe("Hub", () => {
       const unacked = await persistence.messageStore.listUnacked(runId);
       expect(unacked).toEqual([]);
     });
-    // 30 MessageSent + 30 MessageDelivered + 2 AgentStarted.
-    expect(await loggedSeqs(runId)).toEqual(range(1, total * 2 + 2));
+    // 30 MessageSent + 30 MessageDelivered + 2 AgentStarted, and the state events of the two agents
+    // (how many depends on how the deliveries interleave): whatever the count, the seqs have no gap.
+    const seqs = await loggedSeqs(runId);
+    expect(seqs).toEqual(range(1, seqs.length));
+    expect(await loggedTypes(runId)).toMatchObject({
+      MessageSent: total,
+      MessageDelivered: total,
+      AgentStarted: 2,
+    });
     const messageSeqs = sent.map((message) => message.seq);
     expect(new Set(messageSeqs).size).toBe(total);
     // Each message holds the seq of its own MessageSent event.
@@ -221,9 +239,11 @@ describe("Hub", () => {
       await eventually(async () => {
         expect(await persistence.messageStore.listUnacked(runId)).toEqual([]);
       });
-      // 2 MessageSent, AgentStarted before and after the restart, 2 MessageDelivered.
+      // 2 MessageSent, AgentStarted before and after the restart, 2 MessageDelivered (and the
+      // state events of the agent in both lives, which are not counted here).
       const seqs = await loggedSeqs(runId);
-      expect(seqs).toEqual(range(1, 6));
+      expect(seqs).toEqual(range(1, seqs.length));
+      expect(await loggedTypes(runId)).toMatchObject({ MessageSent: 2, MessageDelivered: 2 });
       const started = await db().select().from(runEvents).where(eq(runEvents.type, "AgentStarted"));
       expect(started.filter((event) => event.runId === runId)).toHaveLength(2);
     });

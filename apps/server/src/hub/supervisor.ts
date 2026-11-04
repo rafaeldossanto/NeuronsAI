@@ -14,6 +14,7 @@ import { RUN_REPOSITORY, type RunRepository } from "../run-log/run-repository.js
 import { settlesWithin } from "../shared/settles-within.js";
 import { Signal, type Unsubscribe } from "../shared/signal.js";
 import { findAgent } from "./agent-lookup.js";
+import { lifecycleStateOf, type AgentLifecycleState } from "./agent-state.js";
 import { buildBriefing } from "./briefing.js";
 import { HubAgentCommunication } from "./hub-agent-communication.js";
 import { HubEvents } from "./hub-events.js";
@@ -64,6 +65,10 @@ interface AgentSlot {
   stopping: Promise<void> | undefined;
   /** The latest inbox pump; stopping waits for it so no acknowledgement lands after the run ended. */
   pumpDone: Promise<void>;
+  /** The state last written to the log (decided synchronously, so a state is never written twice). */
+  lastState: AgentLifecycleState | undefined;
+  /** The state events of this agent being written, in order: the log gets them as they happened. */
+  logWrites: Promise<unknown>;
 }
 
 /**
@@ -92,9 +97,15 @@ export class Supervisor {
     @Inject(TerminalSessions) private readonly terminals: TerminalSessions,
     @Inject(GuardEnforcer) enforcer: GuardEnforcer,
   ) {
+    this.terminals.useRunLookup(this.registry);
     this.hub.messageRecorded.subscribe((message) => this.onMessage(message));
     this.hub.askClosed.subscribe((runId) => this.settled.emit(runId));
     this.hub.trackedWorkDone.subscribe((runId) => this.settled.emit(runId));
+    // The count of open asks is the Hub's: an agent with two open stays waiting after the first answer.
+    this.hub.askChanged.subscribe(({ runId, agent }) => {
+      const slot = this.slots.get(runId)?.get(agent);
+      if (slot) this.syncState(slot);
+    });
     enforcer.tripped.subscribe((trip) => {
       if (trip.scope === "agent" && trip.agent) {
         return this.abortAgent(trip.runId, trip.agent, trip.reason);
@@ -173,8 +184,10 @@ export class Supervisor {
 
   private onStateChange(slot: AgentSlot, state: AgentRuntimeState): void {
     this.agentStateChanged.emit({ runId: slot.runId, agent: slot.agent.name, state });
-    if (state === "idle") this.schedulePump(slot);
+    // A failure is written by `reportFailure`, together with its reason and AgentFailed.
     if (state === "failed") void this.reportFailure(slot, slot.runtime?.failureReason);
+    else this.syncState(slot);
+    if (state === "idle") this.schedulePump(slot);
     if (state === "idle" || DEAD_STATES.has(state)) this.settled.emit(slot.runId);
   }
 
@@ -202,6 +215,8 @@ export class Supervisor {
       detachTerminal: () => undefined,
       stopping: undefined,
       pumpDone: Promise.resolve(),
+      lastState: undefined,
+      logWrites: Promise.resolve(),
     };
     bySlot.set(agentName, slot);
     slot.booted = this.boot(slot, buildBriefing(agent, peersOf(graph, agentName)));
@@ -218,7 +233,13 @@ export class Supervisor {
       if (isTerminalRuntime(runtime)) {
         slot.detachTerminal = this.terminals.attach(slot.runId, slot.agent.name, runtime);
       }
-      await this.recorder.record(slot.runId, [HubEvents.agentStarted(slot.agent.name, briefing)]);
+      slot.lastState = "starting";
+      await this.enqueueWrite(slot, () =>
+        this.recorder.record(slot.runId, [
+          HubEvents.agentStarted(slot.agent.name, briefing),
+          HubEvents.agentStateChanged(slot.agent.name, "starting"),
+        ]),
+      );
       this.agentStarted.emit({ runId: slot.runId, agent: slot.agent, runtime });
       await runtime.start(briefing);
     } catch (error) {
@@ -231,13 +252,53 @@ export class Supervisor {
     return slot.runtime?.state ?? "starting";
   }
 
+  /**
+   * What the log says about the agent now. The runtime tells whether it works, the Hub how many
+   * `ask`s it has open (so `waiting_reply` does not end with the first answer) and the slot whether
+   * it was taken out.
+   */
+  private lifecycleOf(slot: AgentSlot): AgentLifecycleState {
+    if (slot.failed) return "failed";
+    const runtime = slot.runtime?.state ?? "starting";
+    return lifecycleStateOf(runtime, this.hub.openAsksOf(slot.runId, slot.agent.name));
+  }
+
+  /** Writes `AgentStateChanged` when, and only when, the state is not the one already written. */
+  private syncState(slot: AgentSlot): void {
+    const state = this.lifecycleOf(slot);
+    if (state === slot.lastState) return;
+    slot.lastState = state;
+    this.enqueueWrite(slot, () =>
+      this.recorder.record(slot.runId, [HubEvents.agentStateChanged(slot.agent.name, state)]),
+    ).catch((error: unknown) =>
+      this.logger.error(
+        `Não foi possível registrar o estado de "${slot.agent.name}": ${errorMessage(error)}`,
+      ),
+    );
+  }
+
+  /** Runs a write after the ones before it; a failed write does not hold back the next. */
+  private enqueueWrite<T>(slot: AgentSlot, write: () => Promise<T>): Promise<T> {
+    const written = slot.logWrites.then(write);
+    slot.logWrites = written.then(
+      () => undefined,
+      () => undefined,
+    );
+    return written;
+  }
+
   private async reportFailure(slot: AgentSlot, reason: string | undefined): Promise<void> {
     if (slot.failed) return;
     slot.failed = true;
+    slot.lastState = "failed";
+    const text = reason ?? "O agente falhou.";
     try {
-      await this.recorder.record(slot.runId, [
-        HubEvents.agentFailed(slot.agent.name, reason ?? "O agente falhou."),
-      ]);
+      await this.enqueueWrite(slot, () =>
+        this.recorder.record(slot.runId, [
+          HubEvents.agentFailed(slot.agent.name, text),
+          HubEvents.agentStateChanged(slot.agent.name, "failed", text),
+        ]),
+      );
     } catch (error) {
       this.logger.error(
         `Não foi possível registrar a falha de "${slot.agent.name}": ${errorMessage(error)}`,
@@ -261,6 +322,9 @@ export class Supervisor {
       this.logger.error(`Falha ao parar "${slot.agent.name}": ${errorMessage(error)}`);
     }
     slot.detachTerminal();
+    // The run is over for this agent (a failed one keeps saying so). Written before the run's end.
+    this.syncState(slot);
+    await slot.logWrites;
     // A message handed over just before the stop is acknowledged before the run is closed.
     // (Bounded: a runtime that never confirms receiving a message must not hold the stop.)
     await settlesWithin(slot.pumpDone, PUMP_SETTLE_MS);
