@@ -178,6 +178,20 @@ describe("validateGraph", () => {
         issues: [{ code: "group_member_not_found", path: ["annotations", 0, "memberIds", 1] }],
       });
     });
+
+    it("accepts annotations (even another group) as members", () => {
+      const note = { id: "n1", kind: "note" as const, position: { x: 0, y: 0 } };
+      const annotations = [group("g", ["a", "n1", "g2"]), group("g2", ["n1"]), note];
+      expect(validateGraph(validGraph({ annotations })).ok).toBe(true);
+    });
+
+    it("flags a group that contains itself", () => {
+      const result = validateGraph(validGraph({ annotations: [group("g", ["g"])] }));
+      expect(result).toMatchObject({
+        ok: false,
+        issues: [{ code: "group_member_not_found", path: ["annotations", 0, "memberIds", 0] }],
+      });
+    });
   });
 
   it("gathers every problem in one pass instead of stopping at the first", () => {
