@@ -2,11 +2,16 @@ name: Release
 
 # T22: installers for the three systems. Nothing here is signed (T23).
 #   - tag `v*`: builds everything and publishes a DRAFT GitHub release (a person publishes it).
+#   - change to this file on dev: same as a manual run with `publish: false`.
 #   - manual run: `publish: false` (default) only uploads the installers as workflow artifacts;
 #     `publish: true` also creates the draft release.
 on:
   push:
     tags: ["v*"]
+    # Only when this file changes on dev: a build-only dry run (never publishes), so the workflow
+    # can be tested before it exists on main (a manual dispatch needs it on the default branch).
+    branches: [dev]
+    paths: [".github/workflows/release.yml"]
   workflow_dispatch:
     inputs:
       publish:
