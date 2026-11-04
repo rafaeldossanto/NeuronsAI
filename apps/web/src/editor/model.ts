@@ -1,9 +1,11 @@
 import type {
   AgentRuntime,
+  Annotation,
   GraphDefinition,
   GraphNode,
   Link,
   Position,
+  Size,
 } from "@neurons/graph-schema";
 
 /**
@@ -19,13 +21,24 @@ export const GRID = 20;
 
 export type EditorAction =
   | { type: "addNode"; node: GraphNode }
+  /** Moves blocks and annotations; moving a group carries its members (unless they are in `positions` too). */
   | { type: "moveNodes"; positions: Record<string, Position>; gesture?: string }
+  | { type: "addAnnotation"; annotation: Annotation }
+  /** Sets (or, with `undefined`, removes) the value at `path` inside an annotation (text, style...). */
+  | { type: "setAnnotationField"; id: string; path: FieldPath; value: unknown }
+  | { type: "resizeAnnotation"; id: string; position: Position; size: Size; gesture?: string }
   /** Sets (or, with `undefined`, removes) the value at `path` inside a block. */
   | { type: "setNodeField"; id: string; path: FieldPath; value: unknown }
   | { type: "addLink"; link: Link }
   | { type: "setLinkField"; id: string; path: FieldPath; value: unknown }
-  /** Deletes blocks (with their links) and links; `clearTargets` are triggers whose arrow is deleted. */
-  | { type: "remove"; nodeIds?: string[]; linkIds?: string[]; clearTargets?: string[] }
+  /** Deletes blocks (with their links), links and annotations; `clearTargets` are triggers whose arrow is deleted. */
+  | {
+      type: "remove";
+      nodeIds?: string[];
+      linkIds?: string[];
+      annotationIds?: string[];
+      clearTargets?: string[];
+    }
   | { type: "rename"; name: string }
   | { type: "endGesture" }
   | { type: "undo" }
@@ -83,15 +96,33 @@ function apply(doc: GraphDoc, action: EditorAction): GraphDoc {
   switch (action.type) {
     case "addNode":
       return { ...doc, nodes: [...doc.nodes, action.node] };
-    case "moveNodes":
+    case "moveNodes": {
+      const positions = withGroupMembers(doc, action.positions);
+      const moved = <T extends { id: string; position: Position }>(item: T): T => {
+        const position = positions[item.id];
+        return position && (position.x !== item.position.x || position.y !== item.position.y)
+          ? { ...item, position }
+          : item;
+      };
+      return { ...doc, nodes: doc.nodes.map(moved), annotations: doc.annotations.map(moved) };
+    }
+    case "addAnnotation":
+      return { ...doc, annotations: [...doc.annotations, action.annotation] };
+    case "setAnnotationField":
       return {
         ...doc,
-        nodes: doc.nodes.map((node) => {
-          const position = action.positions[node.id];
-          return position && (position.x !== node.position.x || position.y !== node.position.y)
-            ? { ...node, position }
-            : node;
-        }),
+        annotations: doc.annotations.map((annotation) =>
+          annotation.id === action.id ? setIn(annotation, action.path, action.value) : annotation,
+        ),
+      };
+    case "resizeAnnotation":
+      return {
+        ...doc,
+        annotations: doc.annotations.map((annotation) =>
+          annotation.id === action.id
+            ? { ...annotation, position: action.position, size: action.size }
+            : annotation,
+        ),
       };
     case "setNodeField":
       return {
@@ -113,8 +144,18 @@ function apply(doc: GraphDoc, action: EditorAction): GraphDoc {
       const nodeIds = new Set(action.nodeIds ?? []);
       const linkIds = new Set(action.linkIds ?? []);
       const clear = new Set(action.clearTargets ?? []);
+      const annotationIds = new Set(action.annotationIds ?? []);
+      const gone = new Set([...nodeIds, ...annotationIds]);
       return {
         ...doc,
+        // A deleted item leaves its groups too, so no group points at something that no longer exists.
+        annotations: doc.annotations
+          .filter((annotation) => !annotationIds.has(annotation.id))
+          .map((annotation) =>
+            annotation.memberIds?.some((id) => gone.has(id))
+              ? { ...annotation, memberIds: annotation.memberIds.filter((id) => !gone.has(id)) }
+              : annotation,
+          ),
         nodes: doc.nodes
           .filter((node) => !nodeIds.has(node.id))
           .map((node) =>
@@ -134,11 +175,47 @@ function apply(doc: GraphDoc, action: EditorAction): GraphDoc {
   }
 }
 
+/**
+ * Adds, for every group in `positions`, the members' new positions (same shift), recursively through
+ * nested groups. Items already in `positions` keep what they asked for.
+ */
+function withGroupMembers(
+  doc: GraphDoc,
+  positions: Record<string, Position>,
+): Record<string, Position> {
+  const result = { ...positions };
+  const current = new Map<string, Position>(
+    [...doc.nodes, ...doc.annotations].map((item) => [item.id, item.position]),
+  );
+  const groups = new Map(
+    doc.annotations.flatMap((a) => (a.kind === "group" ? [[a.id, a] as const] : [])),
+  );
+  const carry = (groupId: string, dx: number, dy: number, seen: Set<string>) => {
+    if (seen.has(groupId)) return;
+    seen.add(groupId);
+    for (const memberId of groups.get(groupId)?.memberIds ?? []) {
+      const from = current.get(memberId);
+      if (!from || memberId in positions) continue;
+      result[memberId] = { x: from.x + dx, y: from.y + dy };
+      carry(memberId, dx, dy, seen);
+    }
+  };
+  for (const [id, to] of Object.entries(positions)) {
+    const from = current.get(id);
+    if (from && groups.has(id)) carry(id, to.x - from.x, to.y - from.y, new Set());
+  }
+  return result;
+}
+
 /** The key under which consecutive edits merge into a single undo step (undefined: always a new step). */
 function gestureOf(action: EditorAction): string | undefined {
   switch (action.type) {
     case "moveNodes":
       return action.gesture;
+    case "resizeAnnotation":
+      return action.gesture;
+    case "setAnnotationField":
+      return `annotation:${action.id}:${action.path.join(".")}`;
     case "setNodeField":
       return `node:${action.id}:${action.path.join(".")}`;
     case "setLinkField":

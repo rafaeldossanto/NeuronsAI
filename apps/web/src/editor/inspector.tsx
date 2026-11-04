@@ -9,6 +9,7 @@ import {
 } from "@neurons/graph-schema";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { AnnotationInspector } from "./annotation-inspector";
 import { Field, ListField, parseOptionalNumber, Select, TextArea, TextInput } from "./fields";
 import { issueField, type LocatedIssue } from "./issues";
 import {
@@ -22,6 +23,8 @@ import {
 export interface Selection {
   nodeIds: string[];
   linkIds: string[];
+  /** Annotations of the free layer (optional: most callers only select blocks and arrows). */
+  annotationIds?: string[];
 }
 
 type Dispatch = (action: EditorAction) => void;
@@ -66,7 +69,10 @@ export function Inspector({
   issues: LocatedIssue[];
   dispatch: Dispatch;
 }) {
-  const total = selection.nodeIds.length + selection.linkIds.length;
+  const annotationIds = selection.annotationIds ?? [];
+  const total = selection.nodeIds.length + selection.linkIds.length + annotationIds.length;
+  const annotation =
+    total === 1 ? doc.annotations.find((a) => a.id === annotationIds[0]) : undefined;
   const node = total === 1 ? doc.nodes.find((n) => n.id === selection.nodeIds[0]) : undefined;
   const link = total === 1 ? doc.links.find((l) => l.id === selection.linkIds[0]) : undefined;
 
@@ -81,6 +87,8 @@ export function Inspector({
         dispatch={dispatch}
       />
     );
+  } else if (annotation) {
+    body = <AnnotationInspector key={annotation.id} annotation={annotation} dispatch={dispatch} />;
   } else if (link) {
     body = (
       <LinkInspector
