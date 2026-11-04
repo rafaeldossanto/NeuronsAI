@@ -1,6 +1,6 @@
 ---
 tags: [neuronsai, plano, tarefas]
-atualizado: 2026-11-02
+atualizado: 2026-11-04
 ---
 
 # Plano de Implementação
@@ -19,6 +19,22 @@ provada antes de gastar tempo com canvas.
 | Distribuição      | T19–T23 | CI em 3 sistemas, banco embutido, app desktop e instaladores para Windows, macOS e Linux |
 | Nuvem             | T24–T26 | Protocolo de runner, contas e servidor + banco na AWS                                    |
 | Depois            | Backlog | Runners hospedados (estilo Hostinger) e o que não entrou no plano                        |
+
+## Atualização de interface e memórias — 2026-11-04
+
+Implementação aprovada após as entregas do Claude, em `codex/modeler-connections-memories`. Veja [[Interface e memorias aprovadas]] para escopo, verificações e limites atuais. Inclui modelador em nova aba, moldura desktop, conexões por agente, memórias com escrita e integração MCP/runner. O runtime de API OpenAI/Anthropic foi implementado com testes simulados; validação paga de T04/T07 continua pendente. Esta atualização substitui as restrições antigas de memória somente leitura, protocolo revisão 2 e runtime de API indisponível nas descrições históricas abaixo.
+
+### Integração do trabalho do Codex (2026-11-04) e o que ele cobriu
+
+A branch `codex/modeler-connections-memories` foi revisada (achados em [[Interface e memorias aprovadas]], seção "Revisão") e integrada na `dev` com o merge "Merge: interface, conexões e memórias (Codex, revisado)". O que cada tarefa já tem e o que ainda falta:
+
+- **T07 · Runtime de API: parcial.** Feito: `ApiRuntime` em `apps/server/src/agents/api-runtime.ts`, com OpenAI (Responses API) e Anthropic pelos SDKs oficiais; ferramentas `send_message`, `ask`, `reply`, `list_peers`, `finish` mais `list_tools` e `use_tool` (as ferramentas ligadas por `uses`); retentativas com espera crescente feitas pelo SDK; uso gravado em tokens; custo desconhecido (`reportsCost = false`, nunca 0); chave escolhida por nome em `runtime.secretName`. Falta: `ModelProvider`/`ProviderRegistry`/`OpenAICompatibleProvider`; tabela de preços versionada e `UsageCalculator` em US$ (é ela que faz a guarda de custo valer para agentes de API); tradução do esforço por modelo (hoje envia sempre); rodada real do `two-agents.json`/`mixed.json` (só há testes com cliente simulado).
+- **T09 · Ferramentas: quase feita.** Feito: Obsidian com `create` e `edit` (sem exclusão), permissão do bloco **e** da ligação, memória por `memoryId` ou `vaultPath`; `list_tools`/`use_tool` no MCP do agente de terminal, no runner (protocolo revisão 3) e no agente de API; cada chamada grava `ToolCalled` (só `nodeId` e `path`). Falta: o teste manual com o cofre do Rafael; ToolCalled para as ferramentas embutidas do Claude Code (Bash, Read...), que não são reportadas; conferir na prática que MCP e HTTP também passam por `use_tool`.
+- **T14c · Estados e terminal no web: pouco feita.** Feito: o reducer lê `ToolCalled` (`state.toolCalls`) e a página da execução mostra a seção "Memórias e ferramentas". Já existiam do T14a: `pulses` e `terminals` no reducer. Falta: consumir `AgentStateChanged` (o reducer ainda deduz o estado); desenhar estado e o pulso âmbar sobre o canvas; painel do agente com xterm.js (a dependência não está instalada) usando `state.terminals` e o resumo `replay`; enviar `terminal.input`; linha do tempo única de mensagens e ferramentas; atualizar `live/README.md` (a lista "O que falta" ainda cita estado e `terminal.input`).
+- **T15 · Histórico e replay: não iniciada.** A API já filtra por `status` e `limit`, mas `runs-page.tsx` ainda é a lista simples, sem filtros de status, versão e custo. Replay no canvas não existe (o reducer puro e idempotente por `seq` serve de base).
+- **T17 · Templates: não iniciada.** Existe a tela "novo projeto" (`new-project-page.tsx`, projeto sem nome e importação de memória), mas sem escolha de template.
+- **T18 · Landing: parcial.** Feito: `apps/site` com a landing real, build pelo Vite, CTA "Criar meu projeto" abrindo `/new` e servida em `/` pelo servidor com `NEURONS_LANDING_DIR`. Falta: publicar no domínio, lista de espera com destino, botões de download por sistema, servir com CSP, e trocar os formulários de demonstração por funcionais.
+- **Novo no desktop e no servidor:** moldura própria da janela com preload/IPC, chave mestra por `safeStorage`, rotas `/connections` e `/memories`, acesso à IA por agente (assinatura do Claude Code ou chave de API).
 
 ## Ordem de execução
 
@@ -58,7 +74,7 @@ O contrato central: o modelador grava, o servidor lê. Tudo em zod, tipos export
     - `{ kind: "api", provider, model }`
     - `{ kind: "terminal", cli: "claude" | "codex" | "gemini" | "custom", command?, args[], cwd }`
   - `tool` — `mcp { command|url, allowedTools[] }` | `http { method, url, headers, bodySchema }`
-    | `obsidian { vaultPath, readOnly: true }`.
+    | `obsidian { vaultPath? | memoryId?, readOnly: boolean }` (exatamente uma referência).
 - Ligação: `{ id, from, to, kind: "talk" | "uses", bidirectional, maxMessages? }`.
   `talk` liga agente a agente (permissão de iniciar conversa); `uses` liga agente a ferramenta.
 - `annotations[]`: formas livres, notas, texto, grupos; nunca executam.
@@ -550,5 +566,5 @@ resumo `replay`, e `terminal.input` para digitar), e a linha do tempo de mensage
 - Runners hospedados pelo NeuronsAI na AWS (estilo Hostinger): um contêiner isolado por usuário rodando os agentes, inclusive CLIs de terminal com login feito pelo próprio usuário; cobrança.
 - Mensagem urgente que interrompe o agente ocupado.
 - Adaptador Gemini por API; mais CLIs pré-configuradas.
-- Obsidian com escrita, com revisão.
+- Sincronização contínua de cofres e revisão humana opcional da escrita (criar/editar com permissão já implementado).
 - Importar/exportar grafos; métricas por agente (custo médio, mensagens, duração).
