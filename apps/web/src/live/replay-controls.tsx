@@ -1,7 +1,7 @@
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDuration } from "@/lib/format";
-import { MAX_GAP_MS, REPLAY_SPEEDS, type Replay } from "./replay";
+import { MAX_GAP_MS, MIN_GAP_MS, REPLAY_SPEEDS, type Replay } from "./replay";
 import type { ReplayPlayer } from "./use-replay-player";
 
 const speedLabel = (speed: number) => `${String(speed).replace(".", ",")}×`;
@@ -104,8 +104,9 @@ export function ReplayControls({ player, replay }: { player: ReplayPlayer; repla
           s
           {replay.shortenedGaps > 0 &&
             `; aqui foram ${replay.shortenedGaps} ${replay.shortenedGaps === 1 ? "trecho" : "trechos"}`}
-          . Em 1×, o replay dura {formatDuration(Math.round(replay.playMs))} para{" "}
-          {formatDuration(Math.round(replay.realMs))} reais.
+          . Eventos colados esperam ao menos {MIN_GAP_MS} ms. Em 1×, o replay dura cerca de{" "}
+          {formatDuration(Math.round(replay.playMs))}; a execução levou{" "}
+          {formatDuration(Math.round(replay.realMs))}.
         </li>
         <li>
           O terminal não é reproduzido: a saída dele não fica no registro da execução. O replay
