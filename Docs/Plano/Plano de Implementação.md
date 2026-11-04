@@ -299,6 +299,29 @@ nada de azul.
 
 **Pronto quando:** anotar um grafo, salvar, reabrir e ver tudo no lugar.
 
+**Feito (2026-11-04)** — detalhes em `apps/web/README.md`.
+
+- `roughjs` 4.6.6, só o gerador: `toPaths` devolve o `d` dos traços e o React desenha `<path>`; sem DOM
+  manual, sem eval, sem script inline (a CSP do servidor segue `script-src 'self'`). A semente vem do
+  `id`, então o traço não treme entre renderizações.
+- As anotações entram no **mesmo reducer e no mesmo histórico** da T12 (`model.ts`), com as ações
+  `addAnnotation`, `setAnnotationField`, `resizeAnnotation`, `moveNodes` (agora também move
+  anotações) e `remove` (com `annotationIds`). Arrastar, redimensionar e digitar viram um passo só.
+  Mover um grupo move os membros (blocos e anotações, grupos aninhados incluídos); apagar um item o
+  tira dos grupos. Não há segundo histórico.
+- No canvas são nós do React Flow com `zIndex` negativo (grupo -2, demais -1): ficam abaixo dos blocos
+  e das setas. Grupo e seta só pegam o mouse no traço e no nome, então nunca atrapalham ligar ou
+  selecionar blocos. Tipos `free-*`, porque o React Flow estiliza um tipo embutido chamado `group`.
+- Barra: selecionar, retângulo, elipse, seta livre, texto, nota e grupo (atalhos V R O A T N G, Esc volta
+  a selecionar). Cada ferramenta desenha arrastando sobre o canvas; o grupo envolve o que couber
+  inteiro nele. Cor, preenchimento, texto e fonte no inspetor.
+- **Schema:** o `annotationSchema` já tinha tudo (`size`, `points`, `text`, `style`, `memberIds`), sem
+  mudança. Só a regra `group-members` foi afrouxada, de forma compatível: `memberIds` aceita também ids
+  de anotações (menos o do próprio grupo), com testes.
+- Testes: reducer (criar, mover, redimensionar, texto, apagar, desfazer/refazer, grupo carrega membros)
+  e a tela (desenhar as seis, salvar com `fetch` simulado, reabrir com o rascunho salvo, desfazer e
+  refazer). Conferido no navegador com servidor (PGlite) + Vite.
+
 ### T14 — Execução ao vivo
 
 - Abrir uma execução sobre o desenho da versão em que ela roda.

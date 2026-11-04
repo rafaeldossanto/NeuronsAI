@@ -46,8 +46,17 @@ pnpm --filter @neurons/web build      # gera dist/
 - **Salvar/publicar:** "Salvar rascunho" faz `PATCH /graphs/:id` com o documento inteiro; "Publicar versão" salva o que estiver pendente e chama `POST /graphs/:id/versions`.
 - **Desfazer/refazer:** Ctrl+Z, Ctrl+Shift+Z (ou Ctrl+Y) e os botões; até 100 passos. Digitar num campo e arrastar um bloco contam como um passo só.
 - **Modelador:** grade de 20 px com encaixe, minimapa, controles de zoom, `Delete` apaga, arrastar no fundo faz seleção em caixa (Ctrl/Shift soma) e o botão do meio ou o direito arrasta a tela.
-- **Preserva o que não edita:** `annotations[]` (da T13) e quaisquer chaves desconhecidas em blocos e setas voltam intactas no salvar. Só se grava `mode` num terminal se for diferente do padrão (`pty`).
+- **Preserva o que não edita:** chaves desconhecidas em blocos, setas e anotações voltam intactas no salvar. Só se grava `mode` num terminal se for diferente do padrão (`pty`).
 - **CSP do desktop:** o React Flow usa estilos inline, que a CSP do servidor já permite (`style-src 'self' 'unsafe-inline'`); `script-src` continua só `'self'`.
+
+### Camada livre (anotações)
+
+Por cima do grafo tipado, uma camada de desenho à mão (`roughjs`): **retângulo, elipse, seta livre, texto, nota e grupo**, salvos em `annotations[]` (o servidor ignora). Escolha a ferramenta na barra (atalhos `V R O A T N G`, `Esc` volta a selecionar) e arraste no canvas; um clique cria no tamanho padrão. Texto, cor, preenchimento e fonte ficam no inspetor.
+
+- **Mesmo histórico:** criar, mover, redimensionar, editar texto e apagar anotações são passos do mesmo reducer e do mesmo desfazer/refazer dos blocos (`model.ts`); não existe um segundo histórico.
+- **Grupo:** `memberIds` guarda blocos e/ou anotações; ao criar, envolve o que cabe inteiro na caixa. Mover o grupo move os membros (inclusive grupos aninhados); apagar um item o tira dos grupos. A regra `group-members` do schema aceita ids de blocos e de anotações.
+- **Camadas:** as anotações são nós do React Flow com `zIndex` negativo (grupo abaixo das demais), então ficam abaixo dos blocos e das setas que executam. Grupo e seta só pegam o mouse no traço e no nome, então não atrapalham ligar nem selecionar blocos. Os tipos de nó são `free-*`: o React Flow estiliza um tipo embutido chamado `group`.
+- **Formato:** `position` (canto superior esquerdo), `size` (retângulo, elipse, nota, grupo), `points` (seta: relativos a `position`), `text` e `style` (`stroke`, `fill`, `fontSize`). O traço vem de `roughjs` já como caminhos SVG, com semente tirada do `id` para não tremer; sem eval nem script inline.
 
 Nos testes com jsdom, `src/test/setup.ts` simula `ResizeObserver`, `DOMMatrixReadOnly` e o tamanho dos elementos (o React Flow precisa disso para montar). Selecionar um bloco é um `fireEvent.click`, porque o d3-drag não aceita o clique simulado do user-event.
 
@@ -60,7 +69,7 @@ src/
   lib/               api (cliente, ApiError, unwrap), queries (TanStack Query), format
   live/              dados ao vivo de uma execução: cliente do /ws, reducer puro e useRunLive (ver live/README.md)
   components/        layout, estados (carregando, erro, vazio) e ui/ (button, card, input, badge, skeleton)
-  editor/            canvas e inspetor: model (reducer e histórico), issues, nodes, inspector, graph-editor
+  editor/            canvas e inspetor: model (reducer e histórico), issues, nodes, inspector, graph-editor; camada livre: annotations, annotation-nodes, annotation-inspector, rough-shapes
   routes/            uma página por tela, com seus testes
   test/              helpers: fetch simulado e dados de exemplo
 ```
