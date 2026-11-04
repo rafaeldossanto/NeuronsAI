@@ -17,6 +17,9 @@ jobs:
     name: checks (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    env:
+      # Nothing here runs Electron (the desktop job does), so skip downloading its binary.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -44,6 +47,8 @@ jobs:
     name: integration (ubuntu-latest)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7
       - run: corepack enable
@@ -54,6 +59,47 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo build --filter=@neurons/server^...
       - run: pnpm --filter @neurons/server test:integration
+
+  # T21: the Electron app is laid out (`electron-builder --dir`, no installer) on each system, with
+  # node-pty rebuilt for Electron. On Windows the packaged app is also started and runs a graph.
+  desktop:
+    name: desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      # The Electron binary and the helpers electron-builder downloads, per system.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: electron-${{ runner.os }}-
+      - uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: turbo-desktop-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-desktop-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo build --filter=@neurons/desktop... --cache-dir=.turbo
+      - run: pnpm --filter @neurons/desktop dist:dir
+      - name: Packaged app runs a graph (fake Claude Code CLI)
+        if: runner.os == 'Windows'
+        run: node apps/desktop/scripts/smoke.mjs "${{ github.workspace }}\apps\desktop\release\win-unpacked\NeuronsAI.exe"
 
   secrets:
     name: secrets (gitleaks)

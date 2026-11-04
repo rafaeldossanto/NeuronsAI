@@ -3,6 +3,10 @@ packages:
   - "packages/*"
 allowBuilds:
   cpu-features: false
+  # electron: its install script downloads the Electron binary (cached by @electron/get).
+  electron: true
+  # electron-winstaller only matters for the Squirrel installer, which T22 does not use (NSIS).
+  electron-winstaller: false
   esbuild: false
   # node-pty: on Windows the prebuilt binary in the package is enough, but its install script is what
   # compiles it on Linux (no prebuild there) and its postinstall makes spawn-helper executable on
@@ -10,3 +14,5 @@ allowBuilds:
   node-pty: true
   protobufjs: false
   ssh2: false
+minimumReleaseAgeExclude:
+  - electron@45.2.2

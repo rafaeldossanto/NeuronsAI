@@ -44,6 +44,8 @@ Pasta de dados padrão (quando `NEURONS_DATA_DIR` está vazio):
 | macOS   | `~/Library/Application Support/NeuronsAI`                |
 | Linux   | `$XDG_DATA_HOME/neuronsai` ou `~/.local/share/neuronsai` |
 
+**Uma pasta, um processo.** O banco embutido pega uma trava por arquivo (`<pasta>/db.lock`, com o PID) ao abrir: um segundo processo (outro servidor, o app desktop, o `runner:token`) recebe `DataDirLockedError`, com o PID e o caminho, em vez de corromper o banco. Uma trava deixada por um processo que já morreu é retomada sozinha. Para embutir o servidor em outro programa (o app desktop), use `@neurons/server` (`createApp`, `loadConfig`); `createApp(config, { ui: { root } })` também serve a interface compilada em `/`, com a API em `/api` e uma CSP restritiva.
+
 Senhas de banco nunca saem em logs nem em erros: a URL aparece com a senha trocada por `***`. Para gerar uma chave:
 
 ```bash

@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { Logger } from "@nestjs/common";
 import { createApp } from "./create-app.js";
+import { DataDirLockedError } from "./database/directory-lock.js";
 import { ConfigError, loadConfig } from "./shared/config/app-config.js";
 import { isLoopbackHost } from "./shared/config/listen-config.js";
 
@@ -18,7 +19,9 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  // A configuration problem is the user's to fix: show it plainly, without a stack trace.
-  console.error(error instanceof ConfigError ? error.message : error);
+  // A configuration problem (or a data folder in use) is the user's to fix: show it plainly, without a stack trace.
+  console.error(
+    error instanceof ConfigError || error instanceof DataDirLockedError ? error.message : error,
+  );
   process.exitCode = 1;
 });

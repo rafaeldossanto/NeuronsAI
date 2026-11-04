@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DataDirLockedError } from "./directory-lock.js";
 import { PgliteDatabaseProvider } from "./pglite-database.provider.js";
 import { graphs } from "./schema/index.js";
 
@@ -33,5 +34,16 @@ describe("PgliteDatabaseProvider", () => {
     } finally {
       await second.close();
     }
+  });
+
+  it("refuses a folder that another provider has open, and accepts it once that one is closed", async () => {
+    const dataDir = path.join(root, "db");
+    const first = await PgliteDatabaseProvider.open(dataDir);
+
+    await expect(PgliteDatabaseProvider.open(dataDir)).rejects.toBeInstanceOf(DataDirLockedError);
+
+    await first.close();
+    const second = await PgliteDatabaseProvider.open(dataDir);
+    await second.close();
   });
 });
