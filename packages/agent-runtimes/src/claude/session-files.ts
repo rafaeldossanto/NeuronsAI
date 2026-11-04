@@ -5,6 +5,8 @@ import { PrivateDirectory } from "../platform/private-directory.js";
 export interface McpServerCommand {
   command: string;
   args: string[];
+  /** Extra environment for the MCP server (for example `ELECTRON_RUN_AS_NODE` when `command` is Electron). */
+  env?: Record<string, string>;
 }
 
 export interface SessionFilesInput {
@@ -70,6 +72,7 @@ function mcpConfig(input: SessionFilesInput): unknown {
         command: input.mcpServer.command,
         args: input.mcpServer.args,
         env: {
+          ...input.mcpServer.env,
           NEURONS_BRIDGE_URL: input.bridgeUrl,
           NEURONS_BRIDGE_TOKEN: input.bridgeToken,
           NEURONS_ASK_TIMEOUT_MS: String(input.askTimeoutMs),

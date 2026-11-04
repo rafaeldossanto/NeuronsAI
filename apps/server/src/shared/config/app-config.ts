@@ -48,6 +48,11 @@ export interface AppConfig {
    * set in code by whoever embeds the server (the demo points it at the fake CLI).
    */
   claudeCommand?: { command: string; args: string[] };
+  /**
+   * How agents' Claude Code starts the `neurons` MCP server. Set in code by whoever embeds the
+   * server in something that is not plain Node (the desktop app runs Electron as Node here).
+   */
+  mcpServer?: { command: string; args: string[]; env?: Record<string, string> };
 }
 
 const BASE64_32_BYTES = /^[A-Za-z0-9+/]{43}=$/;

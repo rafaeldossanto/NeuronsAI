@@ -9,6 +9,7 @@ export type { ClaudeTerminalOptions, TerminalTimings } from "./claude-terminal-r
 export { ClaudeStreamJsonRuntime } from "./claude-stream-json-runtime.js";
 export { ClaudeCli, ClaudeLoginRequiredError } from "./claude-cli.js";
 export type { ClaudeCliOptions, ClaudeCommand } from "./claude-cli.js";
+export type { McpServerCommand } from "./session-files.js";
 export { ClaudeBinaryNotFoundError } from "../platform/claude-binary.js";
 export { LocalBridge } from "../bridge/local-bridge.js";
 export { buildChildEnv, inheritedVariables } from "../platform/child-env.js";
