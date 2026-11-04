@@ -53,6 +53,8 @@ class OpenAITurnClient implements TurnClient {
         instructions: briefing,
         input: this.messages,
         store: false,
+        // Without storage, reasoning items only round-trip when their encrypted content comes along.
+        include: ["reasoning.encrypted_content"],
         max_output_tokens: 8192,
         reasoning: { effort },
         tools: tools.map((tool) => ({ type: "function" as const, ...tool, strict: false })),
