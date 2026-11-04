@@ -5,6 +5,7 @@
   "type": "module",
   "description": "NeuronsAI — orquestrador visual de agentes de IA",
   "author": "Rafael dos Santos",
+  "homepage": "https://github.com/rafaeldossanto/NeuronsAI",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
