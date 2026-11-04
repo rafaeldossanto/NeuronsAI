@@ -15,6 +15,8 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         "/api": { target: apiTarget, changeOrigin: true, rewrite: (p) => p.replace(/^\/api/, "") },
+        // Live run events (T14a): the page opens a WebSocket on its own origin.
+        "/ws": { target: apiTarget, changeOrigin: true, ws: true },
       },
     },
     test: {

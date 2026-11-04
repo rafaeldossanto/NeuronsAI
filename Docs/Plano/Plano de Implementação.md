@@ -265,8 +265,8 @@ nada de azul.
 - A API vem do `@neurons/api-client`; em desenvolvimento o Vite faz proxy de `/api` para
   `127.0.0.1:3100`. `import.meta.env` só em `src/config.ts`. Testes com Vitest + Testing Library
   e `fetch` simulado (carregando, vazio, erro e sucesso de cada tela).
-- **API:** nenhum endpoint faltou para as três telas. Os eventos ao vivo (`/ws`) ficam para a T14;
-  hoje a tela de execução só consulta (polling a cada 2 s enquanto roda).
+- **API:** nenhum endpoint faltou para as três telas. Os eventos ao vivo (`/ws`) vieram na T14a
+  (a tela de execução já não faz polling).
 
 ### T12 — Canvas e inspetor
 
@@ -296,6 +296,24 @@ nada de azul.
 
 **Pronto quando:** rodar o `mixed.json` com modelos reais e acompanhar tudo pela tela, inclusive
 digitar no terminal do Claude Code.
+
+Dividida em duas partes. **T14a (feita): dados ao vivo**, sem canvas, em `apps/web/src/live/`
+(contrato em `live/README.md`):
+
+- Cliente do `/ws` na mesma origem (proxy `ws: true` no Vite). O histórico vem do próprio
+  `subscribe { fromSeq: 1 }`: um canal só, sem costurar REST e WebSocket. Reconecta com backoff
+  exponencial e `fromSeq = último + 1`; descarta duplicatas e atrasados, e um buraco no `seq`
+  força a reconexão.
+- `reduceRunEvent` puro e idempotente por `seq` (a T15 reaproveita para o replay); custo
+  desconhecido nunca vira 0. Agentes são chaveados pelo **nome** (é o que o servidor grava).
+- `useRunLive(runId)` e a tela `/runs/:id` sem polling: status, agentes, custo, mensagens,
+  guardas, Parar e mensagem como `@human`.
+
+**T14b (falta):** desenhar sobre o canvas da T12 o estado de cada agente e o pulso âmbar nas
+setas (consumindo `state.agents` e `state.pulses`), o painel do agente com xterm.js
+(`state.terminals`) e a linha do tempo de ferramentas. Dependem de mudanças na API: um evento
+de chamada de ferramenta, um evento de estado do agente (hoje deduzido do log) e uma forma de
+digitar no terminal pelo `/ws` ou por HTTP.
 
 ### T15 — Histórico e replay
 

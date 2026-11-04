@@ -1,0 +1,141 @@
+{
+  "_comment": "Eventos da demo `pnpm --filter @neurons/server demo` (two-terminals.json com o CLI de mentira), no formato do /ws. Briefings encurtados; ids e horários de exemplo.",
+  "runId": "01a1a65b-a91c-7000-b8c9-8733874b49b0",
+  "events": [
+    {
+      "seq": 1,
+      "type": "RunStarted",
+      "agent": null,
+      "at": "2026-11-04T11:39:41.000Z",
+      "payload": {
+        "graphVersionId": "01a1a65b-a8d1-7fff-b8d5-9f0f491d1b71",
+        "triggerId": "gatilho-1",
+        "input": "!ask Revisor !reply certo\n!finish resumo validado: $last",
+        "budgetUsd": null
+      }
+    },
+    {
+      "seq": 2,
+      "type": "MessageSent",
+      "agent": "@trigger",
+      "at": "2026-11-04T11:39:41.100Z",
+      "payload": {
+        "messageId": "m-0001",
+        "from": "@trigger",
+        "to": "Pesquisador",
+        "kind": "message",
+        "replyTo": null,
+        "body": "!ask Revisor !reply certo\n!finish resumo validado: $last"
+      }
+    },
+    {
+      "seq": 3,
+      "type": "AgentStarted",
+      "agent": "Pesquisador",
+      "at": "2026-11-04T11:39:41.200Z",
+      "payload": {
+        "briefing": "# Você é \"Pesquisador\"\n\nPapel: Pesquisa o tema pedido e valida o resumo com o Revisor"
+      }
+    },
+    {
+      "seq": 4,
+      "type": "MessageDelivered",
+      "agent": "Pesquisador",
+      "at": "2026-11-04T11:39:45.000Z",
+      "payload": {
+        "messageId": "m-0001",
+        "from": "@trigger",
+        "to": "Pesquisador",
+        "deliveredAt": "2026-11-04T11:39:45.000Z",
+        "ackedAt": "2026-11-04T11:39:45.010Z"
+      }
+    },
+    {
+      "seq": 5,
+      "type": "MessageSent",
+      "agent": "Pesquisador",
+      "at": "2026-11-04T11:39:45.700Z",
+      "payload": {
+        "messageId": "m-0002",
+        "from": "Pesquisador",
+        "to": "Revisor",
+        "kind": "ask",
+        "replyTo": null,
+        "body": "!reply certo"
+      }
+    },
+    {
+      "seq": 6,
+      "type": "AgentStarted",
+      "agent": "Revisor",
+      "at": "2026-11-04T11:39:45.800Z",
+      "payload": {
+        "briefing": "# Você é \"Revisor\"\n\nPapel: Revisa resumos e responde às perguntas do Pesquisador"
+      }
+    },
+    {
+      "seq": 7,
+      "type": "MessageDelivered",
+      "agent": "Revisor",
+      "at": "2026-11-04T11:39:45.900Z",
+      "payload": {
+        "messageId": "m-0002",
+        "from": "Pesquisador",
+        "to": "Revisor",
+        "deliveredAt": "2026-11-04T11:39:45.900Z",
+        "ackedAt": "2026-11-04T11:39:45.910Z"
+      }
+    },
+    {
+      "seq": 8,
+      "type": "MessageSent",
+      "agent": "Revisor",
+      "at": "2026-11-04T11:39:47.000Z",
+      "payload": {
+        "messageId": "m-0003",
+        "from": "Revisor",
+        "to": "Pesquisador",
+        "kind": "reply",
+        "replyTo": "m-0002",
+        "body": "certo"
+      }
+    },
+    {
+      "seq": 9,
+      "type": "MessageDelivered",
+      "agent": "Pesquisador",
+      "at": "2026-11-04T11:39:47.100Z",
+      "payload": {
+        "messageId": "m-0003",
+        "from": "Revisor",
+        "to": "Pesquisador",
+        "deliveredAt": "2026-11-04T11:39:47.100Z",
+        "ackedAt": "2026-11-04T11:39:47.110Z"
+      }
+    },
+    {
+      "seq": 10,
+      "type": "UsageRecorded",
+      "agent": "Revisor",
+      "at": "2026-11-04T11:39:47.200Z",
+      "payload": {
+        "inputTokens": 120,
+        "outputTokens": 30,
+        "cacheReadTokens": 0,
+        "cacheCreationTokens": 0,
+        "costUsd": 0.0123
+      }
+    },
+    {
+      "seq": 11,
+      "type": "RunFinished",
+      "agent": "Pesquisador",
+      "at": "2026-11-04T11:39:48.600Z",
+      "payload": {
+        "reason": "finished",
+        "agent": "Pesquisador",
+        "result": "resumo validado: certo"
+      }
+    }
+  ]
+}
