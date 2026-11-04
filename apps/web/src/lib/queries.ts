@@ -37,17 +37,6 @@ export function useGraphVersions(id: string) {
   });
 }
 
-export function useRuns() {
-  const api = useApi();
-  return useQuery({
-    queryKey: ["runs"],
-    queryFn: () =>
-      unwrap(api.GET("/runs", { params: { query: { limit: 100 } } })).then((r) => r.items),
-    refetchInterval: (query) =>
-      query.state.data?.some((run) => LIVE_STATUSES.has(run.status)) ? 3000 : false,
-  });
-}
-
 export function useRun(id: string) {
   const api = useApi();
   return useQuery({

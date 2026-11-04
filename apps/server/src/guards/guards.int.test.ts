@@ -98,14 +98,18 @@ describe("what the guards read from the database", () => {
     expect(second.record.budgetUsd).toBeNull();
     expect((await persistence.runs.findById(first.record.id))?.budgetUsd).toBe(1.5);
 
-    const listed = await persistence.runs.list({ graphId, limit: 50 });
+    const { items: listed } = await persistence.runs.list({ graphId, limit: 50 });
     const ids = listed.map((run) => run.id);
     expect(ids.indexOf(second.record.id)).toBeLessThan(ids.indexOf(first.record.id));
     expect(listed.every((run) => run.graphId === graphId)).toBe(true);
-    const running = await persistence.runs.list({ status: "running", graphId, limit: 50 });
+    const { items: running } = await persistence.runs.list({
+      status: "running",
+      graphId,
+      limit: 50,
+    });
     expect(running.map((run) => run.id)).toContain(first.record.id);
     expect(running.map((run) => run.id)).not.toContain(second.record.id);
-    expect(await persistence.runs.list({ graphId, limit: 1 })).toHaveLength(1);
+    expect((await persistence.runs.list({ graphId, limit: 1 })).items).toHaveLength(1);
   });
 });
 

@@ -2,7 +2,7 @@
 
 Interface do NeuronsAI: Vite 8, React 19, Tailwind 4 (componentes no estilo shadcn/ui), TanStack Query e `react-router`. Consome a API real pelo [`@neurons/api-client`](../../packages/api-client/README.md).
 
-Telas: **Grafos** (`/graphs`: listar e criar), **Editor** (`/graphs/:id`: canvas, inspetor, validação ao vivo, salvar rascunho, publicar versão e versões publicadas) e **Execuções** (`/runs` e `/runs/:id`: ao vivo pelo `/ws`, com o desenho da versão em que roda, o estado e o custo de cada agente nos blocos, o pulso âmbar nas setas, o painel do agente com o terminal ao vivo, a linha do tempo, o botão Parar e o envio de mensagem como `@human`).
+Telas: **Grafos** (`/graphs`: listar e criar), **Editor** (`/graphs/:id`: canvas, inspetor, validação ao vivo, salvar rascunho, publicar versão e versões publicadas) e **Execuções** (`/runs`: tabela paginada com filtros de status, grafo, versão, faixa de custo e período, todos no endereço; `/runs/:id`: ao vivo pelo `/ws`, com o desenho da versão em que roda, o estado e o custo de cada agente nos blocos, o pulso âmbar nas setas, o painel do agente com o terminal ao vivo, a linha do tempo, o botão Parar e o envio de mensagem como `@human`).
 
 ## Rodar
 
@@ -28,6 +28,10 @@ O Vite encaminha `/api/*` para o servidor (o prefixo é removido) e `/ws` (WebSo
 | `VITE_API_URL`       | build do bundle | `/api`                  | URL da API no build (`vite build`). Nunca ponha segredos. |
 
 `import.meta.env` só é lido em `src/config.ts`.
+
+## Lista de execuções (`/runs`)
+
+Os filtros vivem na query string (`?status=failed&graphId=…&graphVersionId=…&minCostUsd=1&maxCostUsd=5&from=2026-11-01&to=2026-11-30&sort=costly&page=2`), então recarregar ou mandar o link mantém a seleção; valores inválidos no endereço são ignorados. Mudar um filtro volta à página 1. Os dias de `from`/`to` valem do começo ao fim do dia, no fuso do usuário. A versão só aparece para um grafo escolhido. O custo é a soma dos turnos que informaram preço: a tabela mostra `≥ $x` quando há turnos sem preço e `Desconhecido` quando nenhum informou, nunca zero (o filtro de custo compara essa parte conhecida, ver o README do servidor). Páginas de 20 por `offset`; clicar na linha abre `/runs/:id`. Código em `src/runs/` (`run-filters.ts` lê e escreve o endereço; `runs-filter-bar.tsx`, `runs-table.tsx`, `use-run-list.ts`) e `src/routes/runs-page.tsx`.
 
 ## Testes e build
 

@@ -8,6 +8,8 @@ import type {
   ActiveRun,
   FinalRunStatus,
   RunListFilter,
+  RunListItem,
+  RunListPage,
   RunRecord,
   RunRepository,
   RunSummaryRecord,
@@ -105,16 +107,45 @@ export class InMemoryRunLog implements RunEventLog, RunRepository, RunEventHisto
     return run && version && { ...run, graphId: version.graphId };
   }
 
-  async list(filter: RunListFilter): Promise<RunSummaryRecord[]> {
-    const summaries: RunSummaryRecord[] = [];
+  async list(filter: RunListFilter): Promise<RunListPage> {
+    const matching: RunListItem[] = [];
     for (const run of this.runs.values()) {
       const version = await this.versions.findById(run.graphVersionId);
       if (!version) continue;
       if (filter.status && run.status !== filter.status) continue;
       if (filter.graphId && version.graphId !== filter.graphId) continue;
-      summaries.push({ ...run, graphId: version.graphId });
+      if (filter.graphVersionId && run.graphVersionId !== filter.graphVersionId) continue;
+      const started = run.startedAt?.getTime();
+      if (filter.from && (started === undefined || started < filter.from.getTime())) continue;
+      if (filter.to && (started === undefined || started > filter.to.getTime())) continue;
+      const usage = this.events.filter((e) => e.runId === run.id && e.type === "UsageRecorded");
+      let costUsd = 0;
+      let unknownCostTurns = 0;
+      for (const event of usage) {
+        const cost = (event.payload as { costUsd?: number | null }).costUsd;
+        if (typeof cost === "number") costUsd += cost;
+        else unknownCostTurns++;
+      }
+      if (filter.minCostUsd !== undefined && costUsd < filter.minCostUsd) continue;
+      if (filter.maxCostUsd !== undefined && costUsd > filter.maxCostUsd) continue;
+      matching.push({
+        ...run,
+        graphId: version.graphId,
+        graphName: "",
+        graphVersion: version.version,
+        costUsd,
+        turns: usage.length,
+        unknownCostTurns,
+      });
     }
-    return summaries.reverse().slice(0, filter.limit);
+    const sign = filter.order === "asc" ? 1 : -1;
+    const key = (item: RunListItem) =>
+      filter.sort === "costUsd" ? item.costUsd : (item.startedAt?.getTime() ?? 0);
+    matching.reverse().sort((a, b) => sign * (key(a) - key(b)) || 0);
+    return {
+      items: matching.slice(filter.offset ?? 0, (filter.offset ?? 0) + filter.limit),
+      total: matching.length,
+    };
   }
 
   async listRunning(): Promise<ActiveRun[]> {
