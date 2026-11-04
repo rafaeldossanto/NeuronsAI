@@ -1,42 +1,51 @@
+import type { GraphNode } from "@neurons/graph-schema";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router";
-import { Network, Wrench } from "lucide-react";
+import { GraphViewer } from "@/editor/graph-viewer";
+import type { BlockLive } from "@/editor/nodes";
 import { RunStatusBadge } from "@/components/run-status-badge";
 import { ErrorState, LoadingRows } from "@/components/states";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { formatDateTime, formatTime, formatUsd } from "@/lib/format";
-import { useRunLive, type AgentLiveStatus, type ConnectionState, type RunLiveState } from "@/live";
-import { useRunDetail, useSendHumanMessage, useStopRun } from "@/live/run-queries";
-
-const connectionLabel: Record<ConnectionState, string> = {
-  connecting: "Conectando…",
-  live: "Ao vivo",
-  reconnecting: "Reconectando…",
-  closed: "Encerrada",
-};
-
-const agentStatusLabel: Record<AgentLiveStatus, string> = {
-  starting: "Subindo",
-  busy: "Ocupado",
-  idle: "Ocioso",
-  waiting_reply: "Esperando resposta",
-  failed: "Falhou",
-  finished: "Finalizado",
-};
-
-const kindLabel = { message: "mensagem", ask: "pergunta", reply: "resposta" } as const;
+import { formatDateTime, formatUsd } from "@/lib/format";
+import {
+  agentStatusLabel,
+  connectionLabel,
+  selectActivity,
+  useRunLive,
+  type ConnectionState,
+  type LivePulse,
+  type RunLiveState,
+} from "@/live";
+import { ActivityList } from "@/live/activity-list";
+import { AgentPanel } from "@/live/agent-panel";
+import { pulsesByEdge, useActivePulses } from "@/live/pulse-edges";
+import { useRunDetail, useRunGraph, useSendHumanMessage, useStopRun } from "@/live/run-queries";
 
 /** Unknown cost is shown as unknown, never as $0. */
 const costLabel = (usd: number | null) => (usd === null ? "custo desconhecido" : formatUsd(usd));
 
+/** A message counts as "just happened" (worth a pulse) for this long after its timestamp. */
+const FRESH_MS = 8_000;
+
 export function RunDetailPage() {
   const { id = "" } = useParams();
   const detail = useRunDetail(id);
-  const { state, connection, error } = useRunLive(id);
+  const { state, connection, error, inputError, sendTerminalInput, clearInputError } =
+    useRunLive(id);
+  const graph = useRunGraph(detail.data?.graphId, detail.data?.graphVersionId);
   const queryClient = useQueryClient();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const doc = graph.data;
+  const live = useMemo(
+    () => liveByNode(doc?.nodes ?? [], state.agents),
+    [doc?.nodes, state.agents],
+  );
+  const moving = useActivePulses(state.pulses, (pulse) => isRecent(state, pulse));
+  const edgePulses = useMemo(() => (doc ? pulsesByEdge(doc, moving) : {}), [doc, moving]);
 
   // The final figures (and the dates) come from the server once, when the live state says it ended.
   const finishedSeq = state.finish?.seq;
@@ -53,6 +62,8 @@ export function RunDetailPage() {
   const active = status === "pending" || status === "running";
   const finish = state.finish ?? data.finish;
   const agents = Object.values(state.agents);
+  const timeline = selectActivity(state);
+  const selectedNode = doc?.nodes.filter(isAgent).find((n) => n.id === selectedId);
 
   return (
     <div className="flex flex-col gap-8">
@@ -81,6 +92,39 @@ export function RunDetailPage() {
           </p>
         )}
       </div>
+
+      <section aria-label="Execução no desenho" className="flex flex-col gap-4">
+        <div className="h-[420px] overflow-hidden rounded-lg border bg-background">
+          {doc ? (
+            <GraphViewer
+              doc={doc}
+              live={live}
+              pulses={edgePulses}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
+          ) : (
+            <p className="p-6 text-sm text-muted-foreground">
+              {graph.isError
+                ? "Não foi possível carregar o desenho desta execução."
+                : "Carregando o desenho…"}
+            </p>
+          )}
+        </div>
+        {selectedNode && (
+          <AgentPanel
+            key={selectedNode.id}
+            name={selectedNode.name}
+            node={selectedNode}
+            state={state}
+            runActive={active}
+            inputError={inputError}
+            onSendInput={sendTerminalInput}
+            onClearInputError={clearInputError}
+            onClose={() => setSelectedId(null)}
+          />
+        )}
+      </section>
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
@@ -129,53 +173,6 @@ export function RunDetailPage() {
 
       {active && <SendMessageForm runId={id} agents={agents.map((a) => a.name)} />}
 
-      {state.toolCalls.length > 0 && (
-        <section aria-label="Memórias e ferramentas">
-          <h2 className="mb-3 text-lg font-bold">Memórias e ferramentas</h2>
-          <ol className="flex flex-col gap-2">
-            {state.toolCalls.map((call) => {
-              const memory = call.tool.startsWith("obsidian_");
-              const Icon = memory ? Network : Wrench;
-              const labels: Record<string, string> = {
-                obsidian_search: "Buscar notas",
-                obsidian_read: "Ler nota",
-                obsidian_links: "Seguir links",
-                obsidian_create: "Criar nota",
-                obsidian_edit: "Editar nota",
-              };
-              return (
-                <li
-                  key={call.seq}
-                  className="flex items-start gap-3 rounded-md border bg-card px-4 py-3 text-sm"
-                >
-                  <Icon
-                    aria-label={memory ? "Memória" : "Ferramenta"}
-                    className="mt-0.5 size-4 shrink-0"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap gap-x-3">
-                      <strong>{labels[call.tool] ?? call.tool}</strong>
-                      {call.agent && <span>@{call.agent}</span>}
-                      <span className={call.ok ? "text-muted-foreground" : "text-destructive"}>
-                        {call.ok ? "Concluída" : "Falhou"}
-                        {call.durationMs !== null && ` · ${call.durationMs} ms`}
-                      </span>
-                      <time className="ml-auto text-xs text-muted-foreground">
-                        {formatTime(call.at)}
-                      </time>
-                    </div>
-                    {call.path && (
-                      <p className="mt-1 break-words text-muted-foreground">{call.path}</p>
-                    )}
-                    {call.errorCode && <p className="mt-1 text-destructive">{call.errorCode}</p>}
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-      )}
-
       {state.guardEvents.length > 0 && (
         <section aria-label="Guardas">
           <h2 className="mb-3 text-lg font-bold">Guardas</h2>
@@ -193,29 +190,9 @@ export function RunDetailPage() {
         </section>
       )}
 
-      <section aria-label="Mensagens">
-        <h2 className="mb-3 text-lg font-bold">Mensagens</h2>
-        {state.timeline.length === 0 ? (
-          <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-            Nenhuma mensagem ainda
-          </p>
-        ) : (
-          <ol className="flex flex-col gap-2">
-            {state.timeline.map((m) => (
-              <li key={m.seq} className="rounded-md border bg-card px-4 py-2 text-sm">
-                <div className="flex flex-wrap items-center gap-x-3">
-                  <span className="font-mono text-xs text-muted-foreground">#{m.seq}</span>
-                  <span className="font-bold">
-                    {m.from} → {m.to}
-                  </span>
-                  <span className="text-muted-foreground">{kindLabel[m.kind]}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">{formatTime(m.at)}</span>
-                </div>
-                <p className="mt-1 whitespace-pre-wrap">{m.preview}</p>
-              </li>
-            ))}
-          </ol>
-        )}
+      <section aria-label="Linha do tempo">
+        <h2 className="mb-3 text-lg font-bold">Linha do tempo</h2>
+        <ActivityList items={timeline} empty="Nenhuma mensagem ainda" />
       </section>
     </div>
   );
@@ -327,4 +304,32 @@ function SendMessageForm({ runId, agents }: { runId: string; agents: string[] })
       )}
     </section>
   );
+}
+
+const isAgent = (node: GraphNode): node is Extract<GraphNode, { type: "agent" }> =>
+  node.type === "agent";
+
+/** What each agent block shows, by node id; the agent is the one named like the block. */
+function liveByNode(
+  nodes: readonly GraphNode[],
+  agents: RunLiveState["agents"],
+): Record<string, BlockLive> {
+  const result: Record<string, BlockLive> = {};
+  for (const node of nodes.filter(isAgent)) {
+    const agent = agents[node.name];
+    if (agent)
+      result[node.id] = {
+        status: agent.status,
+        costUsd: agent.costUsd,
+        costIsMinimum: agent.unknownCostTurns > 0,
+      };
+  }
+  return result;
+}
+
+/** True when the message behind the pulse was sent a moment ago (not part of the history). */
+function isRecent(state: Pick<RunLiveState, "timeline">, pulse: LivePulse): boolean {
+  const message = state.timeline.findLast((m) => m.seq === pulse.seq);
+  const sentAt = message ? Date.parse(message.at) : NaN;
+  return Number.isNaN(sentAt) || Date.now() - sentAt < FRESH_MS;
 }

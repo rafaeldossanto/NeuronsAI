@@ -13,7 +13,7 @@ import type {
 
 export const PREVIEW_MAX = 200;
 export const MAX_PULSES = 20;
-/** Terminal output kept per agent (characters). The xterm.js of T14b has its own scrollback. */
+/** Terminal output kept per agent (characters). The xterm.js panel has its own scrollback. */
 export const TERMINAL_MAX_CHARS = 200_000;
 
 export const initialRunLiveState: RunLiveState = {
@@ -29,6 +29,7 @@ export const initialRunLiveState: RunLiveState = {
   guardEvents: [],
   toolCalls: [],
   terminals: {},
+  terminalMeta: {},
 };
 
 const STATUS_BY_REASON: Record<RunLiveFinish["reason"], RunLiveStatus> = {
@@ -69,10 +70,10 @@ export function reduceRunEvent(state: RunLiveState, event: RunLiveEvent): RunLiv
       return finishRun(next, event, payload);
     case "AgentStarted":
       return event.agent
-        ? setAgent(next, event.agent, event.seq, (a) => ({
-            status: isDead(a.status) ? a.status : "starting",
-          }))
+        ? setAgent(next, event.agent, event.seq, (a) => deduce(a, "starting"))
         : next;
+    case "AgentStateChanged":
+      return event.agent ? agentStateChanged(next, event.agent, event.seq, payload) : next;
     case "AgentFailed":
       return event.agent
         ? setAgent(next, event.agent, event.seq, () => ({
@@ -131,11 +132,61 @@ export function reduceRunEvent(state: RunLiveState, event: RunLiveEvent): RunLiv
   }
 }
 
+const AGENT_STATES: readonly string[] = [
+  "starting",
+  "busy",
+  "idle",
+  "waiting_reply",
+  "failed",
+  "finished",
+];
+
+/**
+ * The server's word on an agent's state (T14b). From the first one on, the agent's status comes only
+ * from these events: the deduction below is the fallback for runs recorded before they existed. A
+ * state this screen does not know is ignored (a newer server never breaks an older screen), and an
+ * agent that failed stays failed.
+ */
+function agentStateChanged(
+  state: RunLiveState,
+  agent: string,
+  seq: number,
+  payload: Record<string, unknown>,
+): RunLiveState {
+  const reported = payload["state"];
+  if (typeof reported !== "string" || !AGENT_STATES.includes(reported)) return state;
+  const status = reported as AgentLiveStatus;
+  return setAgent(state, agent, seq, (a) => ({
+    stateSource: "event",
+    status: a.status === "failed" ? "failed" : status,
+    failure:
+      status === "failed"
+        ? (a.failure ?? text(payload["reason"]) ?? "O agente falhou.")
+        : a.failure,
+  }));
+}
+
+/** The status inferred from the log; it only applies to an agent that never reported its own state. */
+function deduce(agent: AgentLive, status: AgentLiveStatus): Partial<AgentLive> {
+  if (agent.stateSource === "event" || isDead(agent.status)) return {};
+  return { status };
+}
+
 function reduceTerminal(state: RunLiveState, chunk: TerminalChunk): RunLiveState {
   const previous = chunk.replay ? "" : (state.terminals[chunk.agent] ?? "");
   const joined = previous + chunk.data;
   const kept = joined.length > TERMINAL_MAX_CHARS ? joined.slice(-TERMINAL_MAX_CHARS) : joined;
-  return { ...state, terminals: { ...state.terminals, [chunk.agent]: kept } };
+  const meta = state.terminalMeta[chunk.agent] ?? { resets: 0, total: 0 };
+  return {
+    ...state,
+    terminals: { ...state.terminals, [chunk.agent]: kept },
+    terminalMeta: {
+      ...state.terminalMeta,
+      [chunk.agent]: chunk.replay
+        ? { resets: meta.resets + 1, total: chunk.data.length }
+        : { resets: meta.resets, total: meta.total + chunk.data.length },
+    },
+  };
 }
 
 function finishRun(
@@ -178,10 +229,10 @@ function messageSent(
 
   let next = state;
   if (isAgentName(from)) {
-    next = setAgent(next, from, event.seq, (a) => ({
-      // An open `ask` holds its sender until the reply is delivered.
-      status: messageKind === "ask" && !isDead(a.status) ? "waiting_reply" : a.status,
-    }));
+    // An open `ask` holds its sender until the reply is delivered (fallback; see `deduce`).
+    next = setAgent(next, from, event.seq, (a) =>
+      messageKind === "ask" ? deduce(a, "waiting_reply") : {},
+    );
   }
   if (isAgentName(to)) next = setAgent(next, to, event.seq, () => ({}));
 
@@ -223,7 +274,7 @@ function messageDelivered(
     : state;
   if (to && isAgentName(to)) {
     // Receiving a message (or the reply it was waiting for) puts the agent to work.
-    next = setAgent(next, to, event.seq, (a) => ({ status: isDead(a.status) ? a.status : "busy" }));
+    next = setAgent(next, to, event.seq, (a) => deduce(a, "busy"));
   }
   return next;
 }
@@ -240,8 +291,8 @@ function usageRecorded(
     costUsd: cost === null ? a.costUsd : (a.costUsd ?? 0) + cost,
     turns: a.turns + 1,
     unknownCostTurns: a.unknownCostTurns + (cost === null ? 1 : 0),
-    // The turn ended: a working agent is idle until the next delivery.
-    status: a.status === "busy" ? "idle" : a.status,
+    // The turn ended: a working agent is idle until the next delivery (fallback; see `deduce`).
+    ...(a.status === "busy" ? deduce(a, "idle") : {}),
   }));
   return {
     ...next,
@@ -268,6 +319,7 @@ function setAgent(
     unknownCostTurns: 0,
     lastSeq: 0,
     failure: null,
+    stateSource: "deduced",
   };
   return {
     ...state,

@@ -172,3 +172,53 @@ describe("defaultSocketUrl", () => {
     );
   });
 });
+
+describe("RunLiveClient: digitar no terminal", () => {
+  it("manda terminal.input só depois da assinatura confirmada, sem alterar o texto", () => {
+    const { client } = setup();
+    FakeSocket.last.open();
+    expect(client.sendTerminalInput("Pesquisador", "ls\r")).toBe(false);
+    FakeSocket.last.push("subscribed", { runId });
+    expect(client.sendTerminalInput("Pesquisador", "ls\r")).toBe(true);
+    expect(FakeSocket.last.sent.at(-1)).toEqual({
+      event: "terminal.input",
+      data: { runId, agent: "Pesquisador", data: "ls\r" },
+    });
+    expect(client.sendTerminalInput("Pesquisador", "")).toBe(false);
+  });
+
+  it("parte uma colagem grande em mensagens que cabem no limite do servidor", () => {
+    const { client } = setup();
+    FakeSocket.last.open();
+    FakeSocket.last.push("subscribed", { runId });
+    const paste = "x".repeat(9000);
+    client.sendTerminalInput("A", paste);
+    const inputs = FakeSocket.last.sent.filter((m) => m.event === "terminal.input");
+    expect(inputs.map((m) => (m.data["data"] as string).length)).toEqual([4000, 4000, 1000]);
+    expect(inputs.map((m) => m.data["data"]).join("")).toBe(paste);
+  });
+
+  it("não manda nada com a conexão fechada", () => {
+    const { client } = setup();
+    FakeSocket.last.open();
+    FakeSocket.last.push("subscribed", { runId });
+    client.close();
+    expect(client.sendTerminalInput("A", "x")).toBe(false);
+  });
+
+  it("repassa o código do erro do servidor", () => {
+    const codes: (string | undefined)[] = [];
+    const client = new RunLiveClient({
+      runId,
+      url: "ws://localhost/ws",
+      onEvent: () => undefined,
+      onConnection: () => undefined,
+      onError: (_message, code) => codes.push(code),
+      createSocket: (url) => new FakeSocket(url),
+    });
+    client.start();
+    FakeSocket.last.open();
+    FakeSocket.last.push("error", { code: "rate_limited", message: "devagar" });
+    expect(codes).toEqual(["rate_limited"]);
+  });
+});

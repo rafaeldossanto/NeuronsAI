@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/two-terminals-demo.json";
+import { selectActivity } from "./activity";
 import { initialRunLiveState, reduceRunEvent } from "./reduce-run-event";
 import type { RunLiveState, RunLogEvent } from "./types";
 
@@ -156,5 +157,120 @@ describe("reduceRunEvent: casos de borda", () => {
     });
     expect(state.terminals["A"]).toBe("tudo");
     expect(state.lastSeq).toBe(0);
+  });
+});
+
+describe("reduceRunEvent com AgentStateChanged (T14b)", () => {
+  const state = (agent: string, value: string, reason?: string) => ({
+    state: value,
+    ...(reason && { reason }),
+    agent,
+  });
+
+  it("o estado vem do evento e a dedução antiga deixa de valer para aquele agente", () => {
+    const result = fold([
+      event(1, "AgentStarted", "A", {}),
+      event(2, "AgentStateChanged", "A", state("A", "starting")),
+      event(3, "AgentStateChanged", "A", state("A", "busy")),
+      // A turn ended, but the server did not say idle: the deduction must not guess it.
+      event(4, "UsageRecorded", "A", { costUsd: 0.1 }),
+    ]);
+    expect(result.agents["A"]).toMatchObject({ status: "busy", stateSource: "event", turns: 1 });
+
+    const waiting = fold([
+      event(1, "AgentStateChanged", "A", state("A", "waiting_reply")),
+      // An `ask` already deduced waiting_reply; a delivery would deduce busy. Neither overrides the server.
+      event(2, "MessageDelivered", "A", { messageId: "m", to: "A" }),
+    ]);
+    expect(waiting.agents["A"]?.status).toBe("waiting_reply");
+  });
+
+  it("cada estado do servidor é aplicado, e um agente que falhou continua falhado", () => {
+    const at = (value: string) =>
+      fold([event(1, "AgentStateChanged", "A", state("A", value))]).agents["A"]?.status;
+    expect(["starting", "busy", "idle", "waiting_reply", "finished"].map(at)).toEqual([
+      "starting",
+      "busy",
+      "idle",
+      "waiting_reply",
+      "finished",
+    ]);
+    const failed = fold([
+      event(1, "AgentStateChanged", "A", state("A", "failed", "o CLI caiu")),
+      event(2, "AgentStateChanged", "A", state("A", "finished")),
+    ]);
+    expect(failed.agents["A"]).toMatchObject({ status: "failed", failure: "o CLI caiu" });
+  });
+
+  it("ignora um estado que não conhece, mas avança o seq", () => {
+    const result = fold([event(1, "AgentStateChanged", "A", state("A", "dormindo"))]);
+    expect(result.agents["A"]).toBeUndefined();
+    expect(result.lastSeq).toBe(1);
+  });
+
+  it("é idempotente por seq", () => {
+    const log = [
+      event(1, "AgentStateChanged", "A", state("A", "busy")),
+      event(2, "AgentStateChanged", "A", state("A", "idle")),
+    ];
+    const once = fold(log);
+    expect(fold(log, once)).toBe(once);
+    expect(reduceRunEvent(once, log[0]!)).toBe(once);
+  });
+
+  it("a fixture antiga (sem o evento) continua deduzindo o estado", () => {
+    expect(events.some((e) => e.type === "AgentStateChanged")).toBe(false);
+    expect(fold(events.slice(0, 5)).agents["Pesquisador"]).toMatchObject({
+      status: "waiting_reply",
+      stateSource: "deduced",
+    });
+  });
+});
+
+describe("linha do tempo única e terminal", () => {
+  it("junta mensagens e ferramentas em ordem de seq, sem guardar nada duas vezes", () => {
+    const result = fold([
+      event(1, "MessageSent", "@trigger", {
+        messageId: "m1",
+        from: "@trigger",
+        to: "A",
+        kind: "message",
+        body: "oi",
+      }),
+      event(2, "ToolCalled", "A", {
+        tool: "obsidian_read",
+        inputSummary: '{"path":"x.md"}',
+        durationMs: 4,
+        ok: true,
+        errorCode: null,
+      }),
+      event(3, "MessageSent", "A", {
+        messageId: "m2",
+        from: "A",
+        to: "B",
+        kind: "message",
+        body: "olá",
+      }),
+    ]);
+    expect(selectActivity(result).map((i) => [i.type, i.seq])).toEqual([
+      ["message", 1],
+      ["tool", 2],
+      ["message", 3],
+    ]);
+    expect(selectActivity(result, "B").map((i) => i.seq)).toEqual([3]);
+    expect(selectActivity(result, "A").map((i) => i.seq)).toEqual([1, 2, 3]);
+    // The same ToolCalled twice (a duplicate from a reconnection) is still one row.
+    expect(result.toolCalls).toHaveLength(1);
+  });
+
+  it("conta o que o terminal recebeu e quantos snapshots já trocaram a tela", () => {
+    const chunk = (data: string, replay = false) =>
+      ({ type: "TerminalOutput", agent: "A", data, replay }) as const;
+    let result = reduceRunEvent(initialRunLiveState, chunk("abc"));
+    result = reduceRunEvent(result, chunk("de"));
+    expect(result.terminalMeta["A"]).toEqual({ resets: 0, total: 5 });
+    result = reduceRunEvent(result, chunk("tela", true));
+    expect(result.terminals["A"]).toBe("tela");
+    expect(result.terminalMeta["A"]).toEqual({ resets: 1, total: 4 });
   });
 });

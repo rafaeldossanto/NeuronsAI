@@ -2,7 +2,7 @@
 
 Interface do NeuronsAI: Vite 8, React 19, Tailwind 4 (componentes no estilo shadcn/ui), TanStack Query e `react-router`. Consome a API real pelo [`@neurons/api-client`](../../packages/api-client/README.md).
 
-Telas: **Grafos** (`/graphs`: listar e criar), **Editor** (`/graphs/:id`: canvas, inspetor, validação ao vivo, salvar rascunho, publicar versão e versões publicadas) e **Execuções** (`/runs` e `/runs/:id`: ao vivo pelo `/ws`, com status, agentes, custo, mensagens, botão Parar e envio de mensagem como `@human`).
+Telas: **Grafos** (`/graphs`: listar e criar), **Editor** (`/graphs/:id`: canvas, inspetor, validação ao vivo, salvar rascunho, publicar versão e versões publicadas) e **Execuções** (`/runs` e `/runs/:id`: ao vivo pelo `/ws`, com o desenho da versão em que roda, o estado e o custo de cada agente nos blocos, o pulso âmbar nas setas, o painel do agente com o terminal ao vivo, a linha do tempo, o botão Parar e o envio de mensagem como `@human`).
 
 ## Rodar
 
@@ -60,6 +60,12 @@ Por cima do grafo tipado, uma camada de desenho à mão (`roughjs`): **retângul
 
 Nos testes com jsdom, `src/test/setup.ts` simula `ResizeObserver`, `DOMMatrixReadOnly` e o tamanho dos elementos (o React Flow precisa disso para montar). Selecionar um bloco é um `fireEvent.click`, porque o d3-drag não aceita o clique simulado do user-event.
 
+## Execução ao vivo (canvas e terminal)
+
+`/runs/:id` mostra o **desenho da versão** da execução com o mesmo canvas do editor, só leitura (`editor/graph-viewer.tsx`, que reaproveita `nodes.tsx` e `flow-model.ts`; nada de arrastar, ligar ou apagar). Cada bloco de agente mostra o estado (subindo, ocupado, ocioso, esperando resposta, falhou, finalizado) e o custo; a cada mensagem um pulso âmbar percorre a seta no sentido de quem mandou (SVG `animateMotion`, leve mesmo com muitas mensagens). Clicar num bloco abre o painel do agente: a conversa dele e, para agente de terminal em `pty`, o **terminal ao vivo** (xterm.js 6.0.0) onde o que você digita vai por `terminal.input`; as recusas do servidor aparecem no painel em pt-BR. Custo por agente, total, Parar e mensagem como `@human` continuam na tela. Como os dados chegam, como o replay da T15b reaproveita tudo e as decisões: [`src/live/README.md`](src/live/README.md).
+
+O xterm.js só usa estilos inline, que a CSP do servidor/desktop já permite; `script-src` continua `'self'`.
+
 ## Estrutura e visual
 
 ```
@@ -67,9 +73,9 @@ src/
   config.ts          única leitura de import.meta.env
   styles.css         tokens (cores, fonte, raios) no formato de variáveis do shadcn/ui
   lib/               api (cliente, ApiError, unwrap), queries (TanStack Query), format
-  live/              dados ao vivo de uma execução: cliente do /ws, reducer puro e useRunLive (ver live/README.md)
+  live/              execução ao vivo: cliente do /ws, reducer puro, useRunLive, painel do agente, terminal e linha do tempo (ver live/README.md)
   components/        layout, estados (carregando, erro, vazio) e ui/ (button, card, input, badge, skeleton)
-  editor/            canvas e inspetor: model (reducer e histórico), issues, nodes, inspector, graph-editor; camada livre: annotations, annotation-nodes, annotation-inspector, rough-shapes
+  editor/            canvas e inspetor: model (reducer e histórico), issues, nodes, inspector, graph-editor; camada livre: annotations, annotation-nodes, annotation-inspector, rough-shapes; execução: flow-model, graph-viewer, pulse-edge
   routes/            uma página por tela, com seus testes
   test/              helpers: fetch simulado e dados de exemplo
 ```
