@@ -22,8 +22,8 @@ provada antes de gastar tempo com canvas.
 
 ## Ordem de execução
 
-- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T19, T20, T21, T24.
-- Próxima: T22 (a T12 pode ir antes). Depois: T12–T15 → T25 → T16–T18.
+- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T12, T19, T20, T21, T24.
+- Próxima: T22. Depois: T13–T15 → T25 → T16–T18.
 - **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16) sai por túnel.
 
 **Paralelismo possível:** T04 e T05 em paralelo com T02–T03. A Fase 2 pode começar assim que
@@ -277,6 +277,20 @@ nada de azul.
 - Validação ao vivo com o `validateGraph` da T02. Salvar rascunho, "Publicar versão", desfazer/refazer.
 
 **Pronto quando:** desenhar o `mixed.json` do zero no canvas gera um JSON igual à fixture.
+
+**Feito (2026-11-04)** — detalhes em `apps/web/README.md`.
+
+- `@xyflow/react` 12.12.1 em `apps/web/src/editor/`. O estado é o próprio JSON do grafo num reducer
+  puro com histórico (`model.ts`): desfazer/refazer, com digitação e arrasto contando como um passo.
+  Tudo que o canvas não edita (`annotations[]`, chaves desconhecidas) volta intacto no salvar.
+- Validação ao vivo com `validateGraph`: erro no bloco, no inspetor e numa lista clicável; "Publicar
+  versão" só habilita sem erros e salva o rascunho pendente antes de chamar a API.
+- Teste da fixture (`model.test.ts`): monta o `mixed.json` do zero com as mesmas ações da tela
+  (adicionar, arrastar, digitar no inspetor, ligar) e compara com `toEqual`, posições incluídas.
+- CSP do desktop: sem mudança; o servidor já libera `style-src 'unsafe-inline'` e o canvas rodou sob
+  ela, sem violações (`script-src` segue só `'self'`).
+- **API:** nada faltou. A seta do gatilho é o campo `target` (não há ligação); duas setas `talk`
+  opostas (A→B e B→A) são válidas e aparecem sobrepostas — a seta dupla é o `bidirectional`.
 
 ### T13 — Camada livre
 
