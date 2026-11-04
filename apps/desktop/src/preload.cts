@@ -11,6 +11,13 @@ contextBridge.exposeInMainWorld("neuronsDesktop", {
   close: () => ipcRenderer.invoke("neurons:window", "close"),
   chooseDirectory: () => ipcRenderer.invoke("neurons:directory"),
   isMaximized: () => ipcRenderer.invoke("neurons:window", "state"),
+  getUpdateState: () => ipcRenderer.invoke("neurons:update", "state"),
+  installUpdate: () => ipcRenderer.invoke("neurons:update", "install"),
+  onUpdateState: (callback: (state: unknown) => void) => {
+    const listener = (_event: unknown, state: unknown) => callback(state);
+    ipcRenderer.on("neurons:update-state", listener);
+    return () => ipcRenderer.removeListener("neurons:update-state", listener);
+  },
   onMaximized: (callback: (maximized: boolean) => void) => {
     const listener = (_event: unknown, maximized: boolean) => callback(maximized);
     ipcRenderer.on("neurons:maximized", listener);

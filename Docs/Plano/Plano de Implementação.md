@@ -38,8 +38,8 @@ A branch `codex/modeler-connections-memories` foi revisada (achados em [[Interfa
 
 ## Ordem de execução
 
-- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T12, T14, T19, T20, T21, T24.
-- Próxima: T22. Depois: T13–T15 → T25 → T16–T18.
+- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T12, T14, T19, T20, T21, T22, T24.
+- Próxima: T13–T15 → T25 → T16–T18.
 - **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16) sai por túnel.
 
 **Paralelismo possível:** T04 e T05 em paralelo com T02–T03. A Fase 2 pode começar assim que
@@ -542,6 +542,18 @@ Dividida em duas:
 - Sem assinatura nesta etapa: README e página de download explicam o aviso do sistema na primeira abertura (SmartScreen no Windows, Gatekeeper no macOS).
 
 **Pronto quando:** uma tag gera os instaladores dos três sistemas e o app instalado se atualiza sozinho para a versão seguinte.
+
+**Feito (2026-11-04)** — detalhes em `apps/desktop/README.md` (seções "Instaladores e release" e "Atualização automática"). Decisões:
+
+- **`release.yml`:** tag `v*` ou execução manual com `publish` (padrão `false`). Matriz Windows (NSIS), macOS (dmg + zip, arm64 e x64) e Linux (AppImage + deb). Com `publish: false` só sobem artefatos do workflow; com tag (ou `publish: true`) um job final, o único com `contents: write` e `GITHUB_TOKEN`, cria um **rascunho** de release com instaladores, `latest*.yml`, blockmaps e `SHA256SUMS.txt`. Nenhum segredo novo.
+- **Versão = tag.** O job `version` falha se `vX.Y.Z` não bater com `apps/desktop/package.json`.
+- **`asar: true`**, só o node-pty fora (`asarUnpack`: `prebuilds`, `build`, `third_party`). A interface (`extraResources`) já fica fora do asar; o MCP `neurons` roda dentro dele pelo `ELECTRON_RUN_AS_NODE`. O smoke passa com asar.
+- **`electron-updater` 6.8.11**, provedor GitHub (repositório público, sem token): checa 15 s após abrir e a cada 4 h; baixa em segundo plano; a barra "Nova versão pronta… Reiniciar para atualizar" usa o IPC restrito (`neurons:update`, `neurons:update-state`, origem validada). Nunca instala sozinho (`autoInstallOnAppQuit: false`); com execução em andamento, pergunta antes.
+- **macOS sem assinatura e `.deb`:** só avisam "baixe a nova versão" com o link da release (`MAC_BUILD_SIGNED` em `update-policy.ts` liga a atualização automática quando a T23 assinar). AppImage e Windows atualizam sozinhos.
+- **NSIS não é one-click:** no one-click o electron-builder nomeia a pasta pelo pacote (`@neuronsdesktop`) e o atalho do Menu Iniciar falhava.
+- **Ícone:** `make-icon.mjs` agora gera `icon.png` (512), `icon.ico` e `icon.icns`; o desenho continua provisório.
+- **Fica para a T23:** assinatura (Windows e macOS), notarização, atualização automática no macOS.
+- **Teste local no Windows:** 0.0.1 → 0.0.2 por servidor HTTP local (provedor `generic` só em build de teste), ver o README.
 
 ### T23 — Assinatura de código (por último, tem custo)
 

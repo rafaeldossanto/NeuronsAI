@@ -1,0 +1,145 @@
+name: Release
+
+# T22: installers for the three systems. Nothing here is signed (T23).
+#   - tag `v*`: builds everything and publishes a DRAFT GitHub release (a person publishes it).
+#   - manual run: `publish: false` (default) only uploads the installers as workflow artifacts;
+#     `publish: true` also creates the draft release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Criar o rascunho de release (false: só gera os instaladores como artefatos)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      # The app's version is the tag's (v0.1.0 -> 0.1.0) and must equal apps/desktop/package.json,
+      # which is what electron-builder stamps on the installers and on latest*.yml.
+      - id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          package=$(node -p "require('./apps/desktop/package.json').version")
+          if [ "$REF_TYPE" = "tag" ]; then
+            tag="${REF_NAME#v}"
+            if ! echo "$tag" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+              echo "::error::A tag $REF_NAME não é uma versão (esperado vX.Y.Z)."
+              exit 1
+            fi
+            if [ "$tag" != "$package" ]; then
+              echo "::error::A tag $REF_NAME ($tag) não bate com a versão de apps/desktop/package.json ($package)."
+              exit 1
+            fi
+          fi
+          echo "version=$package" >> "$GITHUB_OUTPUT"
+          echo "Versão: $package"
+
+  build:
+    name: build (${{ matrix.os }})
+    needs: version
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+            args: --win nsis
+          - os: macos-latest
+            name: macos
+            args: --mac dmg zip --arm64 --x64
+          - os: ubuntu-latest
+            name: linux
+            args: --linux AppImage deb
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: electron-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo build --filter=@neurons/desktop...
+      # `--publish never`: electron-builder only writes the files; publishing is the last job.
+      - name: Installers
+        run: pnpm --filter @neurons/desktop exec electron-builder ${{ matrix.args }} --publish never
+      - name: Installed layout runs a graph (fake Claude Code CLI)
+        if: runner.os == 'Windows'
+        run: node apps/desktop/scripts/smoke.mjs "${{ github.workspace }}\apps\desktop\release\win-unpacked\NeuronsAI.exe"
+      - name: Files to publish
+        shell: bash
+        run: |
+          cd apps/desktop/release
+          mkdir -p ../publish
+          for file in *.exe *.dmg *.zip *.AppImage *.deb *.blockmap latest*.yml; do
+            [ -f "$file" ] && cp "$file" ../publish/
+          done
+          ls -l ../publish
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installers-${{ matrix.name }}
+          path: apps/desktop/publish/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # The only job with write access and the only one that sees the token.
+  publish:
+    name: draft release
+    needs: [version, build]
+    if: github.ref_type == 'tag' || inputs.publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: publish
+          pattern: installers-*
+          merge-multiple: true
+      - name: SHA-256 checksums
+        working-directory: publish
+        run: |
+          sha256sum -- $(ls | grep -v '^SHA256SUMS.txt$') > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          gh release create "v$VERSION" publish/* \
+            --repo "$REPOSITORY" --draft --target "$SHA" \
+            --title "NeuronsAI $VERSION" \
+            --notes "Instaladores sem assinatura de código: veja no README do app desktop como abrir na primeira vez (SmartScreen no Windows, Gatekeeper no macOS). Confira os checksums em SHA256SUMS.txt."

@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { UpdateNotice, type DesktopUpdates } from "@/components/update-notice";
 
 declare global {
   interface Window {
-    neuronsDesktop?: {
+    neuronsDesktop?: DesktopUpdates & {
       platform: string;
       minimize(): Promise<void>;
       maximize(): Promise<void>;
@@ -58,6 +59,7 @@ export function DesktopFrame({ children }: { children: ReactNode }) {
         </div>
         <span>NeuronsAI</span>
       </div>
+      <UpdateNotice updates={desktop} />
       <div className="desktop-content">{children}</div>
     </div>
   );
