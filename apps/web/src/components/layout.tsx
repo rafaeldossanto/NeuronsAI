@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useMatch } from "react-router";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -7,10 +7,17 @@ const links = [
 ];
 
 export function Layout() {
+  // The editor needs room for the canvas and the inspector.
+  const wide = useMatch("/graphs/:id") !== null;
   return (
     <div className="min-h-screen">
       <header className="border-b">
-        <div className="mx-auto flex h-16 max-w-5xl items-center gap-8 px-6">
+        <div
+          className={cn(
+            "mx-auto flex h-16 max-w-5xl items-center gap-8 px-6",
+            wide && "max-w-none",
+          )}
+        >
           <NavLink
             to="/graphs"
             className="flex items-center gap-2 text-lg font-extrabold tracking-tight"
@@ -36,7 +43,7 @@ export function Layout() {
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-6 py-10">
+      <main className={cn("mx-auto max-w-5xl px-6 py-10", wide && "max-w-none")}>
         <Outlet />
       </main>
     </div>

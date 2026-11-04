@@ -67,3 +67,25 @@
     opacity: 0.35;
   }
 }
+
+/* React Flow, in the project's tokens (graphite lines, amber focus). */
+.react-flow {
+  --xy-edge-stroke-default: var(--foreground);
+  --xy-edge-stroke-selected-default: var(--accent);
+  --xy-connectionline-stroke-default: var(--accent);
+  --xy-handle-background-color-default: var(--accent);
+  --xy-handle-border-color-default: var(--card);
+  --xy-background-color-default: var(--background);
+  --xy-background-pattern-dots-color-default: #d6d6cd;
+  --xy-selection-background-color-default: rgb(233 161 92 / 0.12);
+  --xy-selection-border-default: 1px solid var(--accent);
+  --xy-minimap-background-color-default: var(--card);
+  --xy-controls-button-background-color-default: var(--card);
+  --xy-controls-button-color-default: var(--foreground);
+  --xy-controls-button-border-color-default: var(--border);
+  font-family: var(--font-sans);
+}
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+}
