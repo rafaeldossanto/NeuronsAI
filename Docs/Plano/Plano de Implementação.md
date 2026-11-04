@@ -22,8 +22,8 @@ provada antes de gastar tempo com canvas.
 
 ## Ordem de execução
 
-- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T19, T20, T24.
-- Próxima: T21. Depois: T12–T15 → T22 → T25 → T16–T18.
+- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T19, T20, T21, T24.
+- Próxima: T22 (a T12 pode ir antes). Depois: T12–T15 → T25 → T16–T18.
 - **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16) sai por túnel.
 
 **Paralelismo possível:** T04 e T05 em paralelo com T02–T03. A Fase 2 pode começar assim que
@@ -367,6 +367,18 @@ digitar no terminal do Claude Code.
 - Trava de instância única (`app.requestSingleInstanceLock()`) e trava por arquivo na pasta de dados do PGlite: hoje dois processos podem abrir a mesma pasta e corromper o banco.
 
 **Pronto quando:** o app abre no Windows com o modelador e roda uma execução com agente de terminal; o build local (`electron-builder --dir`) passa nos três sistemas pelo CI.
+
+**Feito (2026-11-04)** — como rodar e empacotar em `apps/desktop/README.md`. Decisões:
+
+- **Electron 45.2.2 e electron-builder 26.18.0**, versões exatas. O servidor roda no processo principal (perfil `local`, runner embutido) por `@neurons/server` (novo ponto de entrada `embed`, sem subir nada ao importar), escutando em `127.0.0.1` na porta 0 (o sistema escolhe, sem janela entre "está livre?" e escutar).
+- **Uma origem só.** O próprio servidor serve o `apps/web/dist` (`createApp(config, { ui })`): a interface em `/`, a API em `/api` (o prefixo é tirado por `rewriteUrl`, sem mexer em controller) e o WebSocket em `/ws`. Sem preload, sem CORS e sem segundo servidor.
+- **Segurança:** `contextIsolation`, `sandbox`, sem `nodeIntegration`, sem preload; CSP restritiva enviada pelo servidor; todo pedido da janela que não vá ao servidor local é cancelado, permissões negadas, `window.open` e navegação para fora bloqueados (links `http(s)` abrem no navegador do sistema).
+- **Diferenças por sistema sem duplicar:** pasta de dados e CLI do Claude vêm da config do servidor (`data-dir.ts`, `claude-binary.ts`); árvore de processos de `process-tree.ts`; só o menu e os atalhos (`menu.ts`) são do desktop. O `userData` do Electron fica em `<pasta de dados>/electron`.
+- **O MCP `neurons` roda com `ELECTRON_RUN_AS_NODE=1`** (`mcpServer.env`, novo): sem isso o CLI do Claude abriria outra janela do app em vez do servidor MCP.
+- **Duas travas.** Instância única do Electron (`requestSingleInstanceLock`) e `DirectoryLock` (`<pasta>/db.lock` com o PID, criado de forma atômica; trava de processo morto é retomada), usada pelo `PgliteDatabaseProvider`: vale para o servidor avulso também. Falhas ao subir (`abortOnError: false`) viram mensagem para o usuário, não saída silenciosa.
+- **Config própria:** `NEURONS_DESKTOP_CLAUDE_COMMAND`/`_ARGS` (CLI de mentira para testes) em `apps/desktop/src/config.ts`, o único arquivo do pacote que lê o ambiente (exceção no lint, como `runner/src/config.ts`).
+- **Empacotamento:** `asar: false` por ora (o CLI e o node-pty leem arquivos do disco); o `--dir` não gera instalador. `scripts/smoke.mjs` abre o app (do código-fonte ou empacotado) com o CLI de mentira e roda o `two-terminals.json`; roda no CI do Windows.
+- **Ícone provisório** (neurônio âmbar sobre grafite) gerado por `scripts/make-icon.mjs`; o definitivo substitui `build/icon.png`.
 
 ### T22 — Release multiplataforma
 

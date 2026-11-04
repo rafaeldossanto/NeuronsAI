@@ -1,5 +1,9 @@
 import type { RuntimeLogger } from "@neurons/agent-runtimes";
-import { TerminalRuntimeFactory, type ClaudeCommand } from "@neurons/agent-runtimes/claude";
+import {
+  TerminalRuntimeFactory,
+  type ClaudeCommand,
+  type McpServerCommand,
+} from "@neurons/agent-runtimes/claude";
 import type { RuntimeFactoryProvider } from "./runner-host.js";
 
 export interface TerminalFactoryOptions {
@@ -7,6 +11,8 @@ export interface TerminalFactoryOptions {
   claudeBin?: string;
   /** What to run as the CLI, program and leading arguments (tests and demos point it at a fake). */
   claudeCommand?: ClaudeCommand;
+  /** How to start the `neurons` MCP server; absent means this process's Node running `@neurons/mcp-neurons`. */
+  mcpServer?: McpServerCommand;
   logger?: RuntimeLogger;
 }
 
@@ -22,6 +28,7 @@ export function terminalFactoryProvider(
         ...(options.claudeBin && { configuredBinary: options.claudeBin }),
         ...(options.claudeCommand && { command: options.claudeCommand }),
       },
+      ...(options.mcpServer && { mcpServer: options.mcpServer }),
       ...(options.logger && { logger: options.logger }),
     });
 }

@@ -1,0 +1,31 @@
+# `electron-builder --dir` only lays the app out in release/ (no installer): the installers, the
+# release and the signing are T22 and T23.
+appId: ai.neurons.desktop
+productName: NeuronsAI
+copyright: Copyright © Rafael dos Santos
+directories:
+  output: release
+  buildResources: build
+# The Claude Code CLI starts the `neurons` MCP server (a Node script of @neurons/mcp-neurons) and
+# node-pty ships a native helper: both are plain files read from disk, so no asar for now.
+asar: false
+files:
+  - dist/**
+  - package.json
+# The web interface built by @neurons/web; the server inside the app serves it from here.
+extraResources:
+  - from: ../web/dist
+    to: web
+# node-pty is rebuilt against Electron's ABI (npmRebuild runs @electron/rebuild for it).
+npmRebuild: true
+win:
+  target: dir
+  icon: build/icon.png
+mac:
+  target: dir
+  category: public.app-category.developer-tools
+  icon: build/icon.png
+linux:
+  target: dir
+  category: Development
+  icon: build/icon.png

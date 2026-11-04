@@ -13,3 +13,4 @@ coverage/
 .vscode/*
 !.vscode/extensions.json
 *.stackdump
+release/

@@ -48,5 +48,11 @@
     "drizzle-kit": "0.31.11",
     "testcontainers": "12.2.1",
     "tsx": "4.23.15"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/embed.d.ts",
+      "default": "./dist/embed.js"
+    }
   }
 }

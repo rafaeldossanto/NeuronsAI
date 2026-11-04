@@ -10,3 +10,4 @@ spikes/
 packages/api-client/openapi.json
 packages/api-client/src/schema.gen.ts
 .claude/
+release/
