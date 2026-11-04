@@ -31,7 +31,7 @@ A branch `codex/modeler-connections-memories` foi revisada (achados em [[Interfa
 - **T07 · Runtime de API: parcial.** Feito: `ApiRuntime` em `apps/server/src/agents/api-runtime.ts`, com OpenAI (Responses API) e Anthropic pelos SDKs oficiais; ferramentas `send_message`, `ask`, `reply`, `list_peers`, `finish` mais `list_tools` e `use_tool` (as ferramentas ligadas por `uses`); retentativas com espera crescente feitas pelo SDK; uso gravado em tokens; custo desconhecido (`reportsCost = false`, nunca 0); chave escolhida por nome em `runtime.secretName`. Falta: `ModelProvider`/`ProviderRegistry`/`OpenAICompatibleProvider`; tabela de preços versionada e `UsageCalculator` em US$ (é ela que faz a guarda de custo valer para agentes de API); tradução do esforço por modelo (hoje envia sempre); rodada real do `two-agents.json`/`mixed.json` (só há testes com cliente simulado).
 - **T09 · Ferramentas: quase feita.** Feito: Obsidian com `create` e `edit` (sem exclusão), permissão do bloco **e** da ligação, memória por `memoryId` ou `vaultPath`; `list_tools`/`use_tool` no MCP do agente de terminal, no runner (protocolo revisão 3) e no agente de API; cada chamada grava `ToolCalled` (só `nodeId` e `path`). Falta: o teste manual com o cofre do Rafael; ToolCalled para as ferramentas embutidas do Claude Code (Bash, Read...), que não são reportadas; conferir na prática que MCP e HTTP também passam por `use_tool`.
 - **T14c · Estados e terminal no web: pouco feita.** Feito: o reducer lê `ToolCalled` (`state.toolCalls`) e a página da execução mostra a seção "Memórias e ferramentas". Já existiam do T14a: `pulses` e `terminals` no reducer. Falta: consumir `AgentStateChanged` (o reducer ainda deduz o estado); desenhar estado e o pulso âmbar sobre o canvas; painel do agente com xterm.js (a dependência não está instalada) usando `state.terminals` e o resumo `replay`; enviar `terminal.input`; linha do tempo única de mensagens e ferramentas; atualizar `live/README.md` (a lista "O que falta" ainda cita estado e `terminal.input`).
-- **T15 · Histórico e replay: não iniciada.** A API já filtra por `status` e `limit`, mas `runs-page.tsx` ainda é a lista simples, sem filtros de status, versão e custo. Replay no canvas não existe (o reducer puro e idempotente por `seq` serve de base).
+- **T15 · Histórico e replay: T15a feita, T15b não iniciada.** A lista com filtros está pronta (ver a T15). Replay no canvas não existe (o reducer puro e idempotente por `seq` serve de base) e vem depois da T14c.
 - **T17 · Templates: não iniciada.** Existe a tela "novo projeto" (`new-project-page.tsx`, projeto sem nome e importação de memória), mas sem escolha de template.
 - **T18 · Landing: parcial.** Feito: `apps/site` com a landing real, build pelo Vite, CTA "Criar meu projeto" abrindo `/new` e servida em `/` pelo servidor com `NEURONS_LANDING_DIR`. Falta: publicar no domínio, lista de espera com destino, botões de download por sistema, servir com CSP, e trocar os formulários de demonstração por funcionais.
 - **Novo no desktop e no servidor:** moldura própria da janela com preload/IPC, chave mestra por `safeStorage`, rotas `/connections` e `/memories`, acesso à IA por agente (assinatura do Claude Code ou chave de API).
@@ -416,10 +416,13 @@ resumo `replay`, e `terminal.input` para digitar), e a linha do tempo de mensage
 
 ### T15 — Histórico e replay
 
-- Lista de execuções com filtros (status, versão, custo).
-- Replay das mensagens de uma execução terminada no canvas, com controle de velocidade.
+Dividida em duas:
 
-**Pronto quando:** o replay de uma execução mostra as mensagens na ordem certa e nas setas certas.
+- **T15a · Lista de execuções com filtros: feita.** `GET /runs` filtra por `status`, `graphId`, `graphVersionId`, faixa de custo (`minCostUsd`/`maxCostUsd`, sobre o custo conhecido) e início (`from`/`to`), ordena (`sort`/`order`) e pagina por `offset` (`{ items, total, limit, offset }`); cada item traz grafo, versão, status, datas, `durationMs`, `costUsd` e `unknownCostTurns`, com o custo agregado do log em uma consulta (sem N+1) e índices na migration `0004`. Custo desconhecido nunca vira 0 e o filtro compara a parte conhecida (detalhes no README do servidor). A tela `/runs` tem a barra de filtros, a tabela, a paginação e o estado vazio, com tudo no endereço.
+- **T15b · Replay no canvas: falta (depois da T14c).** Replay das mensagens de uma execução terminada no canvas, com controle de velocidade, reaproveitando o `reduceRunEvent`. Pode ganhar um botão "Replay" na linha da tabela e a ordenação por duração, se quiserem.
+
+**Pronto quando (T15a):** com execuções de grafos e versões diferentes, cada filtro e as combinações dão o conjunto certo, na API e na tela (testes de integração nos dois bancos e da tela).
+**Pronto quando (T15b):** o replay de uma execução mostra as mensagens na ordem certa e nas setas certas.
 
 ---
 

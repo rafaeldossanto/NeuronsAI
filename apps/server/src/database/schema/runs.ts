@@ -1,4 +1,4 @@
-import { bigint, check, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, check, index, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { idColumn } from "./columns.js";
 import { graphVersions } from "./graphs.js";
@@ -29,6 +29,9 @@ export const runs = pgTable(
     lastSeq: bigint("last_seq", { mode: "number" }).notNull().default(0),
   },
   (table) => [
+    // The listing joins on the version and sorts by start.
+    index("runs_graph_version_id_idx").on(table.graphVersionId),
+    index("runs_started_at_idx").on(table.startedAt.desc(), table.id.desc()),
     check(
       "runs_status_check",
       sql`${table.status} in (${sql.join(

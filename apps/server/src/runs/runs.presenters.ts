@@ -1,7 +1,7 @@
 import { toIso, toIsoOrNull } from "../api/common-schemas.js";
 import type { MessageRecord } from "../hub/message.js";
 import type { RunEvent } from "../realtime/run-event.js";
-import type { RunSummaryRecord } from "../run-log/run-repository.js";
+import type { RunListItem, RunSummaryRecord } from "../run-log/run-repository.js";
 import type { RunDetailView } from "./run-query.service.js";
 
 export const presentRunSummary = (run: RunSummaryRecord) => ({
@@ -12,6 +12,17 @@ export const presentRunSummary = (run: RunSummaryRecord) => ({
   budgetUsd: run.budgetUsd,
   startedAt: toIsoOrNull(run.startedAt),
   finishedAt: toIsoOrNull(run.finishedAt),
+});
+
+export const presentRunListItem = (run: RunListItem) => ({
+  ...presentRunSummary(run),
+  graphName: run.graphName,
+  graphVersion: run.graphVersion,
+  durationMs:
+    run.startedAt && run.finishedAt ? run.finishedAt.getTime() - run.startedAt.getTime() : null,
+  costUsd: run.costUsd,
+  turns: run.turns,
+  unknownCostTurns: run.unknownCostTurns,
 });
 
 export const presentRunDetail = ({ run, input, finish, usage }: RunDetailView) => ({

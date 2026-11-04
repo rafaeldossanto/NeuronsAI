@@ -27,7 +27,7 @@ import {
   presentMessage,
   presentRunDetail,
   presentRunEvent,
-  presentRunSummary,
+  presentRunListItem,
 } from "./runs.presenters.js";
 
 @Controller("runs")
@@ -58,17 +58,31 @@ export class RunsController {
   @Endpoint({
     method: "get",
     path: "",
-    summary: "Lista as execuções, das mais novas para as mais antigas.",
+    summary:
+      "Lista as execuções com filtros e paginação (offset); das mais novas para as mais antigas por padrão.",
     query: listRunsQuery,
     response: runListSchema,
   })
   async list(@ValidQuery() query: ListRunsQuery) {
-    const runs = await this.queries.list({
+    const page = await this.queries.list({
       limit: query.limit,
+      offset: query.offset,
+      sort: query.sort,
+      order: query.order,
       ...(query.status !== undefined && { status: query.status }),
       ...(query.graphId !== undefined && { graphId: query.graphId }),
+      ...(query.graphVersionId !== undefined && { graphVersionId: query.graphVersionId }),
+      ...(query.minCostUsd !== undefined && { minCostUsd: query.minCostUsd }),
+      ...(query.maxCostUsd !== undefined && { maxCostUsd: query.maxCostUsd }),
+      ...(query.from !== undefined && { from: new Date(query.from) }),
+      ...(query.to !== undefined && { to: new Date(query.to) }),
     });
-    return { items: runs.map(presentRunSummary) };
+    return {
+      items: page.items.map(presentRunListItem),
+      total: page.total,
+      limit: query.limit,
+      offset: query.offset,
+    };
   }
 
   @Endpoint({
