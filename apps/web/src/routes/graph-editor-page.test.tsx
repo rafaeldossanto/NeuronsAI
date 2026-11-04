@@ -2,7 +2,7 @@ import type { Annotation } from "@neurons/graph-schema";
 import mixed from "@neurons/graph-schema/examples/mixed.json";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { graph, graphId, renderApp } from "@/test/helpers";
 
 const version = {
@@ -11,9 +11,6 @@ const version = {
   version: 2,
   createdAt: "2026-11-02T11:00:00.000Z",
 };
-
-// O React Flow é pesado no jsdom; nos runners lentos do CI 5 s não bastam.
-vi.setConfig({ testTimeout: 30_000 });
 
 const graphUrl = `/graphs/${graphId}`;
 

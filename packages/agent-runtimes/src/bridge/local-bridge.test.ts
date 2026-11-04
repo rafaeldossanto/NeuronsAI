@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BRIDGE_ROUTES } from "@neurons/mcp-neurons";
 import { RecordingCommunication } from "../testing/fake-claude-support.js";
 import { LocalBridge } from "./local-bridge.js";
@@ -81,7 +81,8 @@ describe("LocalBridge", () => {
 
   it("keeps an ask open until it is answered", async () => {
     const pending = post(BRIDGE_ROUTES.ask, { to: "Revisor", question: "e aí?" });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Waits for the request to reach the Hub (no fixed beat: how long that takes depends on the load).
+    await vi.waitFor(() => expect(communication.asked).toHaveLength(1));
     expect(communication.asked).toEqual([{ to: "Revisor", question: "e aí?" }]);
 
     communication.answerAsk("tudo certo");
