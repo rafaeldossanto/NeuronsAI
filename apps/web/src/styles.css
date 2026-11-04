@@ -156,6 +156,25 @@ html.desktop-root,
 .window-maximize {
   background: #28c840;
 }
+.update-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 6px 16px;
+  font-size: 12px;
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.update-notice span {
+  flex: 1;
+}
+.update-notice button,
+.update-notice a {
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
 .desktop-content {
   flex: 1;
   min-height: 0;

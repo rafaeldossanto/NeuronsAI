@@ -1,18 +1,21 @@
 import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
 
+/** The window behind an IPC call, only if the call comes from the app's own page (main frame). */
+export function trustedWindow(event: IpcMainInvokeEvent, origin: string): BrowserWindow {
+  if (
+    !event.senderFrame ||
+    new URL(event.senderFrame.url).origin !== origin ||
+    event.senderFrame !== event.sender.mainFrame
+  )
+    throw new Error("Origem não autorizada.");
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window) throw new Error("Janela indisponível.");
+  return window;
+}
+
 /** Bind once, validate both origin and window identity before granting a narrow native action. */
 export function installWindowControls(origin: string): void {
-  const target = (event: IpcMainInvokeEvent) => {
-    if (
-      !event.senderFrame ||
-      new URL(event.senderFrame.url).origin !== origin ||
-      event.senderFrame !== event.sender.mainFrame
-    )
-      throw new Error("Origem não autorizada.");
-    const window = BrowserWindow.fromWebContents(event.sender);
-    if (!window) throw new Error("Janela indisponível.");
-    return window;
-  };
+  const target = (event: IpcMainInvokeEvent) => trustedWindow(event, origin);
   ipcMain.handle("neurons:window", (event, action: unknown) => {
     const window = target(event);
     switch (action) {

@@ -1,31 +1,61 @@
-# `electron-builder --dir` only lays the app out in release/ (no installer): the installers, the
-# release and the signing are T22 and T23.
+# Installers (T22): NSIS on Windows, dmg + zip on macOS (arm64 and x64), AppImage + deb on Linux.
+# `electron-builder --dir` (the CI check and local builds) only lays the app out in release/.
+# Nothing is signed yet: that is T23.
 appId: ai.neurons.desktop
 productName: NeuronsAI
 copyright: Copyright © Rafael dos Santos
+artifactName: NeuronsAI-${version}-${os}-${arch}.${ext}
 directories:
   output: release
   buildResources: build
-# The Claude Code CLI starts the `neurons` MCP server (a Node script of @neurons/mcp-neurons) and
-# node-pty ships a native helper: both are plain files read from disk, so no asar for now.
-asar: false
+# The code and its dependencies live in app.asar. What has to be a real file on disk is unpacked
+# next to it (app.asar.unpacked): node-pty's native binary and helper (spawned as programs, not
+# loaded by Node). The `neurons` MCP server script is read by the Claude Code CLI through the
+# app's own executable running as Node, which reads inside the asar too.
+asar: true
+asarUnpack:
+  - "**/node_modules/node-pty/{prebuilds,build,third_party}/**"
 files:
   - dist/**
   - package.json
-# The web interface built by @neurons/web; the server inside the app serves it from here.
+# The web interface built by @neurons/web; the server inside the app serves it from here (a plain
+# folder in resources/, outside the asar).
 extraResources:
   - from: ../web/dist
     to: web
 # node-pty is rebuilt against Electron's ABI (npmRebuild runs @electron/rebuild for it).
 npmRebuild: true
+# Where electron-updater looks for new versions (written into resources/app-update.yml). The
+# repository is public: the app carries no token. Release tests point it elsewhere with
+# `--config.publish.provider=generic --config.publish.url=...` at build time, never here.
+publish:
+  provider: github
+  owner: rafaeldossanto
+  repo: NeuronsAI
+  releaseType: release
 win:
-  target: dir
-  icon: build/icon.png
+  target: nsis
+  icon: build/icon.ico
+# Not one-click: with one-click installs electron-builder names the folder after the package
+# (`@neuronsdesktop`) instead of the product, and the Start Menu shortcut was not ready on time.
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  deleteAppDataOnUninstall: false
 mac:
-  target: dir
+  target:
+    # The zip is what Squirrel.Mac updates from (latest-mac.yml lists it).
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
   category: public.app-category.developer-tools
-  icon: build/icon.png
+  icon: build/icon.icns
 linux:
-  target: dir
+  target:
+    - AppImage
+    - deb
   category: Development
   icon: build/icon.png
+  maintainer: Rafael dos Santos <rafaeldossanto@users.noreply.github.com>

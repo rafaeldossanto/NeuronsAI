@@ -6,6 +6,8 @@ import { installMenu } from "./menu.js";
 import { installWindowControls } from "./window-controls.js";
 import { desktopMasterKey } from "./master-key.js";
 import { SECURE_WEB_PREFERENCES, lockDownSession, lockDownWindow } from "./security.js";
+import { installUpdater } from "./updater.js";
+import { updateMode } from "./update-policy.js";
 import { type RunningServer, serverConfigFor, startServer, webRoot } from "./server.js";
 
 const APP_NAME = "NeuronsAI";
@@ -86,6 +88,13 @@ async function boot(): Promise<void> {
   installWindowControls(origin);
   lockDownSession(session.defaultSession, origin);
   window = openWindow(origin);
+  const updates = updateMode({
+    platform: process.platform,
+    packaged: app.isPackaged,
+    appImage: Boolean(desktop.appImage),
+    updatesOff: Boolean(desktop.updatesOff),
+  });
+  installUpdater(origin, updates, process.platform);
 
   app.on("activate", () => {
     if (!window) window = openWindow(origin);

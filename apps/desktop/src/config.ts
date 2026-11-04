@@ -11,6 +11,10 @@ export interface DesktopConfig {
    * and leading arguments. Absent: the real CLI is found as usual.
    */
   claudeCommand?: { command: string; args: string[] };
+  /** `NEURONS_DESKTOP_UPDATES=off`: never look for a new version (tests, offline machines). */
+  updatesOff?: true;
+  /** Set when the app runs from an AppImage (the only Linux package that updates itself). */
+  appImage?: true;
 }
 
 export class DesktopConfigError extends Error {
@@ -24,6 +28,9 @@ const empty = <T extends z.ZodType>(schema: T) =>
   z.preprocess((value) => (value === "" ? undefined : value), schema);
 
 const envSchema = z.object({
+  NEURONS_DESKTOP_UPDATES: empty(z.enum(["on", "off"]).optional()),
+  // Set by the AppImage runtime to the path of the running image.
+  APPIMAGE: empty(z.string().optional()),
   NEURONS_DESKTOP_CLAUDE_COMMAND: empty(z.string().trim().min(1).optional()),
   NEURONS_DESKTOP_CLAUDE_ARGS: empty(
     z
@@ -55,5 +62,9 @@ export function loadDesktopConfig(env: NodeJS.ProcessEnv = process.env): Desktop
       "NEURONS_DESKTOP_CLAUDE_ARGS só vale junto com NEURONS_DESKTOP_CLAUDE_COMMAND",
     ]);
   }
-  return command ? { claudeCommand: { command, args: args ?? [] } } : {};
+  return {
+    ...(command && { claudeCommand: { command, args: args ?? [] } }),
+    ...(parsed.data.NEURONS_DESKTOP_UPDATES === "off" && { updatesOff: true as const }),
+    ...(parsed.data.APPIMAGE && { appImage: true as const }),
+  };
 }
