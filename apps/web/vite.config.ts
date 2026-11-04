@@ -24,6 +24,11 @@ export default defineConfig(({ mode }) => {
       globals: true,
       setupFiles: ["./src/test/setup.ts"],
       css: false,
+      // React Flow is heavy in jsdom: under a loaded machine (a full turbo run, a CI runner) the
+      // editor and inspector suites take several times longer than the 5 s default. Only a ceiling:
+      // a test ends as soon as it is done.
+      testTimeout: 30_000,
+      hookTimeout: 30_000,
     },
   };
 });

@@ -12,9 +12,6 @@ const version = {
   createdAt: "2026-11-02T11:00:00.000Z",
 };
 
-// O React Flow é pesado no jsdom; nos runners lentos do CI 5 s não bastam.
-vi.setConfig({ testTimeout: 30_000 });
-
 const graphUrl = `/graphs/${graphId}`;
 
 function open(draft: unknown, extra: Parameters<typeof renderApp>[1] = {}) {
