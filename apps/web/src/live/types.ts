@@ -31,6 +31,11 @@ export interface AgentLive {
   lastSeq: number;
   /** Why it failed, when `status` is `failed`. */
   failure: string | null;
+  /**
+   * Where `status` comes from: `event` once the agent reported an `AgentStateChanged` (T14b servers),
+   * `deduced` while it is only inferred from the other events (runs recorded before T14b).
+   */
+  stateSource: "event" | "deduced";
 }
 
 export interface LiveMessage {
@@ -102,8 +107,19 @@ export interface RunLiveState {
   totals: RunLiveTotals;
   guardEvents: LiveGuardEvent[];
   toolCalls: LiveToolCall[];
-  /** Raw terminal output by agent (escape sequences included), kept only for the xterm.js of T14b. */
+  /** Raw terminal output by agent (escape sequences included), for the xterm.js panel. */
   terminals: Record<string, string>;
+  /**
+   * Bookkeeping that lets a terminal view write only what is new: `resets` counts the snapshots
+   * (`replay: true`) that replaced the output; `total` counts every character appended since the last
+   * reset, even the ones cut off the front of `terminals` by the size limit.
+   */
+  terminalMeta: Record<string, TerminalMeta>;
+}
+
+export interface TerminalMeta {
+  resets: number;
+  total: number;
 }
 
 /** An entry of the run log, as `GET /runs/{id}/events` and the WebSocket deliver it. */

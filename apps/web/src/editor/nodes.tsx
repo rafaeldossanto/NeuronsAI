@@ -9,12 +9,25 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import { formatUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { agentStatusLabel, type AgentLiveStatus } from "@/live";
+
+/** What a running agent shows on its block (the read-only run view). */
+export interface BlockLive {
+  status: AgentLiveStatus;
+  /** `null`: no turn reported a price (unknown is never shown as $0). */
+  costUsd: number | null;
+  /** True when some turns had no price, so `costUsd` is a lower bound. */
+  costIsMinimum: boolean;
+}
 
 export interface BlockData extends Record<string, unknown> {
   node: GraphNode;
   /** Messages of the validation issues on this block (empty: valid). */
   issues: string[];
+  /** Present only in the run view. */
+  live?: BlockLive | undefined;
 }
 
 export type BlockNode = Node<BlockData>;
@@ -62,18 +75,22 @@ function describe(node: GraphNode): {
 }
 
 function Block({ data, selected }: NodeProps<BlockNode>) {
-  const { node, issues } = data;
+  const { node, issues, live } = data;
   const { icon: Icon, kindLabel, title, detail } = describe(node);
   const invalid = issues.length > 0;
   return (
     <div
       data-testid={`block-${node.id}`}
       data-invalid={invalid || undefined}
+      data-status={live?.status}
       className={cn(
         "w-52 rounded-lg border bg-card px-3 py-2.5 shadow-sm",
         node.type === "trigger" && "rounded-full px-4",
         selected && "border-accent ring-2 ring-accent/60",
         invalid && "border-destructive",
+        live?.status === "busy" && "border-accent",
+        live?.status === "failed" && "border-destructive",
+        live?.status === "finished" && "opacity-70",
       )}
     >
       {node.type !== "trigger" && (
@@ -108,9 +125,39 @@ function Block({ data, selected }: NodeProps<BlockNode>) {
       {detail && node.type !== "trigger" && (
         <p className="mt-1.5 truncate text-xs text-muted-foreground">{detail}</p>
       )}
+      {live && <LiveBadge live={live} />}
       {node.type !== "tool" && (
         <Handle type="source" position={Position.Right} aria-label="Saída" />
       )}
+    </div>
+  );
+}
+
+const DOT: Record<AgentLiveStatus, string> = {
+  starting: "bg-muted-foreground/50",
+  busy: "bg-accent",
+  idle: "bg-foreground/70",
+  waiting_reply: "border border-accent bg-card",
+  failed: "bg-destructive",
+  finished: "bg-muted-foreground/50",
+};
+
+/** Agent state and cost on the block. The amber dot breathes only while the agent works. */
+function LiveBadge({ live }: { live: BlockLive }) {
+  const working = live.status === "busy" || live.status === "waiting_reply";
+  return (
+    <div className="mt-2 flex items-center gap-1.5 border-t pt-1.5 text-xs">
+      <span
+        aria-hidden
+        className={cn("size-2 shrink-0 rounded-full", DOT[live.status])}
+        style={working ? { animation: "pulse-amber 1.4s ease-in-out infinite" } : undefined}
+      />
+      <span className="font-bold">{agentStatusLabel[live.status]}</span>
+      <span className="ml-auto text-muted-foreground">
+        {live.costUsd === null
+          ? "custo desconhecido"
+          : `${live.costIsMinimum ? "≥ " : ""}${formatUsd(live.costUsd)}`}
+      </span>
     </div>
   );
 }

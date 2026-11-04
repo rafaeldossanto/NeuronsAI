@@ -30,15 +30,15 @@ A branch `codex/modeler-connections-memories` foi revisada (achados em [[Interfa
 
 - **T07 · Runtime de API: parcial.** Feito: `ApiRuntime` em `apps/server/src/agents/api-runtime.ts`, com OpenAI (Responses API) e Anthropic pelos SDKs oficiais; ferramentas `send_message`, `ask`, `reply`, `list_peers`, `finish` mais `list_tools` e `use_tool` (as ferramentas ligadas por `uses`); retentativas com espera crescente feitas pelo SDK; uso gravado em tokens; custo desconhecido (`reportsCost = false`, nunca 0); chave escolhida por nome em `runtime.secretName`. Falta: `ModelProvider`/`ProviderRegistry`/`OpenAICompatibleProvider`; tabela de preços versionada e `UsageCalculator` em US$ (é ela que faz a guarda de custo valer para agentes de API); tradução do esforço por modelo (hoje envia sempre); rodada real do `two-agents.json`/`mixed.json` (só há testes com cliente simulado).
 - **T09 · Ferramentas: quase feita.** Feito: Obsidian com `create` e `edit` (sem exclusão), permissão do bloco **e** da ligação, memória por `memoryId` ou `vaultPath`; `list_tools`/`use_tool` no MCP do agente de terminal, no runner (protocolo revisão 3) e no agente de API; cada chamada grava `ToolCalled` (só `nodeId` e `path`). Falta: o teste manual com o cofre do Rafael; ToolCalled para as ferramentas embutidas do Claude Code (Bash, Read...), que não são reportadas; conferir na prática que MCP e HTTP também passam por `use_tool`.
-- **T14c · Estados e terminal no web: pouco feita.** Feito: o reducer lê `ToolCalled` (`state.toolCalls`) e a página da execução mostra a seção "Memórias e ferramentas". Já existiam do T14a: `pulses` e `terminals` no reducer. Falta: consumir `AgentStateChanged` (o reducer ainda deduz o estado); desenhar estado e o pulso âmbar sobre o canvas; painel do agente com xterm.js (a dependência não está instalada) usando `state.terminals` e o resumo `replay`; enviar `terminal.input`; linha do tempo única de mensagens e ferramentas; atualizar `live/README.md` (a lista "O que falta" ainda cita estado e `terminal.input`).
-- **T15 · Histórico e replay: T15a feita, T15b não iniciada.** A lista com filtros está pronta (ver a T15). Replay no canvas não existe (o reducer puro e idempotente por `seq` serve de base) e vem depois da T14c.
+- **T14c · Estados e terminal no web: feita (2026-11-04).** Ver "T14 — Execução ao vivo"; a seção "Memórias e ferramentas" virou a linha do tempo única.
+- **T15 · Histórico e replay: T15a feita, T15b não iniciada.** A lista com filtros está pronta (ver a T15). Replay no canvas não existe (o reducer puro e idempotente por `seq` serve de base) e pode vir agora que a T14c está pronta.
 - **T17 · Templates: não iniciada.** Existe a tela "novo projeto" (`new-project-page.tsx`, projeto sem nome e importação de memória), mas sem escolha de template.
 - **T18 · Landing: parcial.** Feito: `apps/site` com a landing real, build pelo Vite, CTA "Criar meu projeto" abrindo `/new` e servida em `/` pelo servidor com `NEURONS_LANDING_DIR`. Falta: publicar no domínio, lista de espera com destino, botões de download por sistema, servir com CSP, e trocar os formulários de demonstração por funcionais.
 - **Novo no desktop e no servidor:** moldura própria da janela com preload/IPC, chave mestra por `safeStorage`, rotas `/connections` e `/memories`, acesso à IA por agente (assinatura do Claude Code ou chave de API).
 
 ## Ordem de execução
 
-- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T12, T19, T20, T21, T24.
+- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T12, T14, T19, T20, T21, T24.
 - Próxima: T22. Depois: T13–T15 → T25 → T16–T18.
 - **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16) sai por túnel.
 
@@ -350,6 +350,9 @@ nada de azul.
 **Pronto quando:** rodar o `mixed.json` com modelos reais e acompanhar tudo pela tela, inclusive
 digitar no terminal do Claude Code.
 
+**Feito (2026-11-04)** — as três partes (T14a, T14b e T14c) estão abaixo; a rodada com o Claude
+Code real, que o "Pronto quando" cita, ainda não foi feita (cota).
+
 Dividida em três partes. **T14a (feita): dados ao vivo**, sem canvas, em `apps/web/src/live/`
 (contrato em `live/README.md`):
 
@@ -408,11 +411,36 @@ Decisões:
   e digita no terminal do Pesquisador pelo `/ws` (e confere a recusa `not_a_terminal` no
   Revisor). Sem rodada com o Claude Code real (cota).
 
-**T14c (falta):** no web, desenhar sobre o canvas da T12 o estado de cada agente (consumindo
-`AgentStateChanged`, que substitui a dedução do `reduceRunEvent`) e o pulso âmbar nas setas
-(`state.pulses`), o painel do agente com xterm.js (`state.terminals`, trocando o conteúdo pelo
-resumo `replay`, e `terminal.input` para digitar), e a linha do tempo de mensagens e ferramentas
-(`ToolCalled`). Atualizar o `live/README.md` e o reducer para os eventos novos.
+**T14c (feita, 2026-11-04): execução sobre o desenho, painel do agente e terminal.** Detalhes e
+como a T15b reaproveita em `apps/web/src/live/README.md` (seção "Execução sobre o desenho").
+Decisões:
+
+- **Reducer:** `AgentStateChanged` passa a ser a fonte do estado do agente (`stateSource: "event"`);
+  a dedução antiga ficou só como reserva para quem nunca reportou estado (execuções anteriores à
+  T14b). Continua puro e idempotente por `seq`. O terminal ganhou `terminalMeta`
+  (`resets`/`total`) para a tela escrever só o que é novo e trocar tudo quando chega o `replay`.
+- **Linha do tempo única:** `selectActivity(state, agent?)` junta `timeline` e `toolCalls` (do
+  Codex) por `seq`, sem guardar nada duas vezes; a seção "Memórias e ferramentas" virou "Linha do
+  tempo" e a mesma lista serve a conversa de cada agente.
+- **Canvas só leitura sem duplicar o editor:** `editor/flow-model.ts` (setas e anotações, extraído
+  do `graph-editor.tsx` sem mudar o comportamento) e `editor/nodes.tsx` (o bloco ganhou `data.live`
+  com estado e custo) são usados pelos dois; `editor/graph-viewer.tsx` só desliga arrastar, ligar,
+  apagar e desenhar. Bloco e agente se ligam por `node.name`. A versão vem de
+  `GET /graphs/{id}/versions` + `/versions/{n}` (imutável, buscada uma vez).
+- **Pulso:** SVG `animateMotion` ao longo do caminho da seta (`editor/pulse-edge.tsx`), sem
+  JavaScript por quadro; `pulsesByEdge` resolve a seta e o sentido (`reverse`), `useActivePulses`
+  anima cada mensagem uma vez, só se for recente (o histórico ao abrir a tela não vira rajada) e
+  com teto de 12 simultâneos. A seta fica âmbar enquanto o pulso passa; `prefers-reduced-motion`
+  mostra só um ponto.
+- **Terminal:** xterm.js 6.0.0 (mesma versão do `@xterm/headless` do servidor), no tamanho do PTY
+  (120×40). **Sem `@xterm/addon-fit`**: o protocolo não tem `terminal.resize`, e ajustar à caixa
+  desalinharia a TUI. O que se digita vai por `terminal.input` (colagens longas partidas em 4000
+  caracteres), nunca é logado, e as recusas do servidor aparecem no painel em pt-BR. CSP: só
+  estilos inline (já liberados); `script-src 'self'` intacto, conferido no build servido pelo
+  servidor com o CLI de mentira.
+- **Falta:** uma rodada com o Claude Code real (cota Pro) para confirmar a digitação no terminal
+  real; `terminal.resize` no `/ws` e no protocolo do runner, se o terminal do navegador precisar
+  mudar de tamanho.
 
 ### T15 — Histórico e replay
 

@@ -10,14 +10,17 @@ export interface SocketLike {
   close(): void;
 }
 
+/** Under the server's per-message limit (`NEURONS_TERMINAL_INPUT_MAX_CHARS`, 4096 by default). */
+const TERMINAL_INPUT_CHUNK = 4000;
+
 export interface RunLiveClientOptions {
   runId: string;
   /** `ws://` / `wss://` address of `/ws`. */
   url: string;
   onEvent: (event: RunLiveEvent) => void;
   onConnection: (state: ConnectionState) => void;
-  /** A message from the server (`error` frame) or null when it cleared. */
-  onError?: (message: string | null) => void;
+  /** An `error` frame from the server (with its `code`), or `null` when the subscription cleared it. */
+  onError?: (message: string | null, code?: string) => void;
   createSocket?: (url: string) => SocketLike;
   /** First reconnection delay; doubles on every failed attempt up to `maxDelayMs`. */
   baseDelayMs?: number;
@@ -44,6 +47,7 @@ export class RunLiveClient {
   private everConnected = false;
   private closed = false;
   private lastSeq = 0;
+  private subscribed = false;
 
   private readonly createSocket: (url: string) => SocketLike;
   private readonly baseDelayMs: number;
@@ -82,6 +86,7 @@ export class RunLiveClient {
       return;
     }
     this.socket = socket;
+    this.subscribed = false;
     socket.onopen = () => {
       if (this.socket !== socket) return;
       this.everConnected = true;
@@ -100,17 +105,39 @@ export class RunLiveClient {
     };
   }
 
+  /**
+   * Types into the terminal of `agent` (`terminal.input`). The text goes out exactly as given and is
+   * never logged or kept: it can be a password. A paste longer than the server accepts per message is
+   * split. Returns false when there is no open connection (nothing was sent).
+   */
+  sendTerminalInput(agent: string, data: string): boolean {
+    const socket = this.socket;
+    if (!socket || !this.subscribed || data === "") return false;
+    for (let i = 0; i < data.length; i += TERMINAL_INPUT_CHUNK) {
+      this.send("terminal.input", {
+        runId: this.options.runId,
+        agent,
+        data: data.slice(i, i + TERMINAL_INPUT_CHUNK),
+      });
+    }
+    return true;
+  }
+
   private handle(raw: unknown): void {
     const frame = parseFrame(raw);
     if (!frame) return;
     const { event, data } = frame;
     if (event === "subscribed") {
+      this.subscribed = true;
       this.attempt = 0;
       this.options.onError?.(null);
       this.options.onConnection("live");
     } else if (event === "error") {
-      const message = (data as { message?: unknown } | null)?.message;
-      this.options.onError?.(typeof message === "string" ? message : "Erro do servidor.");
+      const { message, code } = (data ?? {}) as { message?: unknown; code?: unknown };
+      this.options.onError?.(
+        typeof message === "string" ? message : "Erro do servidor.",
+        typeof code === "string" ? code : undefined,
+      );
     } else if (event === "run.event") {
       this.handleRunEvent(data);
     } else if (event === "run.ephemeral") {

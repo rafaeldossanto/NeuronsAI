@@ -113,9 +113,7 @@ describe("detalhe da execução ao vivo", () => {
         }),
       );
     });
-    expect(
-      await screen.findByRole("region", { name: "Memórias e ferramentas" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Linha do tempo" })).toBeInTheDocument();
     expect(screen.getAllByText("Criar nota")).toHaveLength(1);
     expect(screen.getByText("Editar nota")).toBeInTheDocument();
     expect(screen.getByText("CONFLICT")).toBeInTheDocument();

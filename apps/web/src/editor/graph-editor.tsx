@@ -2,7 +2,6 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MarkerType,
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
@@ -50,7 +49,8 @@ import { Field, Select, TextArea } from "./fields";
 import { useApi, unwrap } from "@/lib/api";
 import { useNavigate } from "react-router";
 import { usePublishVersion, useSaveDraft } from "@/lib/queries";
-import { annotationNodeType, annotationNodeTypes, type AnnotationNode } from "./annotation-nodes";
+import { annotationNodeTypes, type AnnotationNode } from "./annotation-nodes";
+import { annotationShell, linkFlowEdges, TRIGGER_EDGE } from "./flow-model";
 import { createAnnotation, INK, TOOLS, type AnnotationKind, type Tool } from "./annotations";
 import { Inspector } from "./inspector";
 import { validateDoc, type LocatedIssue } from "./issues";
@@ -67,8 +67,6 @@ import {
 } from "./model";
 import { nodeTypes, type BlockNode } from "./nodes";
 import { IssuesPanel } from "./issues-panel";
-
-const TRIGGER_EDGE = "trigger:";
 
 type CanvasNode = BlockNode | AnnotationNode;
 const allNodeTypes = { ...nodeTypes, ...annotationNodeTypes };
@@ -100,10 +98,6 @@ export function GraphEditor({ graph }: { graph: EditorGraph }) {
       <Editor graph={graph} />
     </ReactFlowProvider>
   );
-}
-
-function edgeColor(invalid: boolean) {
-  return invalid ? "var(--destructive)" : "var(--foreground)";
 }
 
 function Editor({ graph }: { graph: EditorGraph }) {
@@ -158,16 +152,8 @@ function Editor({ graph }: { graph: EditorGraph }) {
       data: { node, issues: issuesByNode.get(node.id) ?? [] },
       ...(measured[node.id] ? { measured: measured[node.id] } : {}),
     }));
-    // The free layer sits under blocks and arrows (groups under the other annotations).
     const drawings: CanvasNode[] = doc.annotations.map((annotation) => ({
-      id: annotation.id,
-      type: annotationNodeType(annotation.kind),
-      position: annotation.position,
-      selected: selected.nodes.includes(annotation.id),
-      zIndex: annotation.kind === "group" ? -2 : -1,
-      ...(annotation.kind === "group" || annotation.kind === "arrow"
-        ? { style: { pointerEvents: "none" as const } }
-        : {}),
+      ...annotationShell(annotation, selected.nodes.includes(annotation.id)),
       data: {
         annotation,
         onResizeStart: () => {
@@ -184,42 +170,17 @@ function Editor({ graph }: { graph: EditorGraph }) {
     return [...drawings, ...blocks];
   }, [doc.nodes, doc.annotations, issues, selected.nodes, measured]);
 
-  const rfEdges = useMemo<Edge[]>(() => {
-    const invalidLinks = new Set(issues.flatMap((issue) => issue.targetLinkId ?? []));
-    const nodeIds = new Set(doc.nodes.map((node) => node.id));
-    const linkEdges: Edge[] = doc.links.map((link) => {
-      const color = edgeColor(invalidLinks.has(link.id));
-      return {
-        id: link.id,
-        source: link.from,
-        target: link.to,
-        selected: selected.links.includes(link.id),
-        markerEnd: { type: MarkerType.ArrowClosed, color },
-        ...(link.bidirectional ? { markerStart: { type: MarkerType.ArrowClosed, color } } : {}),
-        style: {
-          stroke: color,
-          strokeWidth: 1.75,
-          ...(link.kind === "uses" ? { strokeDasharray: "6 4" } : {}),
-        },
-      };
-    });
-    // A trigger's arrow is its `target` field, not a link.
-    const triggerEdges: Edge[] = doc.nodes.flatMap((node) => {
-      if (node.type !== "trigger" || !nodeIds.has(node.target)) return [];
-      const id = `${TRIGGER_EDGE}${node.id}`;
-      return [
+  const rfEdges = useMemo<Edge[]>(
+    () =>
+      linkFlowEdges(
+        { nodes: doc.nodes, links: doc.links },
         {
-          id,
-          source: node.id,
-          target: node.target,
-          selected: selected.links.includes(id),
-          markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor(false) },
-          style: { stroke: edgeColor(false), strokeWidth: 1.75 },
+          invalidLinks: new Set(issues.flatMap((issue) => issue.targetLinkId ?? [])),
+          selectedLinks: selected.links,
         },
-      ];
-    });
-    return [...linkEdges, ...triggerEdges];
-  }, [doc.nodes, doc.links, issues, selected.links]);
+      ),
+    [doc.nodes, doc.links, issues, selected.links],
+  );
 
   // ---------- history shortcuts ----------
   useEffect(() => {

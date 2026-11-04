@@ -30,3 +30,30 @@ export function useSendHumanMessage(id: string) {
       unwrap(api.POST("/runs/{id}/messages", { params: { path: { id } }, body: input })),
   });
 }
+
+/**
+ * The drawing of the graph version a run executes. A version is frozen, so it is fetched once: the
+ * run only knows the version's id, so the list of versions says which number it is.
+ */
+export function useRunGraph(graphId: string | undefined, versionId: string | undefined) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["run-graph", graphId, versionId],
+    enabled: Boolean(graphId && versionId),
+    staleTime: Infinity,
+    queryFn: async () => {
+      const id = graphId ?? "";
+      const { items } = await unwrap(
+        api.GET("/graphs/{id}/versions", { params: { path: { id } } }),
+      );
+      const found = items.find((item) => item.id === versionId);
+      if (!found) throw new Error("A versão do grafo desta execução não foi encontrada.");
+      const version = await unwrap(
+        api.GET("/graphs/{id}/versions/{version}", {
+          params: { path: { id, version: found.version } },
+        }),
+      );
+      return version.definition;
+    },
+  });
+}
