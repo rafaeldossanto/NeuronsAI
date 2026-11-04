@@ -2,7 +2,7 @@
 
 Interface do NeuronsAI: Vite 8, React 19, Tailwind 4 (componentes no estilo shadcn/ui), TanStack Query e `react-router`. Consome a API real pelo [`@neurons/api-client`](../../packages/api-client/README.md).
 
-Telas: **Grafos** (`/graphs`: listar e criar), **Editor** (`/graphs/:id`: canvas, inspetor, validação ao vivo, salvar rascunho, publicar versão e versões publicadas) e **Execuções** (`/runs`: tabela paginada com filtros de status, grafo, versão, faixa de custo e período, todos no endereço; `/runs/:id`: ao vivo pelo `/ws`, com o desenho da versão em que roda, o estado e o custo de cada agente nos blocos, o pulso âmbar nas setas, o painel do agente com o terminal ao vivo, a linha do tempo, o botão Parar e o envio de mensagem como `@human`).
+Telas: **Grafos** (`/graphs`: listar e criar), **Editor** (`/graphs/:id`: canvas, inspetor, validação ao vivo, salvar rascunho, publicar versão e versões publicadas) e **Execuções** (`/runs`: tabela paginada com filtros de status, grafo, versão, faixa de custo e período, todos no endereço; `/runs/:id`: ao vivo pelo `/ws`, com o desenho da versão em que roda, o estado e o custo de cada agente nos blocos, o pulso âmbar nas setas, o painel do agente com o terminal ao vivo, a linha do tempo, o botão Parar e o envio de mensagem como `@human`; uma execução terminada tem o **Replay**, em `/runs/:id?replay=1`).
 
 ## Rodar
 
@@ -31,7 +31,7 @@ O Vite encaminha `/api/*` para o servidor (o prefixo é removido) e `/ws` (WebSo
 
 ## Lista de execuções (`/runs`)
 
-Os filtros vivem na query string (`?status=failed&graphId=…&graphVersionId=…&minCostUsd=1&maxCostUsd=5&from=2026-11-01&to=2026-11-30&sort=costly&page=2`), então recarregar ou mandar o link mantém a seleção; valores inválidos no endereço são ignorados. Mudar um filtro volta à página 1. Os dias de `from`/`to` valem do começo ao fim do dia, no fuso do usuário. A versão só aparece para um grafo escolhido. O custo é a soma dos turnos que informaram preço: a tabela mostra `≥ $x` quando há turnos sem preço e `Desconhecido` quando nenhum informou, nunca zero (o filtro de custo compara essa parte conhecida, ver o README do servidor). Páginas de 20 por `offset`; clicar na linha abre `/runs/:id`. Código em `src/runs/` (`run-filters.ts` lê e escreve o endereço; `runs-filter-bar.tsx`, `runs-table.tsx`, `use-run-list.ts`) e `src/routes/runs-page.tsx`.
+Os filtros vivem na query string (`?status=failed&graphId=…&graphVersionId=…&minCostUsd=1&maxCostUsd=5&from=2026-11-01&to=2026-11-30&sort=costly&page=2`), então recarregar ou mandar o link mantém a seleção; valores inválidos no endereço são ignorados. Mudar um filtro volta à página 1. Os dias de `from`/`to` valem do começo ao fim do dia, no fuso do usuário. A versão só aparece para um grafo escolhido. O custo é a soma dos turnos que informaram preço: a tabela mostra `≥ $x` quando há turnos sem preço e `Desconhecido` quando nenhum informou, nunca zero (o filtro de custo compara essa parte conhecida, ver o README do servidor). Páginas de 20 por `offset`; clicar na linha abre `/runs/:id`; as terminadas têm o botão **Replay**, que abre `/runs/:id?replay=1`. Código em `src/runs/` (`run-filters.ts` lê e escreve o endereço; `runs-filter-bar.tsx`, `runs-table.tsx`, `use-run-list.ts`) e `src/routes/runs-page.tsx`.
 
 ## Testes e build
 
@@ -66,9 +66,19 @@ Nos testes com jsdom, `src/test/setup.ts` simula `ResizeObserver`, `DOMMatrixRea
 
 ## Execução ao vivo (canvas e terminal)
 
-`/runs/:id` mostra o **desenho da versão** da execução com o mesmo canvas do editor, só leitura (`editor/graph-viewer.tsx`, que reaproveita `nodes.tsx` e `flow-model.ts`; nada de arrastar, ligar ou apagar). Cada bloco de agente mostra o estado (subindo, ocupado, ocioso, esperando resposta, falhou, finalizado) e o custo; a cada mensagem um pulso âmbar percorre a seta no sentido de quem mandou (SVG `animateMotion`, leve mesmo com muitas mensagens). Clicar num bloco abre o painel do agente: a conversa dele e, para agente de terminal em `pty`, o **terminal ao vivo** (xterm.js 6.0.0) onde o que você digita vai por `terminal.input`; as recusas do servidor aparecem no painel em pt-BR. Custo por agente, total, Parar e mensagem como `@human` continuam na tela. Como os dados chegam, como o replay da T15b reaproveita tudo e as decisões: [`src/live/README.md`](src/live/README.md).
+`/runs/:id` mostra o **desenho da versão** da execução com o mesmo canvas do editor, só leitura (`editor/graph-viewer.tsx`, que reaproveita `nodes.tsx` e `flow-model.ts`; nada de arrastar, ligar ou apagar). Cada bloco de agente mostra o estado (subindo, ocupado, ocioso, esperando resposta, falhou, finalizado) e o custo; a cada mensagem um pulso âmbar percorre a seta no sentido de quem mandou (SVG `animateMotion`, leve mesmo com muitas mensagens). Clicar num bloco abre o painel do agente: a conversa dele e, para agente de terminal em `pty`, o **terminal ao vivo** (xterm.js 6.0.0) onde o que você digita vai por `terminal.input`; as recusas do servidor aparecem no painel em pt-BR. Custo por agente, total, Parar e mensagem como `@human` continuam na tela. Como os dados chegam, o replay e as decisões: [`src/live/README.md`](src/live/README.md).
 
 O xterm.js só usa estilos inline, que a CSP do servidor/desktop já permite; `script-src` continua `'self'`.
+
+## Replay (`/runs/:id?replay=1`)
+
+Só para execução **terminada** (em andamento, a tela fica ao vivo e avisa). Mesmo canvas só leitura, sem abrir o `/ws`: os eventos vêm de `GET /runs/{id}/events`, em páginas de 1000 por `fromSeq` até uma página curta (com o contador "N carregados"). Controles: tocar/pausar, voltar e avançar um evento, 0,5× · 1× · 2× · 4× · 8× e uma barra que arrasta a qualquer evento. O estado em cada ponto é o `reduceRunEvent` dobrado desde o começo, com um **ponto de controle a cada 50 eventos**, então arrastar nunca refaz tudo.
+
+- **Tempo:** cada evento toca pelo intervalo real em relação ao anterior, dividido pela velocidade, mas **esperas acima de 2 s (em 1×) viram 2 s** e há um piso de 150 ms para eventos colados. A tela diz isso, com quantos trechos foram encurtados e quanto dura o replay contra a execução real.
+- **Pulsos:** só um passo para frente (de um em um evento) desenha o pulso daquela mensagem, na seta e no sentido certos; voltar e arrastar mostram o estado parado.
+- **Terminal:** não é reproduzido (a saída dele não fica no registro); o painel do agente avisa e mostra só a conversa.
+
+Código em `src/live/replay*.ts(x)`, `use-run-events.ts`, `use-replay-player.ts`.
 
 ## Estrutura e visual
 
