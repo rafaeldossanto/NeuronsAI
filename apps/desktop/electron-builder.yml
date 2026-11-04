@@ -4,6 +4,8 @@
 appId: ai.neurons.desktop
 productName: NeuronsAI
 copyright: Copyright © Rafael dos Santos
+# The package is named `@neurons/desktop`: without this the executable would be `@neuronsdesktop`.
+executableName: NeuronsAI
 artifactName: NeuronsAI-${version}-${os}-${arch}.${ext}
 directories:
   output: release

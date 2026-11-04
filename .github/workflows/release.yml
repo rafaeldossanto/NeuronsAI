@@ -1,6 +1,6 @@
 name: Release
 
-# T22: installers for the three systems. Nothing here is signed (T23).
+# T22: installers for the three systems (Windows NSIS, macOS dmg+zip, Linux AppImage+deb). Nothing here is signed (T23).
 #   - tag `v*`: builds everything and publishes a DRAFT GitHub release (a person publishes it).
 #   - change to this file on dev: same as a manual run with `publish: false`.
 #   - manual run: `publish: false` (default) only uploads the installers as workflow artifacts;
