@@ -17,6 +17,7 @@ import {
   PROTOCOL_REVISION,
   PROTOCOL_VERSION,
   REVISION_TOOL_CALLS,
+  REVISION_GRAPH_TOOLS,
   revisionOf,
   type AgentDeliverFrame,
   type AgentStartFrame,
@@ -33,7 +34,10 @@ import {
 } from "@neurons/runner-protocol";
 
 /** Builds the runtimes with the settings the server sends along with `agent.start`. */
-export type RuntimeFactoryProvider = (settings: StartSettings) => AgentRuntimeFactory;
+export type RuntimeFactoryProvider = (
+  settings: StartSettings,
+  credentials?: { apiKey: string },
+) => AgentRuntimeFactory;
 
 export interface RunnerHostOptions {
   /** Shown to the server (and in its logs). */
@@ -250,7 +254,7 @@ export class RunnerHost {
     const existing = this.instances.get(frame.instanceId);
     if (existing) return existing.startDone; // the request was repeated after a reconnection
 
-    const runtime = this.factoryFor(frame.settings).create(
+    const runtime = this.factoryFor(frame.settings, frame.credentials).create(
       frame.agent,
       new RemoteCommunication(frame.instanceId, this),
     );
@@ -326,7 +330,12 @@ export class RunnerHost {
     return instance.stopping;
   }
 
-  private factoryFor(settings: StartSettings): AgentRuntimeFactory {
+  private factoryFor(
+    settings: StartSettings,
+    credentials?: { apiKey: string },
+  ): AgentRuntimeFactory {
+    // Never cache or serialize API keys as cache keys.
+    if (credentials) return this.options.createFactory(settings, credentials);
     const key = JSON.stringify(settings);
     let factory = this.factories.get(key);
     if (!factory) {
@@ -408,6 +417,19 @@ class RemoteCommunication implements AgentCommunication {
 
   async reportUsage(usage: AgentUsage): Promise<void> {
     await this.call({ method: "report_usage", usage });
+  }
+
+  async listTools() {
+    if (!this.host.serverSupports(REVISION_GRAPH_TOOLS)) return [];
+    return (await this.call({ method: "list_tools" })) as Awaited<
+      ReturnType<NonNullable<AgentCommunication["listTools"]>>
+    >;
+  }
+
+  useTool(nodeId: string, name: string, input: Record<string, unknown>) {
+    if (!this.host.serverSupports(REVISION_GRAPH_TOOLS))
+      return Promise.reject(new Error("Atualize o servidor para usar as ferramentas do grafo."));
+    return this.call({ method: "use_tool", nodeId, name, input });
   }
 
   async reportToolCall(report: ToolCallReport): Promise<void> {

@@ -18,6 +18,7 @@ import { ClaudeTerminalRuntime, type ClaudeTerminalOptions } from "./claude-term
 import type { McpServerCommand } from "./session-files.js";
 
 export interface TerminalRuntimeFactoryOptions {
+  apiKey?: string;
   /** The Hub's `ask` timeout; the CLI's MCP tool timeout follows it. */
   askTimeoutMs: number;
   /** How long `stop` waits for a turn under way to report its usage; defaults to `DEFAULT_USAGE_FLUSH_MS`. */
@@ -37,6 +38,7 @@ export class TerminalRuntimeFactory implements AgentRuntimeFactory {
 
   constructor(private readonly options: TerminalRuntimeFactoryOptions) {
     this.deps = {
+      ...(options.apiKey && { apiKey: options.apiKey }),
       cli: new ClaudeCli(options.cli),
       mcpServer: options.mcpServer ?? { command: process.execPath, args: [neuronsServerEntry()] },
       askTimeoutMs: options.askTimeoutMs,
@@ -55,6 +57,11 @@ export class TerminalRuntimeFactory implements AgentRuntimeFactory {
     if (runtime.cli !== "claude") {
       throw new UnsupportedRuntimeError(
         `O agente "${agent.name}" usa a CLI "${runtime.cli}", que ainda não é suportada. Por enquanto só o Claude Code (cli "claude") roda como agente de terminal.`,
+      );
+    }
+    if (runtime.access === "api-key" && !this.options.apiKey) {
+      throw new UnsupportedRuntimeError(
+        "Este agente exige uma chave de API; a credencial não foi entregue pelo servidor.",
       );
     }
     return this.createClaude(agent, runtime, communication);

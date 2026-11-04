@@ -3,14 +3,14 @@ import { fileURLToPath } from "node:url";
 import { BrowserWindow, app, dialog, session } from "electron";
 import { DesktopConfigError, loadDesktopConfig } from "./config.js";
 import { installMenu } from "./menu.js";
+import { installWindowControls } from "./window-controls.js";
+import { desktopMasterKey } from "./master-key.js";
 import { SECURE_WEB_PREFERENCES, lockDownSession, lockDownWindow } from "./security.js";
 import { type RunningServer, serverConfigFor, startServer, webRoot } from "./server.js";
 
 const APP_NAME = "NeuronsAI";
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ICON = path.resolve(APP_DIR, "..", "build", "icon.png");
-/** Same as the web interface's background, so the window does not flash white while loading. */
-const BACKGROUND = "#F7F7F4";
 
 app.setName(APP_NAME);
 
@@ -33,12 +33,22 @@ function openWindow(origin: string): BrowserWindow {
     minHeight: 600,
     show: false,
     title: APP_NAME,
-    backgroundColor: BACKGROUND,
+    frame: false,
+    transparent: true,
+    roundedCorners: true,
+    hasShadow: true,
+    backgroundColor: "#00000000",
     ...(process.platform !== "darwin" && { icon: ICON }),
-    webPreferences: SECURE_WEB_PREFERENCES,
+    webPreferences: { ...SECURE_WEB_PREFERENCES, preload: path.join(APP_DIR, "preload.cjs") },
   });
   lockDownWindow(created, origin);
-  created.once("ready-to-show", () => created.show());
+  created.setAutoHideMenuBar(true);
+  created.setMenuBarVisibility(false);
+  created.on("maximize", () => created.webContents.send("neurons:maximized", true));
+  created.on("unmaximize", () => created.webContents.send("neurons:maximized", false));
+  created.once("ready-to-show", () => {
+    if (!process.argv.includes("--smoke-hidden")) created.show();
+  });
   created.on("closed", () => {
     if (window === created) window = undefined;
   });
@@ -65,11 +75,15 @@ async function boot(): Promise<void> {
   await app.whenReady();
   installMenu();
   try {
-    server = await startServer(config, webRoot(app.isPackaged, process.resourcesPath, APP_DIR));
+    server = await startServer(
+      await desktopMasterKey(config),
+      webRoot(app.isPackaged, process.resourcesPath, APP_DIR),
+    );
   } catch (error) {
     fail("Não foi possível iniciar o NeuronsAI", error);
   }
   const { origin } = server;
+  installWindowControls(origin);
   lockDownSession(session.defaultSession, origin);
   window = openWindow(origin);
 

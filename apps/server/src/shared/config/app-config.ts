@@ -30,6 +30,8 @@ export const APP_MODES = ["api", "worker", "all"] as const;
 export type AppMode = (typeof APP_MODES)[number];
 
 export interface AppConfig {
+  uiRoot?: string;
+  landingRoot?: string;
   mode: AppMode;
   /** Where the server listens: loopback unless `NEURONS_ALLOW_REMOTE` says otherwise. */
   host: string;
@@ -66,6 +68,8 @@ export interface AppConfig {
 const BASE64_32_BYTES = /^[A-Za-z0-9+/]{43}=$/;
 
 const envSchema = z.object({
+  NEURONS_UI_DIR: unlessEmpty(z.string().min(1).optional()),
+  NEURONS_LANDING_DIR: unlessEmpty(z.string().min(1).optional()),
   NEURONS_MODE: unlessEmpty(z.enum(APP_MODES).default("all")),
   ...listenEnvShape,
   NEURONS_PORT: port(3100),
@@ -105,6 +109,8 @@ export function loadConfig(
   const masterKey = values.NEURONS_MASTER_KEY;
 
   return {
+    ...(values.NEURONS_UI_DIR && { uiRoot: values.NEURONS_UI_DIR }),
+    ...(values.NEURONS_LANDING_DIR && { landingRoot: values.NEURONS_LANDING_DIR }),
     mode: values.NEURONS_MODE,
     host: resolveListenHost(values),
     port: values.NEURONS_PORT,

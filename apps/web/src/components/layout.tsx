@@ -1,16 +1,20 @@
 import { NavLink, Outlet, useMatch } from "react-router";
 import { cn } from "@/lib/utils";
+import { Button } from "./ui/button";
+import { Plug } from "lucide-react";
+import { useWorkspace } from "@/workspace/resources";
 
 const links = [
-  { to: "/graphs", label: "Grafos" },
+  { to: "/graphs", label: "Meus projetos" },
   { to: "/runs", label: "Execuções" },
 ];
 
 export function Layout() {
+  const workspace = useWorkspace();
   // The editor needs room for the canvas and the inspector.
   const wide = useMatch("/graphs/:id") !== null;
   return (
-    <div className="min-h-screen">
+    <div className={cn("min-h-screen", wide && "modeler-layout")}>
       <header className="border-b">
         <div
           className={cn(
@@ -41,9 +45,17 @@ export function Layout() {
               </NavLink>
             ))}
           </nav>
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto"
+            onClick={() => workspace?.openConnections()}
+          >
+            <Plug className="size-4" /> Conexões de IA
+          </Button>
         </div>
       </header>
-      <main className={cn("mx-auto max-w-5xl px-6 py-10", wide && "max-w-none")}>
+      <main className={cn("mx-auto max-w-5xl px-6 py-10", wide && "modeler-main max-w-none")}>
         <Outlet />
       </main>
     </div>

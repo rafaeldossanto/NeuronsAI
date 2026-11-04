@@ -292,7 +292,7 @@ export function defaultNode(
         id,
         type: "tool",
         position,
-        name: "Ferramenta",
+        name: "Memória do projeto",
         tool: { kind: "obsidian", vaultPath: "", readOnly: true },
       };
     default:

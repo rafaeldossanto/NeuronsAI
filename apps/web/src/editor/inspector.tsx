@@ -9,6 +9,8 @@ import {
 } from "@neurons/graph-schema";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { AgentAccess } from "@/workspace/agent-access";
+import { MemoryFields } from "@/workspace/memory-fields";
 import { AnnotationInspector } from "./annotation-inspector";
 import { Field, ListField, parseOptionalNumber, Select, TextArea, TextInput } from "./fields";
 import { issueField, type LocatedIssue } from "./issues";
@@ -145,10 +147,12 @@ function NodeInspector({
   const titles = { agent: "Agente", tool: "Ferramenta", trigger: "Gatilho" } as const;
   return (
     <div className="flex flex-col gap-5">
-      <h2 className="text-lg font-extrabold">{titles[node.type]}</h2>
+      <h2 className="text-lg font-extrabold">
+        {node.type === "tool" && node.tool.kind === "obsidian" ? "Memória" : titles[node.type]}
+      </h2>
       <IssueList issues={issues} />
       {node.type === "agent" && <AgentFields doc={doc} node={node} set={set} />}
-      {node.type === "tool" && <ToolFields node={node} set={set} />}
+      {node.type === "tool" && <ToolFields node={node} doc={doc} dispatch={dispatch} set={set} />}
       {node.type === "trigger" && <TriggerFields doc={doc} node={node} set={set} />}
     </div>
   );
@@ -166,6 +170,11 @@ function AgentFields({ doc, node, set }: { doc: GraphDoc; node: AgentNode; set: 
         <Field label="Nome" hint="É como os outros agentes o chamam.">
           <TextInput value={node.name} onChange={(e) => set(["name"], e.target.value)} />
         </Field>
+      </Section>
+
+      <AgentAccess node={node} set={set} />
+
+      <Section title="Instruções">
         <Field label="Papel">
           <TextInput value={node.role} onChange={(e) => set(["role"], e.target.value)} />
         </Field>
@@ -196,10 +205,16 @@ function AgentFields({ doc, node, set }: { doc: GraphDoc; node: AgentNode; set: 
         {runtime.kind === "api" ? (
           <>
             <Field label="Fornecedor">
-              <TextInput
+              <Select
                 value={runtime.provider}
                 onChange={(e) => set(["runtime", "provider"], e.target.value)}
-              />
+              >
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                {!["openai", "anthropic"].includes(runtime.provider) && (
+                  <option value={runtime.provider}>{runtime.provider} (indisponível)</option>
+                )}
+              </Select>
             </Field>
             <Field label="Modelo">
               <TextInput
@@ -227,6 +242,13 @@ function AgentFields({ doc, node, set }: { doc: GraphDoc; node: AgentNode; set: 
                 />
               </Field>
             )}
+            <Field label="Modelo" hint="Vazio: usa o modelo padrão da CLI.">
+              <TextInput
+                value={runtime.model ?? ""}
+                placeholder="Padrão da CLI"
+                onChange={(event) => set(["runtime", "model"], event.target.value || undefined)}
+              />
+            </Field>
             <Field label="Pasta de trabalho" hint="Caminho absoluto.">
               <TextInput
                 value={runtime.cwd}
@@ -329,7 +351,17 @@ function defaultTool(key: string): ToolNode["tool"] {
   }
 }
 
-function ToolFields({ node, set }: { node: ToolNode; set: Setter }) {
+function ToolFields({
+  node,
+  doc,
+  dispatch,
+  set,
+}: {
+  node: ToolNode;
+  doc: GraphDoc;
+  dispatch: Dispatch;
+  set: Setter;
+}) {
   const tool = node.tool;
   return (
     <Section title="Configuração">
@@ -346,12 +378,7 @@ function ToolFields({ node, set }: { node: ToolNode; set: Setter }) {
         </Select>
       </Field>
       {tool.kind === "obsidian" && (
-        <Field label="Pasta do cofre" hint="Somente leitura.">
-          <TextInput
-            value={tool.vaultPath}
-            onChange={(e) => set(["tool", "vaultPath"], e.target.value)}
-          />
-        </Field>
+        <MemoryFields node={node} doc={doc} dispatch={dispatch} set={set} />
       )}
       {tool.kind === "http" && (
         <>

@@ -22,6 +22,7 @@ import { Signal, type Unsubscribe } from "../shared/signal.js";
 /** The part of a runner connection that a {@link RemoteAgentRuntime} uses. */
 export interface RunnerEndpoint {
   readonly name: string;
+  readonly revision?: number;
   bind(runtime: RemoteAgentRuntime): void;
   unbind(instanceId: string): void;
   /** Sends the request and resolves when the runner answers it (repeating it after a reconnection). */
@@ -40,6 +41,7 @@ export interface RemoteRuntimeOptions {
   settings: StartSettings;
   /** How long `stop` waits for the runner's answer before giving up on it. */
   stopWaitMs: number;
+  resolveSecret?(name: string): Promise<string>;
 }
 
 export type CallOutcome = { ok: true; result: unknown } | { ok: false; message: string };
@@ -88,6 +90,16 @@ export class RemoteAgentRuntime implements AgentRuntime {
       if (this.closed) return; // stopped while waiting for a runner
       this.endpoint = endpoint;
       endpoint.bind(this);
+      const auth = this.agent.runtime;
+      let credentials: { apiKey: string } | undefined;
+      if (auth.kind === "terminal" && auth.access === "api-key") {
+        if ((endpoint.revision ?? 1) < 3)
+          throw new Error("Atualize o runner para usar chaves de API por agente.");
+        if (!auth.secretName || !this.options.resolveSecret)
+          throw new Error("Selecione uma chave de API salva para este agente.");
+        credentials = { apiKey: await this.options.resolveSecret(auth.secretName) };
+      }
+      if (this.closed) return;
       await endpoint.request(
         (requestId) => ({
           v: PROTOCOL_VERSION,
@@ -97,6 +109,7 @@ export class RemoteAgentRuntime implements AgentRuntime {
           agent: this.agent,
           briefing,
           settings: this.options.settings,
+          ...(credentials && { credentials }),
         }),
         this.instanceId,
       );
@@ -153,6 +166,11 @@ export class RemoteAgentRuntime implements AgentRuntime {
   async execute(call: Call): Promise<unknown> {
     const hub = this.communication;
     switch (call.method) {
+      case "list_tools":
+        return hub.listTools?.() ?? [];
+      case "use_tool":
+        if (!hub.useTool) throw new Error("Ferramentas indisponíveis neste servidor.");
+        return hub.useTool(call.nodeId, call.name, call.input);
       case "send_message":
         return hub.sendMessage(call.to, call.text);
       case "ask":

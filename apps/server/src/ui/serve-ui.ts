@@ -10,6 +10,8 @@ const UI_PREFIX = "/__ui__";
 export interface UiOptions {
   /** Folder of the built interface (`apps/web/dist`), with an `index.html`. */
   root: string;
+  /** Optional marketing page at /; every other client route still belongs to the editor. */
+  landingRoot?: string;
 }
 
 /**
@@ -89,6 +91,17 @@ export function registerUiRoutes(fastify: FastifyInstance, options: UiOptions): 
 
   fastify.get(`${UI_PREFIX}/*`, async (request: FastifyRequest, reply: FastifyReply) => {
     const pathname = request.url.slice(UI_PREFIX.length).split("?")[0] ?? "/";
+    if (pathname === "/" && options.landingRoot) {
+      const landing = path.join(path.resolve(options.landingRoot), "index.html");
+      if (await regularFile(landing)) {
+        // The retained marketing page is self-contained, including its animation and fonts.
+        return reply
+          .header("content-type", MIME_TYPES[".html"]!)
+          .header("cache-control", "no-cache")
+          .header("x-content-type-options", "nosniff")
+          .send(createReadStream(landing));
+      }
+    }
     let relative: string;
     try {
       relative = decodeURIComponent(pathname);

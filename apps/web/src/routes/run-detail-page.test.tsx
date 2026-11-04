@@ -89,6 +89,39 @@ describe("detalhe da execução ao vivo", () => {
     expect(screen.getByRole("status", { name: "Conexão" })).toHaveTextContent("Encerrada");
   });
 
+  it("acompanha leituras e alterações de memória, sem repetir eventos nem exibir o conteúdo da nota", async () => {
+    renderApp(`/runs/${runId}`, detailRoute);
+    const socket = await openSocket();
+    const call = frame(1, "ToolCalled", "Pesquisador", {
+      tool: "obsidian_create",
+      inputSummary:
+        '{"nodeId":"memoria","path":"Projeto/Decisões.md","content":"conteúdo privado"}',
+      durationMs: 12,
+      ok: true,
+    });
+    act(() => {
+      socket.push("run.event", call);
+      socket.push("run.event", call);
+      socket.push(
+        "run.event",
+        frame(2, "ToolCalled", "Pesquisador", {
+          tool: "obsidian_edit",
+          inputSummary: '{"path":"Projeto/Decisões.md"}',
+          durationMs: 3,
+          ok: false,
+          errorCode: "CONFLICT",
+        }),
+      );
+    });
+    expect(
+      await screen.findByRole("region", { name: "Memórias e ferramentas" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Criar nota")).toHaveLength(1);
+    expect(screen.getByText("Editar nota")).toBeInTheDocument();
+    expect(screen.getByText("CONFLICT")).toBeInTheDocument();
+    expect(screen.queryByText(/conteúdo privado/)).not.toBeInTheDocument();
+  });
+
   it("para a execução", async () => {
     const { calls } = renderApp(`/runs/${runId}`, {
       ...detailRoute,

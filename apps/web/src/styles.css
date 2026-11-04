@@ -89,3 +89,221 @@
   width: 10px;
   height: 10px;
 }
+
+html.desktop-root,
+.desktop-root body {
+  background: transparent;
+  overflow: hidden;
+}
+.desktop-frame {
+  height: 100dvh;
+  border: 1px solid var(--input);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--background);
+  display: flex;
+  flex-direction: column;
+}
+.desktop-frame.is-maximized {
+  border-radius: 0;
+  border: 0;
+}
+.desktop-titlebar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  flex-shrink: 0;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 500;
+  user-select: none;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.desktop-traffic-lights {
+  position: absolute;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.desktop-traffic-lights button {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1px solid rgb(0 0 0 / 0.12);
+  line-height: 10px;
+  padding: 0;
+  font-size: 12px;
+  color: transparent;
+  cursor: pointer;
+}
+.desktop-traffic-lights:hover button,
+.desktop-traffic-lights button:focus-visible {
+  color: rgb(0 0 0 / 0.65);
+}
+.window-close {
+  background: #ff5f57;
+}
+.window-minimize {
+  background: #febc2e;
+}
+.window-maximize {
+  background: #28c840;
+}
+.desktop-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.workspace-modal {
+  margin: auto;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 64px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.16);
+}
+.workspace-modal::backdrop {
+  background: rgb(29 31 38 / 0.24);
+  backdrop-filter: blur(4px);
+}
+.resource-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+.resource-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.resource-choice.is-selected {
+  border-color: var(--accent);
+  background: rgb(233 161 92 / 0.1);
+}
+.resource-choice input {
+  accent-color: var(--accent);
+}
+.access-switch {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  background: var(--muted);
+}
+.access-switch button {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.access-switch button[aria-pressed="true"] {
+  background: rgb(233 161 92 / 0.22);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.access-switch button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.modeler-layout {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.desktop-content .modeler-layout {
+  height: 100%;
+}
+.modeler-main {
+  width: 100%;
+  padding: 16px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.project-editor-page {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.project-heading {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.modeler-workspace {
+  min-height: 400px;
+}
+.element-library {
+  width: 200px;
+  flex-shrink: 0;
+  padding: 16px 12px;
+  border-right: 1px solid var(--border);
+  background: var(--card);
+  overflow-y: auto;
+}
+.element-library h3 {
+  margin: 16px 0 8px;
+  padding-inline: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+.element-library button {
+  width: 100%;
+  justify-content: flex-start;
+  border-color: transparent;
+  background: transparent;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+.element-library button:hover {
+  background: var(--muted);
+}
+.project-versions {
+  max-height: 200px;
+  overflow: auto;
+  font-size: 12px;
+}
+.project-versions summary {
+  cursor: pointer;
+  padding: 8px 0;
+  color: var(--muted-foreground);
+}
+@media (max-width: 1050px) {
+  .element-library {
+    width: 168px;
+    padding: 12px 8px;
+  }
+  .project-heading p {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

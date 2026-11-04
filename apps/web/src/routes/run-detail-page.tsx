@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router";
+import { Network, Wrench } from "lucide-react";
 import { RunStatusBadge } from "@/components/run-status-badge";
 import { ErrorState, LoadingRows } from "@/components/states";
 import { Button } from "@/components/ui/button";
@@ -127,6 +128,53 @@ export function RunDetailPage() {
       </div>
 
       {active && <SendMessageForm runId={id} agents={agents.map((a) => a.name)} />}
+
+      {state.toolCalls.length > 0 && (
+        <section aria-label="Memórias e ferramentas">
+          <h2 className="mb-3 text-lg font-bold">Memórias e ferramentas</h2>
+          <ol className="flex flex-col gap-2">
+            {state.toolCalls.map((call) => {
+              const memory = call.tool.startsWith("obsidian_");
+              const Icon = memory ? Network : Wrench;
+              const labels: Record<string, string> = {
+                obsidian_search: "Buscar notas",
+                obsidian_read: "Ler nota",
+                obsidian_links: "Seguir links",
+                obsidian_create: "Criar nota",
+                obsidian_edit: "Editar nota",
+              };
+              return (
+                <li
+                  key={call.seq}
+                  className="flex items-start gap-3 rounded-md border bg-card px-4 py-3 text-sm"
+                >
+                  <Icon
+                    aria-label={memory ? "Memória" : "Ferramenta"}
+                    className="mt-0.5 size-4 shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap gap-x-3">
+                      <strong>{labels[call.tool] ?? call.tool}</strong>
+                      {call.agent && <span>@{call.agent}</span>}
+                      <span className={call.ok ? "text-muted-foreground" : "text-destructive"}>
+                        {call.ok ? "Concluída" : "Falhou"}
+                        {call.durationMs !== null && ` · ${call.durationMs} ms`}
+                      </span>
+                      <time className="ml-auto text-xs text-muted-foreground">
+                        {formatTime(call.at)}
+                      </time>
+                    </div>
+                    {call.path && (
+                      <p className="mt-1 break-words text-muted-foreground">{call.path}</p>
+                    )}
+                    {call.errorCode && <p className="mt-1 text-destructive">{call.errorCode}</p>}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      )}
 
       {state.guardEvents.length > 0 && (
         <section aria-label="Guardas">

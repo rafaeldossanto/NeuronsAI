@@ -95,12 +95,20 @@ describe("toolNodeSchema", () => {
     { kind: "mcp", transport: "http", url: "https://mcp.exemplo.com", allowedTools: [] },
     { kind: "http", method: "POST", url: "https://api.exemplo.com", headers: {}, bodySchema: {} },
     { kind: "obsidian", vaultPath: "C:\\Notas", readOnly: true },
+    { kind: "obsidian", vaultPath: "C:\\Notas", readOnly: false },
+    { kind: "obsidian", memoryId: "628782b8-1e97-41ce-a6f8-c6034e83b887", readOnly: false },
   ])("accepts the tool %j", (tool) => {
     expect(toolNodeSchema.safeParse(withTool(tool)).success).toBe(true);
   });
 
   it.each([
-    { kind: "obsidian", vaultPath: "C:\\Notas", readOnly: false },
+    { kind: "obsidian", readOnly: false },
+    {
+      kind: "obsidian",
+      vaultPath: "C:\\Notas",
+      memoryId: "628782b8-1e97-41ce-a6f8-c6034e83b887",
+      readOnly: true,
+    },
     { kind: "mcp", transport: "http", url: "nao-e-url", allowedTools: [] },
     { kind: "mcp", transport: "websocket", url: "https://x.com", allowedTools: [] },
     { kind: "http", method: "TRACE", url: "https://api.exemplo.com", headers: {} },

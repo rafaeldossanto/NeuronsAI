@@ -1,6 +1,14 @@
 import type { GraphNode } from "@neurons/graph-schema";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import { Cloud, SquareTerminal, TriangleAlert, Wrench, Zap, type LucideIcon } from "lucide-react";
+import {
+  Cloud,
+  Network,
+  SquareTerminal,
+  TriangleAlert,
+  Wrench,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface BlockData extends Record<string, unknown> {
@@ -35,7 +43,14 @@ function describe(node: GraphNode): {
             detail: node.runtime.cli,
           };
     case "tool":
-      return { icon: Wrench, kindLabel: "Ferramenta", title: node.name, detail: node.tool.kind };
+      return node.tool.kind === "obsidian"
+        ? {
+            icon: Network,
+            kindLabel: "Memória",
+            title: node.name,
+            detail: `${node.tool.memoryId ? "Memória cadastrada" : "Cofre local"} · ${node.tool.readOnly ? "somente leitura" : "leitura e escrita"}`,
+          }
+        : { icon: Wrench, kindLabel: "Ferramenta", title: node.name, detail: node.tool.kind };
     case "trigger":
       return {
         icon: Zap,

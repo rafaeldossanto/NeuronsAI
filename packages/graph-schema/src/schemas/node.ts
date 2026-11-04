@@ -30,6 +30,8 @@ const apiRuntimeSchema = z.object({
   kind: z.literal("api"),
   provider: z.string().min(1),
   model: z.string().min(1),
+  access: z.enum(["api-key", "subscription"]).optional(),
+  secretName: z.string().min(1).optional(),
 });
 
 /** `pty`: the CLI's own screen, which a person can watch and type into. `stream-json`: a headless structured session. */
@@ -40,6 +42,7 @@ const terminalRuntimeSchema = z
   .object({
     kind: z.literal("terminal"),
     cli: z.enum(["claude", "codex", "gemini", "custom"]),
+    model: z.string().min(1).optional(),
     // Graphs saved before the field existed have no `mode`: they keep running on the PTY.
     mode: z.enum(TERMINAL_MODES).default("pty"),
     command: z.string().min(1).optional(),
@@ -47,6 +50,8 @@ const terminalRuntimeSchema = z
     cwd: z.string().regex(ABSOLUTE_PATH_PATTERN, {
       error: "O diretório de trabalho deve ser um caminho absoluto.",
     }),
+    access: z.enum(["subscription", "api-key"]).optional(),
+    secretName: z.string().min(1).optional(),
   })
   .refine((runtime) => runtime.cli !== "custom" || runtime.command !== undefined, {
     error: "CLIs personalizadas exigem o comando a executar.",
@@ -100,11 +105,17 @@ const httpToolSchema = z.object({
   bodySchema: z.unknown().optional(),
 });
 
-const obsidianToolSchema = z.object({
-  kind: z.literal("obsidian"),
-  vaultPath: z.string().min(1),
-  readOnly: z.literal(true),
-});
+const obsidianToolSchema = z
+  .object({
+    kind: z.literal("obsidian"),
+    vaultPath: z.string().min(1).optional(),
+    memoryId: z.uuid().optional(),
+    readOnly: z.boolean(),
+  })
+  .refine((tool) => Boolean(tool.vaultPath) !== Boolean(tool.memoryId), {
+    error: "Selecione uma memória ou uma pasta de cofre, sem combinar as duas origens.",
+    path: ["memoryId"],
+  });
 
 export const toolConfigSchema = z.discriminatedUnion("kind", [
   z.discriminatedUnion("transport", [mcpStdioSchema, mcpHttpSchema]),

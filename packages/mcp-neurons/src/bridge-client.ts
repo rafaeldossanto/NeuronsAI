@@ -8,6 +8,8 @@ import {
   listPeersResponse,
   replyResponse,
   sendMessageResponse,
+  graphToolsResponse,
+  graphToolResponse,
   type ListPeersResponse,
 } from "./protocol.js";
 
@@ -50,6 +52,13 @@ export class BridgeClient {
 
   async finish(result: string): Promise<void> {
     await this.post(BRIDGE_ROUTES.finish, { result }, finishResponse);
+  }
+
+  listTools() {
+    return this.post(BRIDGE_ROUTES.listTools, {}, graphToolsResponse);
+  }
+  useTool(nodeId: string, name: string, input: Record<string, unknown>) {
+    return this.post(BRIDGE_ROUTES.useTool, { nodeId, name, input }, graphToolResponse);
   }
 
   private async post<T extends z.ZodType>(

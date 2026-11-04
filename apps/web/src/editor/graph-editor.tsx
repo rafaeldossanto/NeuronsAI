@@ -18,6 +18,8 @@ import {
   Cloud,
   Frame,
   MousePointer2,
+  Network,
+  Play,
   MoveUpRight,
   Redo2,
   Save,
@@ -43,6 +45,10 @@ import {
   type ReactNode,
 } from "react";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/modal";
+import { Field, Select, TextArea } from "./fields";
+import { useApi, unwrap } from "@/lib/api";
+import { useNavigate } from "react-router";
 import { usePublishVersion, useSaveDraft } from "@/lib/queries";
 import { annotationNodeType, annotationNodeTypes, type AnnotationNode } from "./annotation-nodes";
 import { createAnnotation, INK, TOOLS, type AnnotationKind, type Tool } from "./annotations";
@@ -101,6 +107,12 @@ function edgeColor(invalid: boolean) {
 }
 
 function Editor({ graph }: { graph: EditorGraph }) {
+  const api = useApi();
+  const navigate = useNavigate();
+  const [runOpen, setRunOpen] = useState(false);
+  const [runInput, setRunInput] = useState("");
+  const [runTrigger, setRunTrigger] = useState("");
+  const [executing, setExecuting] = useState(false);
   const [state, dispatch] = useReducer(editorReducer, graph, (g) =>
     createEditorState(createDoc(g)),
   );
@@ -123,7 +135,7 @@ function Editor({ graph }: { graph: EditorGraph }) {
 
   const save = useSaveDraft(graph.id);
   const publish = usePublishVersion(graph.id);
-  const busy = save.isPending || publish.isPending;
+  const busy = save.isPending || publish.isPending || executing;
 
   const issues = useMemo(() => validateDoc(doc), [doc]);
   const dirty = serialize(doc) !== savedJson;
@@ -332,9 +344,9 @@ function Editor({ graph }: { graph: EditorGraph }) {
   );
 
   // ---------- toolbar ----------
-  const addNode = (kind: NewNodeKind) => {
+  const addNode = (kind: NewNodeKind, position = nextPosition(doc)) => {
     const id = crypto.randomUUID();
-    dispatch({ type: "addNode", node: defaultNode(kind, id, nextPosition(doc), doc) });
+    dispatch({ type: "addNode", node: defaultNode(kind, id, position, doc) });
     setSelected({ nodes: [id], links: [] });
   };
 
@@ -422,6 +434,29 @@ function Editor({ graph }: { graph: EditorGraph }) {
     }
   };
 
+  const onRun = async () => {
+    setExecuting(true);
+    try {
+      if (dirty) await persist();
+      const version = await publish.mutateAsync();
+      const run = await unwrap(
+        api.POST("/runs", {
+          body: {
+            graphVersionId: version.id,
+            input: runInput,
+            ...(runTrigger && { triggerId: runTrigger }),
+          },
+        }),
+      );
+      await navigate(`/runs/${run.id}`);
+    } catch (error) {
+      setRunOpen(false);
+      setNotice({ kind: "error", text: messageOf(error) });
+    } finally {
+      setExecuting(false);
+    }
+  };
+
   const inspectorSelection = {
     nodeIds: selected.nodes.filter((id) => doc.nodes.some((n) => n.id === id)),
     linkIds: selected.links.filter((id) => doc.links.some((l) => l.id === id)),
@@ -430,21 +465,12 @@ function Editor({ graph }: { graph: EditorGraph }) {
   const hasSelection = selected.nodes.length + selected.links.length > 0;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="modeler-editor flex min-h-0 flex-1 flex-col gap-3">
       <div
         role="toolbar"
         aria-label="Ferramentas do editor"
         className="flex flex-wrap items-center gap-2"
       >
-        <ToolButton label="Agente de API" onClick={() => addNode("agent-api")} icon={<Cloud />} />
-        <ToolButton
-          label="Agente de terminal"
-          onClick={() => addNode("agent-terminal")}
-          icon={<SquareTerminal />}
-        />
-        <ToolButton label="Ferramenta" onClick={() => addNode("tool")} icon={<Wrench />} />
-        <ToolButton label="Gatilho" onClick={() => addNode("trigger")} icon={<Zap />} />
-        <span aria-hidden className="mx-1 h-6 w-px bg-border" />
         <div role="group" aria-label="Camada livre" className="flex items-center gap-1">
           {TOOLS.map(({ tool: entry, label, key }) => {
             const Icon = TOOL_ICONS[entry];
@@ -515,6 +541,21 @@ function Editor({ graph }: { graph: EditorGraph }) {
           >
             <Upload className="size-4" /> Publicar versão
           </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              setRunTrigger(doc.nodes.find((node) => node.type === "trigger")?.id ?? "");
+              setRunOpen(true);
+            }}
+            disabled={busy || issues.length > 0}
+            title={
+              issues.length > 0
+                ? "Corrija os problemas antes de executar."
+                : "Salvar uma versão e iniciar a execução"
+            }
+          >
+            <Play className="size-4" /> Executar
+          </Button>
         </div>
       </div>
 
@@ -531,8 +572,68 @@ function Editor({ graph }: { graph: EditorGraph }) {
         </p>
       )}
 
-      <div className="flex h-[640px] overflow-hidden rounded-lg border bg-background">
-        <div className="relative min-w-0 flex-1" aria-label="Canvas do grafo" role="region">
+      <div className="modeler-workspace flex min-h-0 flex-1 overflow-hidden rounded-lg border bg-background">
+        <aside className="element-library" aria-label="Elementos">
+          <h2 className="mb-6 text-sm font-semibold">Elementos</h2>
+          <h3>Agentes</h3>
+          <ToolButton
+            label="Agente de API"
+            kind="agent-api"
+            onClick={() => addNode("agent-api")}
+            icon={<Cloud />}
+          />
+          <ToolButton
+            label="Agente de terminal"
+            kind="agent-terminal"
+            onClick={() => addNode("agent-terminal")}
+            icon={<SquareTerminal />}
+          />
+          <h3>Gatilhos</h3>
+          <ToolButton
+            label="Gatilho"
+            kind="trigger"
+            onClick={() => addNode("trigger")}
+            icon={<Zap />}
+          />
+          <h3>Ferramentas</h3>
+          <ToolButton
+            label="Memória"
+            kind="tool"
+            onClick={() => addNode("tool")}
+            icon={<Network />}
+          />
+          <ToolButton label="Ferramenta" onClick={() => addNode("tool")} icon={<Wrench />} />
+          <h3>Anotações</h3>
+          {TOOLS.filter((entry) => entry.tool !== "select").map(({ tool: entry, label }) => {
+            const Icon = TOOL_ICONS[entry];
+            return (
+              <ToolButton
+                key={entry}
+                label={`Desenhar ${label.toLowerCase()}`}
+                icon={<Icon />}
+                onClick={() => setTool(entry)}
+              />
+            );
+          })}
+        </aside>
+        <div
+          className="relative min-w-0 flex-1"
+          aria-label="Canvas do grafo"
+          role="region"
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            const kind = event.dataTransfer.getData("application/neurons-node");
+            if (!["agent-api", "agent-terminal", "trigger", "tool"].includes(kind)) return;
+            addNode(
+              kind as NewNodeKind,
+              screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+            );
+          }}
+        >
           <ReactFlow<CanvasNode>
             nodes={rfNodes}
             edges={rfEdges}
@@ -563,6 +664,17 @@ function Editor({ graph }: { graph: EditorGraph }) {
             <MiniMap pannable zoomable ariaLabel="Minimapa" />
             <Controls showInteractive={false} />
           </ReactFlow>
+          {doc.nodes.length === 0 && doc.annotations.length === 0 && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="max-w-xs p-4 text-center">
+                <Network className="mx-auto mb-4 size-10 text-muted-foreground" />
+                <h2 className="text-lg font-semibold">Crie seu primeiro fluxo</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Adicione um agente pela lateral e conecte suas ferramentas e memórias.
+                </p>
+              </div>
+            </div>
+          )}
           {tool !== "select" && (
             <div
               ref={overlayRef}
@@ -579,6 +691,50 @@ function Editor({ graph }: { graph: EditorGraph }) {
       </div>
 
       <IssuesPanel issues={issues} doc={doc} onSelect={focusIssue} />
+      {runOpen && (
+        <Modal
+          title="Executar projeto"
+          onClose={() => {
+            if (!executing) setRunOpen(false);
+          }}
+        >
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void onRun();
+            }}
+          >
+            <p className="text-sm text-muted-foreground">
+              O projeto será salvo como uma nova versão antes de executar. O uso será contabilizado
+              nas contas e chaves escolhidas para os agentes.
+            </p>
+            <Field label="Gatilho inicial">
+              <Select value={runTrigger} onChange={(event) => setRunTrigger(event.target.value)}>
+                {doc.nodes
+                  .filter((node) => node.type === "trigger")
+                  .map((node) => (
+                    <option value={node.id} key={node.id}>
+                      {node.id}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+            <Field label="Pedido para os agentes">
+              <TextArea
+                required
+                maxLength={100000}
+                value={runInput}
+                onChange={(event) => setRunInput(event.target.value)}
+                placeholder="Descreva o que este time deve fazer"
+              />
+            </Field>
+            <Button type="submit" disabled={executing || !runInput.trim()}>
+              {executing ? "Iniciando…" : "Iniciar execução"}
+            </Button>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -623,13 +779,24 @@ function ToolButton({
   label,
   icon,
   onClick,
+  kind,
 }: {
   label: string;
   icon: ReactNode;
   onClick: () => void;
+  kind?: NewNodeKind;
 }) {
   return (
-    <Button variant="outline" size="sm" onClick={onClick} className="[&_svg]:size-4">
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={onClick}
+      className="[&_svg]:size-4"
+      draggable={Boolean(kind)}
+      onDragStart={(event) => {
+        if (kind) event.dataTransfer.setData("application/neurons-node", kind);
+      }}
+    >
       {icon}
       {label}
     </Button>

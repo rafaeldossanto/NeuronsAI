@@ -16,8 +16,10 @@ export const SUPPORTED_VERSIONS: readonly number[] = [PROTOCOL_VERSION];
  *
  *  - 1: the first protocol (T24).
  *  - 2: `report_tool_call` (an agent's tool call goes to the run log as `ToolCalled`).
+ *  - 3: graph tools (`list_tools`/`use_tool`) and transient per-agent API credentials.
  */
-export const PROTOCOL_REVISION = 2;
+export const PROTOCOL_REVISION = 3;
+export const REVISION_GRAPH_TOOLS = 3;
 
 /** First revision that understands the `report_tool_call` call. */
 export const REVISION_TOOL_CALLS = 2;

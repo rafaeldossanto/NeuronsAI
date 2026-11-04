@@ -35,6 +35,29 @@ export function createNeuronsServer(client: BridgeClient): McpServer {
   const server = new McpServer({ name: MCP_SERVER_NAME, version: "0.0.0" });
 
   server.registerTool(
+    "list_tools",
+    {
+      description:
+        "Lista as ferramentas e memórias ligadas a este agente no grafo, com seus parâmetros e permissões.",
+    },
+    () => guarded(async () => JSON.stringify(await client.listTools())),
+  );
+  server.registerTool(
+    "use_tool",
+    {
+      description:
+        "Executa uma ferramenta autorizada. Obtenha nodeId, name e os parâmetros com list_tools. Memórias podem permitir leitura, criação e edição de notas.",
+      inputSchema: {
+        nodeId: z.string(),
+        name: z.string(),
+        input: z.record(z.string(), z.unknown()),
+      },
+    },
+    ({ nodeId, name, input }) =>
+      guarded(async () => JSON.stringify(await client.useTool(nodeId, name, input))),
+  );
+
+  server.registerTool(
     "send_message",
     {
       description:

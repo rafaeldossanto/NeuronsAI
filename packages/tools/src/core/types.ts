@@ -14,6 +14,7 @@ export type ToolErrorCode =
   | "NOT_FOUND"
   | "PATH_FORBIDDEN"
   | "FILE_TOO_LARGE"
+  | "CONFLICT"
   | "INTERNAL_ERROR";
 
 export interface ToolError {

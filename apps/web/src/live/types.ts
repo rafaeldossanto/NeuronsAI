@@ -57,6 +57,17 @@ export interface LiveGuardEvent {
   at: string;
 }
 
+export interface LiveToolCall {
+  seq: number;
+  agent: string | null;
+  tool: string;
+  path: string | null;
+  ok: boolean;
+  durationMs: number | null;
+  errorCode: string | null;
+  at: string;
+}
+
 export interface RunLiveFinish {
   seq: number;
   reason: "finished" | "quiescent" | "stopped" | "failed" | "guard_tripped";
@@ -90,6 +101,7 @@ export interface RunLiveState {
   pulses: LivePulse[];
   totals: RunLiveTotals;
   guardEvents: LiveGuardEvent[];
+  toolCalls: LiveToolCall[];
   /** Raw terminal output by agent (escape sequences included), kept only for the xterm.js of T14b. */
   terminals: Record<string, string>;
 }

@@ -64,7 +64,7 @@ O `RunLiveClient` (`run-live-client.ts`) abre o WebSocket na **mesma origem** (`
 
 ## O que falta na API (para a T14b)
 
-- **Chamadas de ferramenta não existem no log.** O servidor só grava mensagens, uso, início, falha, guardas e fim; as ferramentas do Hub (`ask`, `reply`, `finish`, `list_peers`) aparecem como mensagens ou como o fim. Por isso `RunLiveState` ainda não tem uma linha do tempo de ferramentas: precisa de um evento (por exemplo `ToolCalled`) no servidor.
+- **Chamadas de ferramentas e memórias:** `ToolCalled` alimenta `toolCalls` e a seção “Memórias e ferramentas” da execução. Mostra operação, agente, caminho, duração e resultado, com ícone de grafo para Obsidian. Não exibe conteúdo de notas. Eventos repetidos continuam sendo ignorados por `seq`.
 - **Estado do agente é deduzido**, não transmitido (ver acima). Um `AgentStateChanged` no log resolveria os dois limites.
 - **Digitar no terminal**: o servidor tem `TerminalSessions.writeInput`, mas nenhum evento do `/ws` nem rota HTTP o expõe; o campo "escreva para o terminal" da T14b precisa disso.
 - A saída do terminal é efêmera: o que passou durante uma queda de conexão só volta no snapshot (`replay`) da reconexão.

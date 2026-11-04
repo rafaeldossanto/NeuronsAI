@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
+import { GraphToolsService } from "../memories/graph-tools.service.js";
 import {
   isTerminalRuntime,
   type AgentRuntime,
@@ -96,6 +97,7 @@ export class Supervisor {
     @Inject(RunEventRecorder) private readonly recorder: RunEventRecorder,
     @Inject(TerminalSessions) private readonly terminals: TerminalSessions,
     @Inject(GuardEnforcer) enforcer: GuardEnforcer,
+    @Optional() @Inject(GraphToolsService) private readonly tools?: GraphToolsService,
   ) {
     this.terminals.useRunLookup(this.registry);
     this.hub.messageRecorded.subscribe((message) => this.onMessage(message));
@@ -225,7 +227,12 @@ export class Supervisor {
 
   private async boot(slot: AgentSlot, briefing: string): Promise<void> {
     try {
-      const communication = new HubAgentCommunication(this.hub, slot.runId, slot.agent.name);
+      const communication = new HubAgentCommunication(
+        this.hub,
+        slot.runId,
+        slot.agent.name,
+        this.tools,
+      );
       const runtime = this.factory.create(slot.agent, communication);
       slot.runtime = runtime;
       slot.unsubscribe = runtime.onStateChange((state) => this.onStateChange(slot, state));

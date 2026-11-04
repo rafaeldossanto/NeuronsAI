@@ -579,10 +579,14 @@ describe("OpenAPI document", () => {
     expect(reply.status).toBe(200);
     expect(reply.body.openapi).toBe("3.1.0");
     expect(Object.keys(reply.body.paths).sort()).toEqual([
+      "/connections",
+      "/connections/claude/login",
       "/graphs",
       "/graphs/{id}",
       "/graphs/{id}/versions",
       "/graphs/{id}/versions/{version}",
+      "/memories",
+      "/memories/{id}",
       "/runs",
       "/runs/{id}",
       "/runs/{id}/events",

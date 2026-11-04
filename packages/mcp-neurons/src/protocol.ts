@@ -10,6 +10,8 @@ export const BRIDGE_ROUTES = {
   reply: "/tools/reply",
   listPeers: "/tools/list_peers",
   finish: "/tools/finish",
+  listTools: "/tools/list_tools",
+  useTool: "/tools/use_tool",
   /** Notices posted by the CLI's own hooks (Claude Code HTTP hooks), not by the MCP server. */
   hooks: {
     userPromptSubmit: "/hooks/user-prompt-submit",
@@ -28,6 +30,8 @@ export const COMMUNICATION_TOOLS = [
   "reply",
   "list_peers",
   "finish",
+  "list_tools",
+  "use_tool",
 ] as const;
 export type CommunicationTool = (typeof COMMUNICATION_TOOLS)[number];
 
@@ -45,6 +49,20 @@ export const sendMessageResponse = z.object({ messageId: text });
 export const askResponse = z.object({ answer: z.string() });
 export const replyResponse = sendMessageResponse;
 export const finishResponse = z.object({});
+export const useToolRequest = z.object({
+  nodeId: z.string().min(1),
+  name: z.string().min(1),
+  input: z.record(z.string(), z.unknown()),
+});
+export const graphToolsResponse = z.array(
+  z.object({
+    nodeId: z.string(),
+    name: z.string(),
+    description: z.string(),
+    inputSchema: z.record(z.string(), z.unknown()),
+  }),
+);
+export const graphToolResponse = z.unknown();
 
 const agentRef = z.object({ id: z.string(), name: z.string(), role: z.string() });
 export const listPeersResponse = z.object({

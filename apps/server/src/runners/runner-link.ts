@@ -64,6 +64,10 @@ export class RunnerLink implements RunnerEndpoint {
   private lastHeardAt = 0;
   /** The grace period ended without the runner coming back. */
   private lost = false;
+  private peerRevision = 1;
+  get revision() {
+    return this.peerRevision;
+  }
 
   private readonly runtimes = new Map<string, RemoteAgentRuntime>();
   private readonly pending = new Map<string, PendingRequest>();
@@ -92,6 +96,7 @@ export class RunnerLink implements RunnerEndpoint {
 
   /** A connection of this runner was accepted; `register` is its first frame. */
   attach(channel: ServerChannel, register: RegisterFrame): void {
+    this.peerRevision = register.revision ?? 1;
     this.dropChannel(CLOSE_REPLACED, "outra conexão do mesmo runner assumiu");
     clearTimeout(this.graceTimer);
     this.lost = false;

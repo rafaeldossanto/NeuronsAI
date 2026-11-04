@@ -27,6 +27,7 @@ export const initialRunLiveState: RunLiveState = {
   pulses: [],
   totals: { costUsd: 0, turns: 0, unknownCostTurns: 0 },
   guardEvents: [],
+  toolCalls: [],
   terminals: {},
 };
 
@@ -85,6 +86,30 @@ export function reduceRunEvent(state: RunLiveState, event: RunLiveEvent): RunLiv
       return messageDelivered(next, event, payload);
     case "UsageRecorded":
       return usageRecorded(next, event, payload);
+    case "ToolCalled": {
+      let summary: Record<string, unknown> = {};
+      try {
+        summary = asRecord(JSON.parse(text(payload["inputSummary"]) ?? "{}"));
+      } catch {
+        // Older runners can report a plain-text summary instead of JSON.
+      }
+      return {
+        ...next,
+        toolCalls: [
+          ...next.toolCalls,
+          {
+            seq: event.seq,
+            agent: event.agent,
+            tool: text(payload["tool"]) ?? "Ferramenta",
+            path: text(summary["path"]),
+            ok: payload["ok"] === true,
+            durationMs: typeof payload["durationMs"] === "number" ? payload["durationMs"] : null,
+            errorCode: text(payload["errorCode"]),
+            at: event.at,
+          },
+        ],
+      };
+    }
     case "GuardTripped":
     case "GuardWarning":
       return {
