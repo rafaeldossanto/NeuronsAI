@@ -16,6 +16,7 @@ import {
 
 /** What the runtimes share and the factory provides once. */
 export interface ClaudeRuntimeDeps {
+  apiKey?: string;
   cli: ClaudeCli;
   mcpServer: McpServerCommand;
   /** The Hub's `ask` timeout: the CLI's MCP tool timeout is derived from it. */
@@ -31,6 +32,7 @@ export interface ClaudeAgentConfig {
   cwd: string;
   args: readonly string[];
   effort: AgentNode["effort"];
+  model?: string;
   budgetUsd?: number;
 }
 
@@ -45,6 +47,7 @@ export function claudeAgentConfig(
     cwd: runtime.cwd,
     args: runtime.args,
     effort: agent.effort,
+    ...(runtime.model && { model: runtime.model }),
     ...(agent.budgetUsd !== undefined && { budgetUsd: agent.budgetUsd }),
   };
 }
@@ -164,7 +167,7 @@ export abstract class ClaudeRuntimeBase implements AgentRuntime {
     const { cli } = this.deps;
     cli.command(); // fails early, with the message for the user, when the CLI is not installed
     await this.assertWorkingDirectory();
-    await cli.ensureLoggedIn();
+    if (!this.deps.apiKey) await cli.ensureLoggedIn();
 
     const hooks = this.hooks();
     const bridge = new LocalBridge({
@@ -193,11 +196,13 @@ export abstract class ClaudeRuntimeBase implements AgentRuntime {
         briefingFile: this.files.briefingFile,
         ...(this.files.settingsFile && { settingsFile: this.files.settingsFile }),
         ...(await this.supportedEffort()),
+        ...(this.agent.model && { model: this.agent.model }),
         ...(this.agent.budgetUsd !== undefined && { maxBudgetUsd: this.agent.budgetUsd }),
         userArgs: this.agent.args,
       }),
     ];
     const env = cli.env({
+      ...(this.deps.apiKey && { ANTHROPIC_API_KEY: this.deps.apiKey }),
       // Hard per-call limit of every MCP tool: must outlive the Hub's `ask` timeout.
       MCP_TOOL_TIMEOUT: String(this.deps.askTimeoutMs + MCP_TOOL_TIMEOUT_MARGIN_MS),
     });
@@ -232,6 +237,12 @@ export abstract class ClaudeRuntimeBase implements AgentRuntime {
       listPeers: () => inner.listPeers(),
       finish: (result) => inner.finish(result),
       reportUsage: (usage) => inner.reportUsage(usage),
+      reportToolCall: (report) => inner.reportToolCall(report),
+      listTools: () => inner.listTools?.() ?? Promise.resolve([]),
+      useTool: (nodeId, name, input) =>
+        inner.useTool
+          ? inner.useTool(nodeId, name, input)
+          : Promise.reject(new Error("Ferramentas indisponíveis.")),
       ask: async (to, question, options) => {
         this.askOpened();
         try {

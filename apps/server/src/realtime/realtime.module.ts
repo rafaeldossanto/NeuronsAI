@@ -4,6 +4,9 @@ import { DrizzleRunEventHistory } from "./drizzle-run-event-history.js";
 import { RUN_EVENT_HISTORY } from "./run-event-history.js";
 import { RunEventsGateway } from "./run-events.gateway.js";
 import { RunSubscriptions } from "./run-subscriptions.js";
+import type { AppConfig } from "../shared/config/app-config.js";
+import { APP_CONFIG, TERMINAL_INPUT_LIMITS } from "../shared/config/tokens.js";
+import { TerminalInput } from "./terminal-input.js";
 import { TerminalSessions } from "./terminal-sessions.js";
 
 @Module({
@@ -12,6 +15,12 @@ import { TerminalSessions } from "./terminal-sessions.js";
     RunEventsGateway,
     RunSubscriptions,
     TerminalSessions,
+    TerminalInput,
+    {
+      provide: TERMINAL_INPUT_LIMITS,
+      useFactory: (config: AppConfig) => config.terminalInput,
+      inject: [APP_CONFIG],
+    },
     { provide: RUN_EVENT_HISTORY, useClass: DrizzleRunEventHistory },
   ],
   // The Hub publishes through RunSubscriptions; the Supervisor attaches terminal runtimes to TerminalSessions;

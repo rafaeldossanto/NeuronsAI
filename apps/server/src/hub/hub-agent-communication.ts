@@ -1,6 +1,7 @@
 import type { AgentPeers } from "@neurons/graph-schema";
-import type { AgentCommunication, AgentUsage } from "@neurons/agent-runtimes";
+import type { AgentCommunication, AgentUsage, ToolCallReport } from "@neurons/agent-runtimes";
 import type { Hub } from "./hub.js";
+import type { GraphToolsService } from "../memories/graph-tools.service.js";
 
 /** The communication tools of one agent of one run, backed by the Hub. */
 export class HubAgentCommunication implements AgentCommunication {
@@ -8,6 +9,7 @@ export class HubAgentCommunication implements AgentCommunication {
     private readonly hub: Hub,
     private readonly runId: string,
     private readonly agent: string,
+    private readonly tools?: GraphToolsService,
   ) {}
 
   async sendMessage(to: string, text: string): Promise<{ messageId: string }> {
@@ -34,5 +36,24 @@ export class HubAgentCommunication implements AgentCommunication {
 
   reportUsage(usage: AgentUsage): Promise<void> {
     return this.hub.reportUsage(this.runId, this.agent, usage);
+  }
+
+  reportToolCall(report: ToolCallReport): Promise<void> {
+    return this.hub.reportToolCall(this.runId, this.agent, report);
+  }
+
+  listTools() {
+    return this.tools ? this.tools.list(this.runId, this.agent) : Promise.resolve([]);
+  }
+
+  useTool(nodeId: string, name: string, input: Record<string, unknown>): Promise<unknown> {
+    if (!this.tools)
+      return Promise.reject(new Error("As ferramentas não estão disponíveis nesta execução."));
+    return this.hub.track(
+      this.runId,
+      this.tools.use(this.runId, this.agent, nodeId, name, input, (record) =>
+        this.reportToolCall(record),
+      ),
+    );
   }
 }

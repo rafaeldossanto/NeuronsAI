@@ -1,6 +1,6 @@
 ---
 tags: [neuronsai, plano, tarefas]
-atualizado: 2026-11-02
+atualizado: 2026-11-04
 ---
 
 # Plano de Implementação
@@ -20,10 +20,26 @@ provada antes de gastar tempo com canvas.
 | Nuvem             | T24–T26 | Protocolo de runner, contas e servidor + banco na AWS                                    |
 | Depois            | Backlog | Runners hospedados (estilo Hostinger) e o que não entrou no plano                        |
 
+## Atualização de interface e memórias — 2026-11-04
+
+Implementação aprovada após as entregas do Claude, em `codex/modeler-connections-memories`. Veja [[Interface e memorias aprovadas]] para escopo, verificações e limites atuais. Inclui modelador em nova aba, moldura desktop, conexões por agente, memórias com escrita e integração MCP/runner. O runtime de API OpenAI/Anthropic foi implementado com testes simulados; validação paga de T04/T07 continua pendente. Esta atualização substitui as restrições antigas de memória somente leitura, protocolo revisão 2 e runtime de API indisponível nas descrições históricas abaixo.
+
+### Integração do trabalho do Codex (2026-11-04) e o que ele cobriu
+
+A branch `codex/modeler-connections-memories` foi revisada (achados em [[Interface e memorias aprovadas]], seção "Revisão") e integrada na `dev` com o merge "Merge: interface, conexões e memórias (Codex, revisado)". O que cada tarefa já tem e o que ainda falta:
+
+- **T07 · Runtime de API: parcial.** Feito: `ApiRuntime` em `apps/server/src/agents/api-runtime.ts`, com OpenAI (Responses API) e Anthropic pelos SDKs oficiais; ferramentas `send_message`, `ask`, `reply`, `list_peers`, `finish` mais `list_tools` e `use_tool` (as ferramentas ligadas por `uses`); retentativas com espera crescente feitas pelo SDK; uso gravado em tokens; custo desconhecido (`reportsCost = false`, nunca 0); chave escolhida por nome em `runtime.secretName`. Falta: `ModelProvider`/`ProviderRegistry`/`OpenAICompatibleProvider`; tabela de preços versionada e `UsageCalculator` em US$ (é ela que faz a guarda de custo valer para agentes de API); tradução do esforço por modelo (hoje envia sempre); rodada real do `two-agents.json`/`mixed.json` (só há testes com cliente simulado).
+- **T09 · Ferramentas: quase feita.** Feito: Obsidian com `create` e `edit` (sem exclusão), permissão do bloco **e** da ligação, memória por `memoryId` ou `vaultPath`; `list_tools`/`use_tool` no MCP do agente de terminal, no runner (protocolo revisão 3) e no agente de API; cada chamada grava `ToolCalled` (só `nodeId` e `path`). Falta: o teste manual com o cofre do Rafael; ToolCalled para as ferramentas embutidas do Claude Code (Bash, Read...), que não são reportadas; conferir na prática que MCP e HTTP também passam por `use_tool`.
+- **T14c · Estados e terminal no web: feita (2026-11-04).** Ver "T14 — Execução ao vivo"; a seção "Memórias e ferramentas" virou a linha do tempo única.
+- **T15 · Histórico e replay: T15a feita, T15b não iniciada.** A lista com filtros está pronta (ver a T15). Replay no canvas não existe (o reducer puro e idempotente por `seq` serve de base) e pode vir agora que a T14c está pronta.
+- **T17 · Templates: não iniciada.** Existe a tela "novo projeto" (`new-project-page.tsx`, projeto sem nome e importação de memória), mas sem escolha de template.
+- **T18 · Landing: parcial.** Feito: `apps/site` com a landing real, build pelo Vite, CTA "Criar meu projeto" abrindo `/new` e servida em `/` pelo servidor com `NEURONS_LANDING_DIR`. Falta: publicar no domínio, lista de espera com destino, botões de download por sistema, servir com CSP, e trocar os formulários de demonstração por funcionais.
+- **Novo no desktop e no servidor:** moldura própria da janela com preload/IPC, chave mestra por `safeStorage`, rotas `/connections` e `/memories`, acesso à IA por agente (assinatura do Claude Code ou chave de API).
+
 ## Ordem de execução
 
-- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T19, T20, T21, T24.
-- Próxima: T22 (a T12 pode ir antes). Depois: T12–T15 → T25 → T16–T18.
+- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T12, T14, T19, T20, T21, T24.
+- Próxima: T22. Depois: T13–T15 → T25 → T16–T18.
 - **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16) sai por túnel.
 
 **Paralelismo possível:** T04 e T05 em paralelo com T02–T03. A Fase 2 pode começar assim que
@@ -58,7 +74,7 @@ O contrato central: o modelador grava, o servidor lê. Tudo em zod, tipos export
     - `{ kind: "api", provider, model }`
     - `{ kind: "terminal", cli: "claude" | "codex" | "gemini" | "custom", command?, args[], cwd }`
   - `tool` — `mcp { command|url, allowedTools[] }` | `http { method, url, headers, bodySchema }`
-    | `obsidian { vaultPath, readOnly: true }`.
+    | `obsidian { vaultPath? | memoryId?, readOnly: boolean }` (exatamente uma referência).
 - Ligação: `{ id, from, to, kind: "talk" | "uses", bidirectional, maxMessages? }`.
   `talk` liga agente a agente (permissão de iniciar conversa); `uses` liga agente a ferramenta.
 - `annotations[]`: formas livres, notas, texto, grupos; nunca executam.
@@ -265,8 +281,8 @@ nada de azul.
 - A API vem do `@neurons/api-client`; em desenvolvimento o Vite faz proxy de `/api` para
   `127.0.0.1:3100`. `import.meta.env` só em `src/config.ts`. Testes com Vitest + Testing Library
   e `fetch` simulado (carregando, vazio, erro e sucesso de cada tela).
-- **API:** nenhum endpoint faltou para as três telas. Os eventos ao vivo (`/ws`) ficam para a T14;
-  hoje a tela de execução só consulta (polling a cada 2 s enquanto roda).
+- **API:** nenhum endpoint faltou para as três telas. Os eventos ao vivo (`/ws`) vieram na T14a
+  (a tela de execução já não faz polling).
 
 ### T12 — Canvas e inspetor
 
@@ -278,12 +294,49 @@ nada de azul.
 
 **Pronto quando:** desenhar o `mixed.json` do zero no canvas gera um JSON igual à fixture.
 
+**Feito (2026-11-04)** — detalhes em `apps/web/README.md`.
+
+- `@xyflow/react` 12.12.1 em `apps/web/src/editor/`. O estado é o próprio JSON do grafo num reducer
+  puro com histórico (`model.ts`): desfazer/refazer, com digitação e arrasto contando como um passo.
+  Tudo que o canvas não edita (`annotations[]`, chaves desconhecidas) volta intacto no salvar.
+- Validação ao vivo com `validateGraph`: erro no bloco, no inspetor e numa lista clicável; "Publicar
+  versão" só habilita sem erros e salva o rascunho pendente antes de chamar a API.
+- Teste da fixture (`model.test.ts`): monta o `mixed.json` do zero com as mesmas ações da tela
+  (adicionar, arrastar, digitar no inspetor, ligar) e compara com `toEqual`, posições incluídas.
+- CSP do desktop: sem mudança; o servidor já libera `style-src 'unsafe-inline'` e o canvas rodou sob
+  ela, sem violações (`script-src` segue só `'self'`).
+- **API:** nada faltou. A seta do gatilho é o campo `target` (não há ligação); duas setas `talk`
+  opostas (A→B e B→A) são válidas e aparecem sobrepostas — a seta dupla é o `bidirectional`.
+
 ### T13 — Camada livre
 
 - Retângulo, elipse, seta livre, texto, nota e grupo no mesmo canvas, com traço de desenho à mão
   (`roughjs`). Salvos em `annotations[]`, ignorados pelo servidor.
 
 **Pronto quando:** anotar um grafo, salvar, reabrir e ver tudo no lugar.
+
+**Feito (2026-11-04)** — detalhes em `apps/web/README.md`.
+
+- `roughjs` 4.6.6, só o gerador: `toPaths` devolve o `d` dos traços e o React desenha `<path>`; sem DOM
+  manual, sem eval, sem script inline (a CSP do servidor segue `script-src 'self'`). A semente vem do
+  `id`, então o traço não treme entre renderizações.
+- As anotações entram no **mesmo reducer e no mesmo histórico** da T12 (`model.ts`), com as ações
+  `addAnnotation`, `setAnnotationField`, `resizeAnnotation`, `moveNodes` (agora também move
+  anotações) e `remove` (com `annotationIds`). Arrastar, redimensionar e digitar viram um passo só.
+  Mover um grupo move os membros (blocos e anotações, grupos aninhados incluídos); apagar um item o
+  tira dos grupos. Não há segundo histórico.
+- No canvas são nós do React Flow com `zIndex` negativo (grupo -2, demais -1): ficam abaixo dos blocos
+  e das setas. Grupo e seta só pegam o mouse no traço e no nome, então nunca atrapalham ligar ou
+  selecionar blocos. Tipos `free-*`, porque o React Flow estiliza um tipo embutido chamado `group`.
+- Barra: selecionar, retângulo, elipse, seta livre, texto, nota e grupo (atalhos V R O A T N G, Esc volta
+  a selecionar). Cada ferramenta desenha arrastando sobre o canvas; o grupo envolve o que couber
+  inteiro nele. Cor, preenchimento, texto e fonte no inspetor.
+- **Schema:** o `annotationSchema` já tinha tudo (`size`, `points`, `text`, `style`, `memberIds`), sem
+  mudança. Só a regra `group-members` foi afrouxada, de forma compatível: `memberIds` aceita também ids
+  de anotações (menos o do próprio grupo), com testes.
+- Testes: reducer (criar, mover, redimensionar, texto, apagar, desfazer/refazer, grupo carrega membros)
+  e a tela (desenhar as seis, salvar com `fetch` simulado, reabrir com o rascunho salvo, desfazer e
+  refazer). Conferido no navegador com servidor (PGlite) + Vite.
 
 ### T14 — Execução ao vivo
 
@@ -297,12 +350,107 @@ nada de azul.
 **Pronto quando:** rodar o `mixed.json` com modelos reais e acompanhar tudo pela tela, inclusive
 digitar no terminal do Claude Code.
 
+**Feito (2026-11-04)** — as três partes (T14a, T14b e T14c) estão abaixo; a rodada com o Claude
+Code real, que o "Pronto quando" cita, ainda não foi feita (cota).
+
+Dividida em três partes. **T14a (feita): dados ao vivo**, sem canvas, em `apps/web/src/live/`
+(contrato em `live/README.md`):
+
+- Cliente do `/ws` na mesma origem (proxy `ws: true` no Vite). O histórico vem do próprio
+  `subscribe { fromSeq: 1 }`: um canal só, sem costurar REST e WebSocket. Reconecta com backoff
+  exponencial e `fromSeq = último + 1`; descarta duplicatas e atrasados, e um buraco no `seq`
+  força a reconexão.
+- `reduceRunEvent` puro e idempotente por `seq` (a T15 reaproveita para o replay); custo
+  desconhecido nunca vira 0. Agentes são chaveados pelo **nome** (é o que o servidor grava).
+- `useRunLive(runId)` e a tela `/runs/:id` sem polling: status, agentes, custo, mensagens,
+  guardas, Parar e mensagem como `@human`.
+
+**T14b (feita, 2026-11-04): eventos de estado, ferramenta e terminal no servidor.** As quatro
+lacunas que a T14a apontou; detalhes e formatos em `apps/server/README.md` (seção "WebSocket").
+Decisões:
+
+- **`AgentStateChanged { agent, state, reason? }`** no log, com `state` em
+  `starting | busy | idle | waiting_reply | failed | finished`. O runtime diz se o agente trabalha
+  (PTY: `UserPromptSubmit` = `busy`, `Stop` = `idle`; stream-json: entrega e `result`); o **Hub**
+  conta os `ask` abertos de cada agente (`Hub.openAsksOf`) e `waiting_reply` dura enquanto houver
+  algum, então com dois abertos a primeira resposta não volta a `busy`; o Supervisor escreve
+  `starting` (na mesma transação de `AgentStarted`), `failed` (com o motivo, junto de `AgentFailed`)
+  e `finished` (ao parar a execução, antes de `RunFinished`). Só grava quando o estado muda, em
+  fila por agente para manter a ordem. O estado vem do **servidor** e não do que o runtime diz de
+  `waiting_reply`, então vale igual para qualquer runtime (o de API da T07 também). No perfil
+  `hybrid` o estado do runtime já chegava pelo `agent.state`: nada novo no protocolo para isso.
+- **`ToolCalled { tool, inputSummary, durationMs, ok, errorCode }`** gravado por
+  `Hub.reportToolCall`, alcançado por `AgentCommunication.reportToolCall` (contrato novo em
+  `@neurons/agent-runtimes`, `ToolCallReport`, estruturalmente igual ao `ToolCallRecord` de
+  `@neurons/tools`) e, no runner, pelo `call` `report_tool_call`. O resumo nunca leva segredo: o
+  `{{secret:NOME}}` do que o agente mandou aparece só como o nome, chaves sensíveis viram
+  `[oculto]`, textos e o resumo são cortados, e os valores que a chamada resolveu são removidos
+  como segunda trava (testado explicitamente). **Falta ligar quem chama:** nenhum runtime usa
+  ferramentas de `@neurons/tools` hoje (o runtime de API é a T07 e a configuração MCP da sessão
+  de terminal é da T09); as ferramentas do Hub continuam aparecendo como mensagens e como o fim,
+  e as ferramentas embutidas do Claude Code (Bash, Read...) não são reportadas.
+- **`terminal.input { runId, agent, data }` no `/ws`**, nos perfis `local` e `hybrid` (neste, o
+  `agent.input` que já existia no protocolo). Valida: execução em andamento, agente do grafo,
+  terminal PTY, terminal já aberto; limita o tamanho (`NEURONS_TERMINAL_INPUT_MAX_CHARS`, 4096) e
+  a taxa por conexão (`NEURONS_TERMINAL_INPUT_PER_SEC`, 100); recusa com `error { code, message }`
+  e não responde quando aceita. **O texto digitado não é guardado** (nem em log, nem em evento,
+  nem na mensagem de erro); também não há evento "alguém digitou" (uma tecla por mensagem encheria
+  o log). Sem conexão com o runner, recusa com `terminal_unavailable` em vez de perder a tecla em
+  silêncio.
+- **Protocolo do runner: revisão 2 dentro da versão 1** (`PROTOCOL_REVISION`). Só o `call`
+  `report_tool_call` é novo; cada ponta anuncia a sua revisão no `register`/`registered` (campo
+  opcional, ausente = 1) e só usa o recurso novo quando a outra o tem. Servidor antigo + runner
+  novo e o contrário continuam funcionando.
+- **Saída do terminal na reconexão: o resumo (`replay: true`, ~200 mil caracteres por terminal)
+  basta para o xterm.js** e ficou como está: a TUI repinta a tela, e o resumo inclui o que passou
+  durante a queda. Só uniformizei o runner remoto para guardar chunks inteiros (como o local),
+  em vez de cortar a string no meio. Gravar a saída no log foi descartado (centenas de KB por
+  minuto). Lacuna conhecida: no `hybrid`, o que o runner imprime com a conexão runner ↔ servidor
+  caída não chega ao servidor.
+- **Demo** (`pnpm --filter @neurons/server demo`, nos dois perfis) agora mostra os eventos novos
+  e digita no terminal do Pesquisador pelo `/ws` (e confere a recusa `not_a_terminal` no
+  Revisor). Sem rodada com o Claude Code real (cota).
+
+**T14c (feita, 2026-11-04): execução sobre o desenho, painel do agente e terminal.** Detalhes e
+como a T15b reaproveita em `apps/web/src/live/README.md` (seção "Execução sobre o desenho").
+Decisões:
+
+- **Reducer:** `AgentStateChanged` passa a ser a fonte do estado do agente (`stateSource: "event"`);
+  a dedução antiga ficou só como reserva para quem nunca reportou estado (execuções anteriores à
+  T14b). Continua puro e idempotente por `seq`. O terminal ganhou `terminalMeta`
+  (`resets`/`total`) para a tela escrever só o que é novo e trocar tudo quando chega o `replay`.
+- **Linha do tempo única:** `selectActivity(state, agent?)` junta `timeline` e `toolCalls` (do
+  Codex) por `seq`, sem guardar nada duas vezes; a seção "Memórias e ferramentas" virou "Linha do
+  tempo" e a mesma lista serve a conversa de cada agente.
+- **Canvas só leitura sem duplicar o editor:** `editor/flow-model.ts` (setas e anotações, extraído
+  do `graph-editor.tsx` sem mudar o comportamento) e `editor/nodes.tsx` (o bloco ganhou `data.live`
+  com estado e custo) são usados pelos dois; `editor/graph-viewer.tsx` só desliga arrastar, ligar,
+  apagar e desenhar. Bloco e agente se ligam por `node.name`. A versão vem de
+  `GET /graphs/{id}/versions` + `/versions/{n}` (imutável, buscada uma vez).
+- **Pulso:** SVG `animateMotion` ao longo do caminho da seta (`editor/pulse-edge.tsx`), sem
+  JavaScript por quadro; `pulsesByEdge` resolve a seta e o sentido (`reverse`), `useActivePulses`
+  anima cada mensagem uma vez, só se for recente (o histórico ao abrir a tela não vira rajada) e
+  com teto de 12 simultâneos. A seta fica âmbar enquanto o pulso passa; `prefers-reduced-motion`
+  mostra só um ponto.
+- **Terminal:** xterm.js 6.0.0 (mesma versão do `@xterm/headless` do servidor), no tamanho do PTY
+  (120×40). **Sem `@xterm/addon-fit`**: o protocolo não tem `terminal.resize`, e ajustar à caixa
+  desalinharia a TUI. O que se digita vai por `terminal.input` (colagens longas partidas em 4000
+  caracteres), nunca é logado, e as recusas do servidor aparecem no painel em pt-BR. CSP: só
+  estilos inline (já liberados); `script-src 'self'` intacto, conferido no build servido pelo
+  servidor com o CLI de mentira.
+- **Falta:** uma rodada com o Claude Code real (cota Pro) para confirmar a digitação no terminal
+  real; `terminal.resize` no `/ws` e no protocolo do runner, se o terminal do navegador precisar
+  mudar de tamanho.
+
 ### T15 — Histórico e replay
 
-- Lista de execuções com filtros (status, versão, custo).
-- Replay das mensagens de uma execução terminada no canvas, com controle de velocidade.
+Dividida em duas:
 
-**Pronto quando:** o replay de uma execução mostra as mensagens na ordem certa e nas setas certas.
+- **T15a · Lista de execuções com filtros: feita.** `GET /runs` filtra por `status`, `graphId`, `graphVersionId`, faixa de custo (`minCostUsd`/`maxCostUsd`, sobre o custo conhecido) e início (`from`/`to`), ordena (`sort`/`order`) e pagina por `offset` (`{ items, total, limit, offset }`); cada item traz grafo, versão, status, datas, `durationMs`, `costUsd` e `unknownCostTurns`, com o custo agregado do log em uma consulta (sem N+1) e índices na migration `0004`. Custo desconhecido nunca vira 0 e o filtro compara a parte conhecida (detalhes no README do servidor). A tela `/runs` tem a barra de filtros, a tabela, a paginação e o estado vazio, com tudo no endereço.
+- **T15b · Replay no canvas: falta (depois da T14c).** Replay das mensagens de uma execução terminada no canvas, com controle de velocidade, reaproveitando o `reduceRunEvent`. Pode ganhar um botão "Replay" na linha da tabela e a ordenação por duração, se quiserem.
+
+**Pronto quando (T15a):** com execuções de grafos e versões diferentes, cada filtro e as combinações dão o conjunto certo, na API e na tela (testes de integração nos dois bancos e da tela).
+**Pronto quando (T15b):** o replay de uma execução mostra as mensagens na ordem certa e nas setas certas.
 
 ---
 
@@ -449,5 +597,5 @@ digitar no terminal do Claude Code.
 - Runners hospedados pelo NeuronsAI na AWS (estilo Hostinger): um contêiner isolado por usuário rodando os agentes, inclusive CLIs de terminal com login feito pelo próprio usuário; cobrança.
 - Mensagem urgente que interrompe o agente ocupado.
 - Adaptador Gemini por API; mais CLIs pré-configuradas.
-- Obsidian com escrita, com revisão.
+- Sincronização contínua de cofres e revisão humana opcional da escrita (criar/editar com permissão já implementado).
 - Importar/exportar grafos; métricas por agente (custo médio, mensagens, duração).

@@ -36,6 +36,8 @@ export function buildBriefing(agent: AgentNode, peers: AgentPeers): string {
     "- `ask(to, question)`: faz uma pergunta e espera a resposta (há um tempo limite). Use quando precisar da resposta para continuar.",
     "- `reply(messageId, text)`: responde a uma mensagem que você recebeu, usando o id que veio com ela. Responda sempre às perguntas (`ask`) que receber.",
     "- `list_peers()`: mostra com quem você pode conversar.",
+    "- `list_tools()`: mostra as ferramentas e memórias ligadas a você no grafo, com parâmetros e permissões.",
+    "- `use_tool(nodeId, name, input)`: usa uma dessas ferramentas. Consulte list_tools antes; a ligação define o acesso. Para editar uma nota, leia seu conteúdo atual primeiro.",
     "- `finish(result)`: encerra a execução inteira com o resultado final. Use somente quando o trabalho todo estiver concluído, não quando terminar a sua parte.",
     "",
     "## Regras",

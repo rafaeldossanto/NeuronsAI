@@ -6,10 +6,10 @@ runner separado (T24) possa hospedar os mesmos runtimes.
 
 Dois pontos de entrada:
 
-| Import                           | O que traz                                                                                                                                                                                                                                                             |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@neurons/agent-runtimes`        | O contrato, leve e sem dependências nativas: `AgentRuntime`, `AgentRuntimeState`, `InboundMessage`, `AgentCommunication` (`sendMessage`, `ask`, `reply`, `listPeers`, `finish`, `reportUsage`), `AgentRuntimeFactory`, `TerminalAgentRuntime`, `AgentUsage`, `Signal`. |
-| `@neurons/agent-runtimes/claude` | Os runtimes e a `TerminalRuntimeFactory` (carrega `node-pty` e `@xterm/headless`).                                                                                                                                                                                     |
+| Import                           | O que traz                                                                                                                                                                                                                                                                               |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@neurons/agent-runtimes`        | O contrato, leve e sem dependências nativas: `AgentRuntime`, `AgentRuntimeState`, `InboundMessage`, `AgentCommunication` (`sendMessage`, `ask`, `reply`, `listPeers`, `finish`, `reportUsage`, `reportToolCall`), `AgentRuntimeFactory`, `TerminalAgentRuntime`, `AgentUsage`, `Signal`. |
+| `@neurons/agent-runtimes/claude` | Os runtimes e a `TerminalRuntimeFactory` (carrega `node-pty` e `@xterm/headless`).                                                                                                                                                                                                       |
 
 ## Runtimes
 

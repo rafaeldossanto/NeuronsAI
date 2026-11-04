@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  PROTOCOL_REVISION,
   PROTOCOL_VERSION,
+  REVISION_TOOL_CALLS,
+  revisionOf,
   createMemoryChannelPair,
   decodeRunnerFrame,
   decodeServerFrame,
@@ -70,6 +73,60 @@ describe("decoding", () => {
     expect(call({ method: "ask", to: "Revisor", question: "ok?" }).ok).toBe(true);
     expect(call({ method: "ask", to: "Revisor" }).ok).toBe(false);
     expect(call({ method: "rm -rf" }).ok).toBe(false);
+  });
+});
+
+describe("revisions inside version 1", () => {
+  it("reads a register or registered without a revision, as an older peer sends them", () => {
+    expect(decodeRunnerFrame(encodeFrame(register)).ok).toBe(true);
+    expect(
+      decodeServerFrame(
+        JSON.stringify({
+          v: PROTOCOL_VERSION,
+          type: "registered",
+          runnerId: "r1",
+          heartbeatIntervalMs: 1000,
+          keep: [],
+        }),
+      ).ok,
+    ).toBe(true);
+    expect(revisionOf(undefined)).toBe(1);
+    expect(revisionOf(2)).toBe(2);
+  });
+
+  it("carries the revision both peers announce", () => {
+    const withRevision = { ...register, revision: PROTOCOL_REVISION };
+    expect(decodeRunnerFrame(encodeFrame(withRevision))).toEqual({ ok: true, frame: withRevision });
+    expect(decodeRunnerFrame(JSON.stringify({ ...register, revision: 0 })).ok).toBe(false);
+    expect(PROTOCOL_REVISION).toBeGreaterThanOrEqual(REVISION_TOOL_CALLS);
+  });
+
+  it("a peer of an older build ignores the fields it does not know, instead of refusing the frame", () => {
+    // What an older server sees of a newer runner's register: the extra field is not an error.
+    const newer = { ...register, revision: PROTOCOL_REVISION, campoDoFuturo: true };
+    expect(decodeRunnerFrame(JSON.stringify(newer)).ok).toBe(true);
+  });
+
+  it("checks the report of a tool call, and bounds how much a peer can put in it", () => {
+    const call = (report: object) =>
+      decodeRunnerFrame(
+        JSON.stringify({
+          v: PROTOCOL_VERSION,
+          type: "call",
+          callId: "c1",
+          instanceId: "i1",
+          call: { method: "report_tool_call", report },
+        }),
+      );
+    const ok = { tool: "consulta", inputSummary: "{}", durationMs: 3, ok: true };
+
+    expect(call(ok).ok).toBe(true);
+    expect(call({ ...ok, errorCode: "TIMEOUT", ok: false }).ok).toBe(true);
+    expect(call({ ...ok, tool: "" }).ok).toBe(false);
+    expect(call({ ...ok, tool: "t".repeat(101) }).ok).toBe(false);
+    expect(call({ ...ok, inputSummary: "x".repeat(1_001) }).ok).toBe(false);
+    expect(call({ ...ok, durationMs: -1 }).ok).toBe(false);
+    expect(call({ ...ok, durationMs: "3" }).ok).toBe(false);
   });
 });
 

@@ -7,7 +7,17 @@ import { isLoopbackHost } from "./shared/config/listen-config.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const app = await createApp(config);
+  const app = await createApp(
+    config,
+    config.uiRoot
+      ? {
+          ui: {
+            root: config.uiRoot,
+            ...(config.landingRoot && { landingRoot: config.landingRoot }),
+          },
+        }
+      : {},
+  );
   await app.listen(config.port, config.host);
   const logger = new Logger("Bootstrap");
   logger.log(`NeuronsAI server (modo ${config.mode}) em http://${config.host}:${config.port}`);

@@ -7,6 +7,7 @@ import {
   finishRequest,
   replyRequest,
   sendMessageRequest,
+  useToolRequest,
 } from "@neurons/mcp-neurons";
 import type { z } from "zod";
 import type { AgentCommunication } from "../contract/agent-communication.js";
@@ -71,6 +72,16 @@ export class LocalBridge {
     this.tool(BRIDGE_ROUTES.finish, finishRequest, async ({ result }) => {
       await communication.finish(result);
       return {};
+    });
+    this.tool(
+      BRIDGE_ROUTES.listTools,
+      undefined,
+      () => communication.listTools?.() ?? Promise.resolve([]),
+    );
+    this.tool(BRIDGE_ROUTES.useTool, useToolRequest, ({ nodeId, name, input }) => {
+      if (!communication.useTool)
+        throw new HttpProblem(422, "Ferramentas indisponíveis neste runner.");
+      return communication.useTool(nodeId, name, input);
     });
 
     this.hook(BRIDGE_ROUTES.hooks.userPromptSubmit, () => hooks?.onUserPromptSubmit?.());

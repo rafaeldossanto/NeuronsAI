@@ -41,7 +41,10 @@ describe("Supervisor", () => {
       expect(persistence.runLog.eventsOf(runId, "MessageDelivered")).toHaveLength(1),
     );
 
-    const types = persistence.runLog.eventsOf(runId).map((event) => event.type);
+    const types = persistence.runLog
+      .eventsOf(runId)
+      .map((event) => event.type)
+      .filter((type) => type !== "AgentStateChanged");
     expect(types).toEqual(["MessageSent", "AgentStarted", "MessageDelivered"]);
   });
 

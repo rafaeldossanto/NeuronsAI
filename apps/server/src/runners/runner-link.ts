@@ -3,6 +3,7 @@ import {
   CLOSE_HEARTBEAT,
   CLOSE_PROTOCOL,
   CLOSE_REPLACED,
+  PROTOCOL_REVISION,
   PROTOCOL_VERSION,
   type CallFrame,
   type InstanceSnapshot,
@@ -63,6 +64,10 @@ export class RunnerLink implements RunnerEndpoint {
   private lastHeardAt = 0;
   /** The grace period ended without the runner coming back. */
   private lost = false;
+  private peerRevision = 1;
+  get revision() {
+    return this.peerRevision;
+  }
 
   private readonly runtimes = new Map<string, RemoteAgentRuntime>();
   private readonly pending = new Map<string, PendingRequest>();
@@ -91,6 +96,7 @@ export class RunnerLink implements RunnerEndpoint {
 
   /** A connection of this runner was accepted; `register` is its first frame. */
   attach(channel: ServerChannel, register: RegisterFrame): void {
+    this.peerRevision = register.revision ?? 1;
     this.dropChannel(CLOSE_REPLACED, "outra conexão do mesmo runner assumiu");
     clearTimeout(this.graceTimer);
     this.lost = false;
@@ -110,6 +116,7 @@ export class RunnerLink implements RunnerEndpoint {
       v: PROTOCOL_VERSION,
       type: "registered",
       runnerId: this.identity.id,
+      revision: PROTOCOL_REVISION,
       heartbeatIntervalMs: this.limits.heartbeatMs,
       keep: [...this.runtimes.keys()],
     });
@@ -214,8 +221,10 @@ export class RunnerLink implements RunnerEndpoint {
     });
   }
 
-  sendInput(instanceId: string, data: string): void {
-    this.channel?.send({ v: PROTOCOL_VERSION, type: "agent.input", instanceId, data });
+  sendInput(instanceId: string, data: string): boolean {
+    if (!this.channel?.isOpen) return false;
+    this.channel.send({ v: PROTOCOL_VERSION, type: "agent.input", instanceId, data });
+    return true;
   }
 
   // ---- frames from the runner ----

@@ -1,6 +1,13 @@
 // The protocol between the NeuronsAI server and a runner (the process that hosts the agents'
 // runtimes). Zod is the single source: the frames below are both the validation and the types.
-export { PROTOCOL_VERSION, SUPPORTED_VERSIONS } from "./version.js";
+export {
+  PROTOCOL_REVISION,
+  PROTOCOL_VERSION,
+  REVISION_TOOL_CALLS,
+  REVISION_GRAPH_TOOLS,
+  SUPPORTED_VERSIONS,
+  revisionOf,
+} from "./version.js";
 export * from "./frames.js";
 export {
   MAX_FRAME_CHARS,

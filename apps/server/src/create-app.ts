@@ -18,9 +18,10 @@ export async function createApp(
   config: AppConfig,
   options: CreateAppOptions = {},
 ): Promise<NestFastifyApplication> {
-  const adapter = new FastifyAdapter(
-    options.ui ? { rewriteUrl: (req: { url?: string }) => rewriteForUi(req.url ?? "/") } : {},
-  );
+  const adapter = new FastifyAdapter({
+    bodyLimit: 30 * 1024 * 1024,
+    ...(options.ui ? { rewriteUrl: (req: { url?: string }) => rewriteForUi(req.url ?? "/") } : {}),
+  });
   // abortOnError: false makes a failure while booting (a data folder in use, say) reject instead of
   // exiting the process, so whoever embeds the server (the desktop app) can show it to the user.
   const app = await NestFactory.create<NestFastifyApplication>(

@@ -7,6 +7,11 @@ import { type GuardLimits, guardEnvShape, resolveGuardLimits } from "./guard-con
 import { port, unlessEmpty } from "./env-schema.js";
 import { listenEnvShape, resolveListenHost } from "./listen-config.js";
 import {
+  type TerminalInputLimits,
+  resolveTerminalInputLimits,
+  terminalEnvShape,
+} from "./terminal-config.js";
+import {
   type Profile,
   type RunnerLimits,
   resolveRunnerLimits,
@@ -18,12 +23,15 @@ export { DATABASE_KINDS } from "./database-config.js";
 export type { GuardLimits } from "./guard-config.js";
 export { PROFILES } from "./runner-config.js";
 export type { Profile, RunnerLimits } from "./runner-config.js";
+export type { TerminalInputLimits } from "./terminal-config.js";
 export type { DatabaseConfig, DatabaseKind, PostgresConnection } from "./database-config.js";
 
 export const APP_MODES = ["api", "worker", "all"] as const;
 export type AppMode = (typeof APP_MODES)[number];
 
 export interface AppConfig {
+  uiRoot?: string;
+  landingRoot?: string;
   mode: AppMode;
   /** Where the server listens: loopback unless `NEURONS_ALLOW_REMOTE` says otherwise. */
   host: string;
@@ -31,6 +39,8 @@ export interface AppConfig {
   /** How long an agent's `ask` waits for the answer before failing. */
   askTimeoutMs: number;
   guards: GuardLimits;
+  /** Size and rate limits of what is typed into an agent's terminal. */
+  terminalInput: TerminalInputLimits;
   /** Where the agents run (see {@link Profile}). */
   profile: Profile;
   runners: RunnerLimits;
@@ -58,6 +68,8 @@ export interface AppConfig {
 const BASE64_32_BYTES = /^[A-Za-z0-9+/]{43}=$/;
 
 const envSchema = z.object({
+  NEURONS_UI_DIR: unlessEmpty(z.string().min(1).optional()),
+  NEURONS_LANDING_DIR: unlessEmpty(z.string().min(1).optional()),
   NEURONS_MODE: unlessEmpty(z.enum(APP_MODES).default("all")),
   ...listenEnvShape,
   NEURONS_PORT: port(3100),
@@ -65,6 +77,7 @@ const envSchema = z.object({
   NEURONS_DATA_DIR: unlessEmpty(z.string().trim().min(1).optional()),
   ...databaseEnvShape,
   ...guardEnvShape,
+  ...terminalEnvShape,
   ...runnerEnvShape,
   NEURONS_CLAUDE_BIN: unlessEmpty(z.string().trim().min(1).optional()),
   NEURONS_MASTER_KEY: unlessEmpty(
@@ -96,11 +109,14 @@ export function loadConfig(
   const masterKey = values.NEURONS_MASTER_KEY;
 
   return {
+    ...(values.NEURONS_UI_DIR && { uiRoot: values.NEURONS_UI_DIR }),
+    ...(values.NEURONS_LANDING_DIR && { landingRoot: values.NEURONS_LANDING_DIR }),
     mode: values.NEURONS_MODE,
     host: resolveListenHost(values),
     port: values.NEURONS_PORT,
     askTimeoutMs: values.NEURONS_ASK_TIMEOUT_SEC * 1000,
     guards: resolveGuardLimits(values),
+    terminalInput: resolveTerminalInputLimits(values),
     profile: values.NEURONS_PROFILE,
     runners: resolveRunnerLimits(values),
     usageFlushMs: values.NEURONS_USAGE_FLUSH_MS,

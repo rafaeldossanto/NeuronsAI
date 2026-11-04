@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { AgentUsage } from "@neurons/agent-runtimes";
+import type { AgentUsage, ToolCallReport } from "@neurons/agent-runtimes";
 import { peersOf, type AgentPeers, type GraphDefinition } from "@neurons/graph-schema";
 import type { MessageKind } from "../database/schema/index.js";
 import { RunEventRecorder } from "../run-log/run-event-recorder.js";
@@ -58,6 +58,8 @@ interface SendRequest {
 
 interface PendingAsk {
   runId: string;
+  /** The agent that asked: it is `waiting_reply` for as long as it has an ask open. */
+  asker: string;
   target: string;
   resolve(answer: string): void;
   reject(error: Error): void;
@@ -86,6 +88,8 @@ export class Hub {
   /** An agent's usage was recorded. */
   readonly usageRecorded = new Signal<UsageReport>();
   readonly agentActive = new Signal<AgentActivity>();
+  /** An agent opened or closed an `ask`: its count of open asks changed. */
+  readonly askChanged = new Signal<AgentActivity>();
 
   private readonly pendingAsks = new Map<string, PendingAsk>();
   private readonly sendsInFlight = new Map<string, number>();
@@ -131,7 +135,15 @@ export class Hub {
           return;
         }
         const timer = setTimeout(() => this.expireAsk(message.id, timeoutMs), timeoutMs);
-        this.pendingAsks.set(message.id, { runId, target: to, resolve, reject, timer });
+        this.pendingAsks.set(message.id, {
+          runId,
+          asker: from,
+          target: to,
+          resolve,
+          reject,
+          timer,
+        });
+        this.askChanged.emit({ runId, agent: from });
       };
       this.dispatch({ runId, from, to, kind: "ask", body: question }, register).catch(reject);
     });
@@ -180,6 +192,26 @@ export class Hub {
     await this.recorder.record(runId, [HubEvents.usageRecorded(agent, usage)]);
     this.agentActive.emit({ runId, agent });
     this.usageRecorded.emit({ runId, agent, usage });
+  }
+
+  /**
+   * Writes that an agent called a tool to the run log. Also accepted while the run winds down, like
+   * the usage report: the closing turn of an agent may still use one.
+   */
+  async reportToolCall(runId: string, agent: string, report: ToolCallReport): Promise<void> {
+    const { graph } = this.registry.requireOpen(runId);
+    if (!findAgent(graph, agent)) throw unknownAgent("unknown_sender", agent);
+    await this.recorder.record(runId, [HubEvents.toolCalled(agent, report)]);
+    this.agentActive.emit({ runId, agent });
+  }
+
+  /** How many `ask`s the agent has open right now. */
+  openAsksOf(runId: string, agent: string): number {
+    let count = 0;
+    for (const ask of this.pendingAsks.values()) {
+      if (ask.runId === runId && ask.asker === agent) count++;
+    }
+    return count;
   }
 
   // ---- delivery bookkeeping, used by the Supervisor ----
@@ -337,6 +369,7 @@ export class Hub {
     if (!ask) return undefined;
     clearTimeout(ask.timer);
     this.pendingAsks.delete(askId);
+    this.askChanged.emit({ runId: ask.runId, agent: ask.asker });
     return ask;
   }
 

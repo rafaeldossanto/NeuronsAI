@@ -47,7 +47,15 @@ describe("buildOpenApi", () => {
     expect(list.parameters?.map((p) => [p.name, p.in, p.required])).toEqual([
       ["status", "query", false],
       ["graphId", "query", false],
+      ["graphVersionId", "query", false],
+      ["minCostUsd", "query", false],
+      ["maxCostUsd", "query", false],
+      ["from", "query", false],
+      ["to", "query", false],
+      ["sort", "query", false],
+      ["order", "query", false],
       ["limit", "query", false],
+      ["offset", "query", false],
     ]);
   });
 

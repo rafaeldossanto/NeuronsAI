@@ -66,6 +66,14 @@ async function stdioTransport(
     stderrTail: () => tail.trim(),
     async shutdown() {
       const pid = transport.pid;
+      if (pid !== null && process.platform === "win32") {
+        // The SDK ends the direct child with SIGTERM 2 s after close(), and from then on
+        // `taskkill /T` can no longer reach the server behind a `.cmd` shim. Spawning taskkill
+        // takes seconds on a loaded machine, so it must finish before that clock starts.
+        await ensureGone(pid, 0, KILL_ATTEMPTS);
+        await transport.close();
+        return;
+      }
       const closing = transport.close();
       if (pid !== null) await ensureGone(pid, STDIO_GRACE_MS, KILL_ATTEMPTS);
       await closing;

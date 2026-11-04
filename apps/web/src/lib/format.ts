@@ -17,3 +17,14 @@ export const runStatusLabel = {
   failed: "Falhou",
   cancelled: "Cancelada",
 } as const;
+
+/** `1 min 5 s`, `12 s`, `340 ms`; a dash while the run has not finished. */
+export function formatDuration(ms: number | null) {
+  if (ms === null) return "—";
+  if (ms < 1000) return `${ms} ms`;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ${seconds % 60} s`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}

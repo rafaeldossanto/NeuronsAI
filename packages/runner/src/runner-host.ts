@@ -3,6 +3,7 @@ import {
   isTerminalRuntime,
   silentLogger,
   type AgentCommunication,
+  type ToolCallReport,
   type AgentRuntime,
   type AgentRuntimeFactory,
   type AgentUsage,
@@ -13,7 +14,11 @@ import type { AgentPeers } from "@neurons/graph-schema";
 import {
   CLOSE_HEARTBEAT,
   CLOSE_PROTOCOL,
+  PROTOCOL_REVISION,
   PROTOCOL_VERSION,
+  REVISION_TOOL_CALLS,
+  REVISION_GRAPH_TOOLS,
+  revisionOf,
   type AgentDeliverFrame,
   type AgentStartFrame,
   type AgentStopFrame,
@@ -29,7 +34,10 @@ import {
 } from "@neurons/runner-protocol";
 
 /** Builds the runtimes with the settings the server sends along with `agent.start`. */
-export type RuntimeFactoryProvider = (settings: StartSettings) => AgentRuntimeFactory;
+export type RuntimeFactoryProvider = (
+  settings: StartSettings,
+  credentials?: { apiKey: string },
+) => AgentRuntimeFactory;
 
 export interface RunnerHostOptions {
   /** Shown to the server (and in its logs). */
@@ -87,6 +95,8 @@ export class RunnerHost {
   private lastHeardAt = 0;
   /** The agents that existed when the current connection opened: the only ones `keep` can discard. */
   private snapshotIds = new Set<string>();
+  /** Protocol revision the server announced on this connection (1 until it does). */
+  private serverRevision = 1;
 
   constructor(private readonly options: RunnerHostOptions) {
     this.logger = options.logger ?? silentLogger;
@@ -121,6 +131,7 @@ export class RunnerHost {
   attach(channel: RunnerChannel): void {
     this.detach();
     this.channel = channel;
+    this.serverRevision = 1;
     this.snapshotIds = new Set(this.instances.keys());
     this.channelSubscriptions = [
       channel.onFrame((frame) => this.onFrame(frame)),
@@ -140,6 +151,7 @@ export class RunnerHost {
         ...(this.options.platform && { platform: this.options.platform }),
       },
       capabilities: { terminal: true, streamJson: true },
+      revision: PROTOCOL_REVISION,
       agents: [...this.instances.values()].map((instance) => ({
         instanceId: instance.id,
         state: instance.runtime.state,
@@ -193,6 +205,7 @@ export class RunnerHost {
 
   private handleRegistered(frame: RegisteredFrame): void {
     this.lastHeardAt = Date.now();
+    this.serverRevision = revisionOf(frame.revision);
     const wanted = new Set(frame.keep);
     for (const id of this.snapshotIds) {
       const instance = this.instances.get(id);
@@ -241,7 +254,7 @@ export class RunnerHost {
     const existing = this.instances.get(frame.instanceId);
     if (existing) return existing.startDone; // the request was repeated after a reconnection
 
-    const runtime = this.factoryFor(frame.settings).create(
+    const runtime = this.factoryFor(frame.settings, frame.credentials).create(
       frame.agent,
       new RemoteCommunication(frame.instanceId, this),
     );
@@ -317,7 +330,12 @@ export class RunnerHost {
     return instance.stopping;
   }
 
-  private factoryFor(settings: StartSettings): AgentRuntimeFactory {
+  private factoryFor(
+    settings: StartSettings,
+    credentials?: { apiKey: string },
+  ): AgentRuntimeFactory {
+    // Never cache or serialize API keys as cache keys.
+    if (credentials) return this.options.createFactory(settings, credentials);
     const key = JSON.stringify(settings);
     let factory = this.factories.get(key);
     if (!factory) {
@@ -337,6 +355,11 @@ export class RunnerHost {
       this.pendingCalls.set(callId, { frame, instanceId, resolve, reject });
       this.send(frame);
     });
+  }
+
+  /** Whether the server on this connection understands `call`s of that revision. */
+  serverSupports(revision: number): boolean {
+    return this.serverRevision >= revision;
   }
 
   private onCallResult(frame: CallResultFrame): void {
@@ -394,6 +417,34 @@ class RemoteCommunication implements AgentCommunication {
 
   async reportUsage(usage: AgentUsage): Promise<void> {
     await this.call({ method: "report_usage", usage });
+  }
+
+  async listTools() {
+    if (!this.host.serverSupports(REVISION_GRAPH_TOOLS)) return [];
+    return (await this.call({ method: "list_tools" })) as Awaited<
+      ReturnType<NonNullable<AgentCommunication["listTools"]>>
+    >;
+  }
+
+  useTool(nodeId: string, name: string, input: Record<string, unknown>) {
+    if (!this.host.serverSupports(REVISION_GRAPH_TOOLS))
+      return Promise.reject(new Error("Atualize o servidor para usar as ferramentas do grafo."));
+    return this.call({ method: "use_tool", nodeId, name, input });
+  }
+
+  async reportToolCall(report: ToolCallReport): Promise<void> {
+    // A server that predates the call would drop the connection over a frame it does not know.
+    if (!this.host.serverSupports(REVISION_TOOL_CALLS)) return;
+    await this.call({
+      method: "report_tool_call",
+      report: {
+        tool: report.tool,
+        inputSummary: report.inputSummary,
+        durationMs: Math.round(report.durationMs),
+        ok: report.ok,
+        ...(report.errorCode !== undefined && { errorCode: report.errorCode }),
+      },
+    });
   }
 
   private call(call: Call): Promise<unknown> {

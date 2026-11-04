@@ -15,6 +15,8 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         "/api": { target: apiTarget, changeOrigin: true, rewrite: (p) => p.replace(/^\/api/, "") },
+        // Live run events (T14a): the page opens a WebSocket on its own origin.
+        "/ws": { target: apiTarget, changeOrigin: true, ws: true },
       },
     },
     test: {
@@ -22,6 +24,11 @@ export default defineConfig(({ mode }) => {
       globals: true,
       setupFiles: ["./src/test/setup.ts"],
       css: false,
+      // React Flow is heavy in jsdom: under a loaded machine (a full turbo run, a CI runner) the
+      // editor and inspector suites take several times longer than the 5 s default. Only a ceiling:
+      // a test ends as soon as it is done.
+      testTimeout: 30_000,
+      hookTimeout: 30_000,
     },
   };
 });

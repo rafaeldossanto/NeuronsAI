@@ -37,17 +37,6 @@ export function useGraphVersions(id: string) {
   });
 }
 
-export function useRuns() {
-  const api = useApi();
-  return useQuery({
-    queryKey: ["runs"],
-    queryFn: () =>
-      unwrap(api.GET("/runs", { params: { query: { limit: 100 } } })).then((r) => r.items),
-    refetchInterval: (query) =>
-      query.state.data?.some((run) => LIVE_STATUSES.has(run.status)) ? 3000 : false,
-  });
-}
-
 export function useRun(id: string) {
   const api = useApi();
   return useQuery({
@@ -67,5 +56,26 @@ export function useRunEvents(id: string, live: boolean) {
         api.GET("/runs/{id}/events", { params: { path: { id }, query: { limit: 500 } } }),
       ).then((r) => r.items),
     refetchInterval: live ? 2000 : false,
+  });
+}
+
+export function useSaveDraft(id: string) {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name?: string; draft: unknown }) =>
+      unwrap(api.PATCH("/graphs/{id}", { params: { path: { id } }, body })),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"] }),
+  });
+}
+
+/** Freezes the saved draft as a new version (the request has no body: the server publishes the draft). */
+export function usePublishVersion(id: string) {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      unwrap(api.POST("/graphs/{id}/versions", { params: { path: { id } }, body: {} })),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"] }),
   });
 }

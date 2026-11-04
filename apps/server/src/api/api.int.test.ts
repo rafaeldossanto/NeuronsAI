@@ -357,6 +357,86 @@ describe("runs", () => {
     expect((await call("GET", "/runs?limit=1")).body.items).toHaveLength(1);
   });
 
+  it("filters, sorts and pages the listing, with the cost summed from the log", async () => {
+    type Item = {
+      id: string;
+      graphVersionId: string;
+      costUsd: number;
+      turns: number;
+      unknownCostTurns: number;
+      durationMs: number | null;
+    };
+    const finishWith = (usage: "cheap" | "dear" | "unknown"): Record<string, FakeScript> => ({
+      Pesquisador: async (turn) => {
+        if (usage === "unknown") await turn.usageWithoutCost();
+        else await turn.usage({ costUsd: usage === "cheap" ? 0.5 : 3 });
+        await turn.send("Revisor", "confere isto");
+      },
+      Revisor: (turn) => turn.finish("conferido"),
+    });
+    async function finishedRun(versionId: string, usage: "cheap" | "dear" | "unknown") {
+      for (const [name, script] of Object.entries(finishWith(usage))) {
+        runtimes.setScript(name, script);
+      }
+      const reply = await call("POST", "/runs", { graphVersionId: versionId, input: "oi" });
+      const runId = reply.body.id as string;
+      await eventually(async () => {
+        expect((await call("GET", `/runs/${runId}`)).body.status).toBe("succeeded");
+      });
+      return runId;
+    }
+    const idsOf = async (query: string) =>
+      ((await call("GET", `/runs?${query}`)).body.items as Item[]).map((run) => run.id);
+
+    const first = await createGraph("Primeiro");
+    const firstV1 = await publish(first.id);
+    const firstV2 = await publish(first.id);
+    const second = await createGraph("Segundo");
+    const secondV1 = await publish(second.id);
+    const cheap = await finishedRun(firstV1.id, "cheap");
+    const dear = await finishedRun(firstV2.id, "dear");
+    const unknown = await finishedRun(secondV1.id, "unknown");
+
+    const page = (await call("GET", `/runs?graphId=${first.id}`)).body;
+    expect(page).toMatchObject({ total: 2, limit: 50, offset: 0 });
+    expect(page.items.map((run: Item) => run.id)).toEqual([dear, cheap]);
+    expect(page.items[1]).toMatchObject({ costUsd: 0.5, turns: 1, unknownCostTurns: 0 });
+    expect(page.items[1].durationMs).toBeGreaterThanOrEqual(0);
+
+    // Unknown cost is never zero: it is a turn apart, and the run is compared by its known part.
+    const unknownItem = (await call("GET", `/runs?graphId=${second.id}`)).body.items[0] as Item;
+    expect(unknownItem).toMatchObject({ id: unknown, costUsd: 0, turns: 1, unknownCostTurns: 1 });
+
+    expect(await idsOf(`graphVersionId=${firstV1.id}`)).toEqual([cheap]);
+    expect(await idsOf(`graphId=${first.id}&minCostUsd=1`)).toEqual([dear]);
+    expect(await idsOf(`graphId=${first.id}&maxCostUsd=1`)).toEqual([cheap]);
+    expect(await idsOf(`graphId=${second.id}&maxCostUsd=0`)).toEqual([unknown]);
+    expect(await idsOf(`minCostUsd=0.5&maxCostUsd=3&status=succeeded&graphId=${first.id}`)).toEqual(
+      [dear, cheap],
+    );
+    expect(await idsOf(`graphId=${first.id}&sort=costUsd`)).toEqual([dear, cheap]);
+    expect(await idsOf(`graphId=${first.id}&sort=costUsd&order=asc`)).toEqual([cheap, dear]);
+    expect(await idsOf("from=2999-01-01T00:00:00.000Z")).toEqual([]);
+    expect(
+      await idsOf(`graphId=${first.id}&from=2000-01-01T00:00:00Z&to=2999-01-01T00:00:00Z`),
+    ).toEqual([dear, cheap]);
+
+    const paged = (await call("GET", `/runs?graphId=${first.id}&limit=1&offset=1`)).body;
+    expect(paged).toMatchObject({ total: 2, limit: 1, offset: 1 });
+    expect(paged.items.map((run: Item) => run.id)).toEqual([cheap]);
+
+    for (const bad of [
+      "minCostUsd=2&maxCostUsd=1",
+      "from=2026-11-02T00:00:00Z&to=2026-11-01T00:00:00Z",
+      "minCostUsd=-1",
+      "offset=-1",
+      "sort=nome",
+      "graphVersionId=x",
+    ]) {
+      expect((await call("GET", `/runs?${bad}`)).status).toBe(400);
+    }
+  });
+
   it("refuses to start from a version that does not exist, and from a bad body", async () => {
     const missing = await call("POST", "/runs", { graphVersionId: UNKNOWN_ID, input: "oi" });
     expect(missing.status).toBe(404);
@@ -579,10 +659,14 @@ describe("OpenAPI document", () => {
     expect(reply.status).toBe(200);
     expect(reply.body.openapi).toBe("3.1.0");
     expect(Object.keys(reply.body.paths).sort()).toEqual([
+      "/connections",
+      "/connections/claude/login",
       "/graphs",
       "/graphs/{id}",
       "/graphs/{id}/versions",
       "/graphs/{id}/versions/{version}",
+      "/memories",
+      "/memories/{id}",
       "/runs",
       "/runs/{id}",
       "/runs/{id}/events",

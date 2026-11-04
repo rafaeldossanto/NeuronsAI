@@ -8,6 +8,7 @@ import type {
 import { Signal } from "@neurons/agent-runtimes";
 import type { AgentNode } from "@neurons/graph-schema";
 import {
+  PROTOCOL_REVISION,
   PROTOCOL_VERSION,
   createMemoryChannelPair,
   type RunnerFrame,
@@ -291,5 +292,75 @@ describe("RunnerHost", () => {
     r.say({ type: "registered", runnerId: "r1", heartbeatIntervalMs: 15, keep: [] });
 
     await expect(closed).resolves.toBe(4408);
+  });
+});
+
+const report = { tool: "consulta_crm", inputSummary: "{}", durationMs: 12.4, ok: true };
+
+describe("RunnerHost: protocol revisions", () => {
+  it("announces its revision in register", async () => {
+    const r = rig();
+    r.connect();
+
+    expect(await r.next("register")).toMatchObject({ revision: PROTOCOL_REVISION });
+    r.host.detach();
+  });
+
+  it("reports a tool call to a server that announced revision 2", async () => {
+    const r = rig();
+    r.connect();
+    r.say({
+      type: "registered",
+      runnerId: "r1",
+      revision: PROTOCOL_REVISION,
+      heartbeatIntervalMs: 60_000,
+      keep: [],
+    });
+    await r.start("i1");
+
+    void r.runtimes[0]?.communication.reportToolCall(report);
+
+    const call = await r.next("call");
+    expect(call).toMatchObject({
+      instanceId: "i1",
+      call: {
+        method: "report_tool_call",
+        report: { tool: "consulta_crm", inputSummary: "{}", durationMs: 12, ok: true },
+      },
+    });
+    r.host.detach();
+  });
+
+  it("does not send it to a server that predates the call, which would drop the connection", async () => {
+    const r = rig();
+    r.connect();
+    // No `revision`: a server from before revisions existed.
+    r.say({ type: "registered", runnerId: "r1", heartbeatIntervalMs: 60_000, keep: [] });
+    await r.start("i1");
+
+    await expect(r.runtimes[0]?.communication.reportToolCall(report)).resolves.toBeUndefined();
+
+    expect(r.count("call")).toBe(0);
+    r.host.detach();
+  });
+
+  it("forgets the revision of a connection when the next one is made", async () => {
+    const r = rig();
+    r.connect();
+    r.say({
+      type: "registered",
+      runnerId: "r1",
+      revision: PROTOCOL_REVISION,
+      heartbeatIntervalMs: 60_000,
+      keep: [],
+    });
+    await r.start("i1");
+    r.host.detach();
+    r.connect(); // the new connection has not said what it speaks yet
+
+    await r.runtimes[0]?.communication.reportToolCall(report);
+
+    expect(r.count("call")).toBe(0);
+    r.host.detach();
   });
 });
