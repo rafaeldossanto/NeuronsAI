@@ -3,6 +3,7 @@ import type { AgentNode, AgentPeers } from "@neurons/graph-schema";
 import type { AgentCommunication } from "../contract/agent-communication.js";
 import type { AgentRuntime, AgentRuntimeState } from "../contract/agent-runtime.js";
 import type { RuntimeLogger } from "../contract/logger.js";
+import type { ToolCallReport } from "../contract/tool-call.js";
 import type { AgentUsage } from "../contract/usage.js";
 import { ClaudeCli, type ClaudeCliOptions } from "../claude/claude-cli.js";
 import type { ClaudeRuntimeDeps } from "../claude/claude-runtime-base.js";
@@ -45,6 +46,7 @@ export class RecordingCommunication implements AgentCommunication {
   readonly replies: { messageId: string; text: string }[] = [];
   readonly finished: string[] = [];
   readonly usage: AgentUsage[] = [];
+  readonly toolCalls: ToolCallReport[] = [];
   private readonly pendingAsks: Deferred<string>[] = [];
 
   sendMessage(to: string, text: string): Promise<{ messageId: string }> {
@@ -75,6 +77,11 @@ export class RecordingCommunication implements AgentCommunication {
 
   reportUsage(usage: AgentUsage): Promise<void> {
     this.usage.push(usage);
+    return Promise.resolve();
+  }
+
+  reportToolCall(report: ToolCallReport): Promise<void> {
+    this.toolCalls.push(report);
     return Promise.resolve();
   }
 

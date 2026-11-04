@@ -5,6 +5,8 @@ import type {
   AgentRuntimeFactory,
   AgentRuntimeState,
   InboundMessage,
+  TerminalAgentRuntime,
+  ToolCallReport,
 } from "@neurons/agent-runtimes";
 import type { AgentNode, AgentPeers } from "@neurons/graph-schema";
 import { Signal, type Unsubscribe } from "../../shared/signal.js";
@@ -32,6 +34,8 @@ export interface FakeTurn {
   usage(usage: { costUsd: number } & Partial<Omit<AgentUsage, "costUsd">>): Promise<void>;
   /** Reports a turn whose price is unknown. */
   usageWithoutCost(): Promise<void>;
+  /** Reports a call to a tool of its own (not one of the Hub's). */
+  toolCall(report: Partial<ToolCallReport> & { tool: string }): Promise<void>;
 }
 
 export type FakeScript = (turn: FakeTurn) => Promise<void> | void;
@@ -45,6 +49,8 @@ export interface FakeRuntimeOptions {
   reportsCost?: boolean;
   /** Reports a turn with this cost while stopping, like a closing turn whose `result` arrives late. */
   usageOnStop?: number;
+  /** Behaves as a terminal runtime: it has a screen to watch and takes typed input. */
+  terminal?: boolean;
 }
 
 /** A scriptable {@link AgentRuntime} for tests: handles each message by running its script. */
@@ -129,6 +135,8 @@ export class FakeAgentRuntime implements AgentRuntime {
       peers: () => communication.listPeers(),
       usage: (usage) => communication.reportUsage({ ...EMPTY_USAGE, ...usage }),
       usageWithoutCost: () => communication.reportUsage({ ...EMPTY_USAGE }),
+      toolCall: (report) =>
+        communication.reportToolCall({ inputSummary: "{}", durationMs: 5, ok: true, ...report }),
     };
   }
 
@@ -141,6 +149,32 @@ export class FakeAgentRuntime implements AgentRuntime {
     if (this.currentState === "stopped" || this.currentState === state) return;
     this.currentState = state;
     this.changes.emit(state);
+  }
+}
+
+/** A scriptable runtime that also has a terminal: what is typed into it is kept in {@link typed}. */
+export class FakeTerminalRuntime extends FakeAgentRuntime implements TerminalAgentRuntime {
+  /** Everything typed into the terminal, in order. */
+  readonly typed: string[] = [];
+  private readonly output = new Signal<string>();
+  private screen = "";
+
+  /** The terminal prints something. */
+  print(chunk: string): void {
+    this.screen += chunk;
+    this.output.emit(chunk);
+  }
+
+  onOutput(listener: (chunk: string) => void): Unsubscribe {
+    return this.output.subscribe(listener);
+  }
+
+  outputSnapshot(): string {
+    return this.screen;
+  }
+
+  writeInput(data: string): void {
+    this.typed.push(data);
   }
 }
 
@@ -163,11 +197,13 @@ export class FakeAgentRuntimeFactory implements AgentRuntimeFactory {
   }
 
   create(agent: AgentNode, communication: AgentCommunication): FakeAgentRuntime {
-    const runtime = new FakeAgentRuntime(
+    const options = this.options[agent.name];
+    const Runtime = options?.terminal ? FakeTerminalRuntime : FakeAgentRuntime;
+    const runtime = new Runtime(
       agent.name,
       this.scripts[agent.name] ?? (() => undefined),
       communication,
-      this.options[agent.name],
+      options,
     );
     this.created.push(runtime);
     return runtime;

@@ -36,8 +36,12 @@ Para um novo `kind`: criar a fábrica (`ToolFactory<K>`) e registrá-la em `defa
 
 - **Segredos**: `{{secret:NOME}}` é resolvido em url, headers e corpo (HTTP) e no `env` (MCP stdio).
   O corpo vem do agente, então só pode usar segredos que o próprio bloco já referencia na url/headers.
-  Os valores são removidos de respostas e erros e nunca entram em `inputSummary` (que também oculta
-  chaves como `token`, `password`, `authorization`).
+  Os valores são removidos de respostas e erros e nunca entram em `inputSummary`. O resumo sai da
+  entrada que o agente mandou, que só _nomeia_ o segredo: `{{secret:API_KEY}}` aparece como está, só o
+  nome. Chaves como `token`, `password`, `authorization` viram `[oculto]`, cada texto é cortado em 100
+  caracteres, listas em 10 itens e o resumo inteiro em 300. Como segunda trava, os valores que a chamada
+  resolveu são removidos do resumo mesmo que o agente os tenha escrito por extenso. O servidor grava o
+  resumo como `ToolCalled` (`communication.reportToolCall(record)`).
 - **Ambiente**: o pacote não lê `process.env`; config e segredos chegam por parâmetro e pelo
   `SecretResolver`. O processo MCP stdio recebe só o `env` do `ToolNode` (com `{{secret:NOME}}`
   resolvido) mais as variáveis mínimas de sistema que o SDK herda por conta própria: no Windows

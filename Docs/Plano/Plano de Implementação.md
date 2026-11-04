@@ -334,7 +334,7 @@ nada de azul.
 **Pronto quando:** rodar o `mixed.json` com modelos reais e acompanhar tudo pela tela, inclusive
 digitar no terminal do Claude Code.
 
-Dividida em duas partes. **T14a (feita): dados ao vivo**, sem canvas, em `apps/web/src/live/`
+Dividida em três partes. **T14a (feita): dados ao vivo**, sem canvas, em `apps/web/src/live/`
 (contrato em `live/README.md`):
 
 - Cliente do `/ws` na mesma origem (proxy `ws: true` no Vite). O histórico vem do próprio
@@ -346,11 +346,57 @@ Dividida em duas partes. **T14a (feita): dados ao vivo**, sem canvas, em `apps/w
 - `useRunLive(runId)` e a tela `/runs/:id` sem polling: status, agentes, custo, mensagens,
   guardas, Parar e mensagem como `@human`.
 
-**T14b (falta):** desenhar sobre o canvas da T12 o estado de cada agente e o pulso âmbar nas
-setas (consumindo `state.agents` e `state.pulses`), o painel do agente com xterm.js
-(`state.terminals`) e a linha do tempo de ferramentas. Dependem de mudanças na API: um evento
-de chamada de ferramenta, um evento de estado do agente (hoje deduzido do log) e uma forma de
-digitar no terminal pelo `/ws` ou por HTTP.
+**T14b (feita, 2026-11-04): eventos de estado, ferramenta e terminal no servidor.** As quatro
+lacunas que a T14a apontou; detalhes e formatos em `apps/server/README.md` (seção "WebSocket").
+Decisões:
+
+- **`AgentStateChanged { agent, state, reason? }`** no log, com `state` em
+  `starting | busy | idle | waiting_reply | failed | finished`. O runtime diz se o agente trabalha
+  (PTY: `UserPromptSubmit` = `busy`, `Stop` = `idle`; stream-json: entrega e `result`); o **Hub**
+  conta os `ask` abertos de cada agente (`Hub.openAsksOf`) e `waiting_reply` dura enquanto houver
+  algum, então com dois abertos a primeira resposta não volta a `busy`; o Supervisor escreve
+  `starting` (na mesma transação de `AgentStarted`), `failed` (com o motivo, junto de `AgentFailed`)
+  e `finished` (ao parar a execução, antes de `RunFinished`). Só grava quando o estado muda, em
+  fila por agente para manter a ordem. O estado vem do **servidor** e não do que o runtime diz de
+  `waiting_reply`, então vale igual para qualquer runtime (o de API da T07 também). No perfil
+  `hybrid` o estado do runtime já chegava pelo `agent.state`: nada novo no protocolo para isso.
+- **`ToolCalled { tool, inputSummary, durationMs, ok, errorCode }`** gravado por
+  `Hub.reportToolCall`, alcançado por `AgentCommunication.reportToolCall` (contrato novo em
+  `@neurons/agent-runtimes`, `ToolCallReport`, estruturalmente igual ao `ToolCallRecord` de
+  `@neurons/tools`) e, no runner, pelo `call` `report_tool_call`. O resumo nunca leva segredo: o
+  `{{secret:NOME}}` do que o agente mandou aparece só como o nome, chaves sensíveis viram
+  `[oculto]`, textos e o resumo são cortados, e os valores que a chamada resolveu são removidos
+  como segunda trava (testado explicitamente). **Falta ligar quem chama:** nenhum runtime usa
+  ferramentas de `@neurons/tools` hoje (o runtime de API é a T07 e a configuração MCP da sessão
+  de terminal é da T09); as ferramentas do Hub continuam aparecendo como mensagens e como o fim,
+  e as ferramentas embutidas do Claude Code (Bash, Read...) não são reportadas.
+- **`terminal.input { runId, agent, data }` no `/ws`**, nos perfis `local` e `hybrid` (neste, o
+  `agent.input` que já existia no protocolo). Valida: execução em andamento, agente do grafo,
+  terminal PTY, terminal já aberto; limita o tamanho (`NEURONS_TERMINAL_INPUT_MAX_CHARS`, 4096) e
+  a taxa por conexão (`NEURONS_TERMINAL_INPUT_PER_SEC`, 100); recusa com `error { code, message }`
+  e não responde quando aceita. **O texto digitado não é guardado** (nem em log, nem em evento,
+  nem na mensagem de erro); também não há evento "alguém digitou" (uma tecla por mensagem encheria
+  o log). Sem conexão com o runner, recusa com `terminal_unavailable` em vez de perder a tecla em
+  silêncio.
+- **Protocolo do runner: revisão 2 dentro da versão 1** (`PROTOCOL_REVISION`). Só o `call`
+  `report_tool_call` é novo; cada ponta anuncia a sua revisão no `register`/`registered` (campo
+  opcional, ausente = 1) e só usa o recurso novo quando a outra o tem. Servidor antigo + runner
+  novo e o contrário continuam funcionando.
+- **Saída do terminal na reconexão: o resumo (`replay: true`, ~200 mil caracteres por terminal)
+  basta para o xterm.js** e ficou como está: a TUI repinta a tela, e o resumo inclui o que passou
+  durante a queda. Só uniformizei o runner remoto para guardar chunks inteiros (como o local),
+  em vez de cortar a string no meio. Gravar a saída no log foi descartado (centenas de KB por
+  minuto). Lacuna conhecida: no `hybrid`, o que o runner imprime com a conexão runner ↔ servidor
+  caída não chega ao servidor.
+- **Demo** (`pnpm --filter @neurons/server demo`, nos dois perfis) agora mostra os eventos novos
+  e digita no terminal do Pesquisador pelo `/ws` (e confere a recusa `not_a_terminal` no
+  Revisor). Sem rodada com o Claude Code real (cota).
+
+**T14c (falta):** no web, desenhar sobre o canvas da T12 o estado de cada agente (consumindo
+`AgentStateChanged`, que substitui a dedução do `reduceRunEvent`) e o pulso âmbar nas setas
+(`state.pulses`), o painel do agente com xterm.js (`state.terminals`, trocando o conteúdo pelo
+resumo `replay`, e `terminal.input` para digitar), e a linha do tempo de mensagens e ferramentas
+(`ToolCalled`). Atualizar o `live/README.md` e o reducer para os eventos novos.
 
 ### T15 — Histórico e replay
 

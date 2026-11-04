@@ -8,6 +8,10 @@
  *   pnpm --filter @neurons/server demo -- --profile=hybrid  the same run, with the agents in a runner
  *                                          that is another process and connects by WebSocket
  *
+ * While "Pesquisador" works, the demo also types into its terminal over the WebSocket
+ * (`terminal.input`) and tries the same on "Revisor", which has no terminal to type into: the
+ * answer must be `error { code: "not_a_terminal" }`.
+ *
  * Both agents are terminals ("Pesquisador" asks "Revisor", who answers, then "Pesquisador" calls
  * `finish`). The fake CLI works on directive lines in the prompt (see
  * packages/agent-runtimes/test-fixtures/fake-claude.mjs), so the first message carries them. The
@@ -44,7 +48,7 @@ const RUN_TIMEOUT_MS = realClaude ? 8 * 60_000 : 90_000;
 /** What the first message says: directives for the fake CLI, a plain request for the real one. */
 const INPUT = realClaude
   ? "Tema: o que é um mutex? Faça o resumo de uma frase e valide com o Revisor."
-  : "!ask Revisor !reply certo\n!finish resumo validado: $last";
+  : "!sleep 1500\n!ask Revisor !reply certo\n!finish resumo validado: $last";
 
 const startedAt = Date.now();
 const log = (line: string) =>
@@ -60,6 +64,10 @@ function describeEvent(type: string, agent: string | null, payload: unknown): st
   switch (type) {
     case "MessageSent":
       return `${oneLine(data.from)} -> ${oneLine(data.to)} [${oneLine(data.kind)}] ${oneLine(data.body)}`;
+    case "AgentStateChanged":
+      return `${agent ?? "?"} -> ${oneLine(data.state)}${data.reason ? ` (${oneLine(data.reason)})` : ""}`;
+    case "ToolCalled":
+      return `${agent ?? "?"} usou ${oneLine(data.tool)} em ${oneLine(data.durationMs)} ms (${data.ok ? "ok" : `erro ${oneLine(data.errorCode)}`}): ${oneLine(data.inputSummary, 80)}`;
     case "UsageRecorded":
       return `${agent ?? "?"} gastou US$ ${data.costUsd === null ? "(custo desconhecido)" : oneLine(data.costUsd)}`;
     case "RunFinished":
@@ -84,6 +92,8 @@ function watch(port: number, runId: string, seen: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
     let terminalBytes = 0;
+    let typed = false;
+    const say = (event: string, data: unknown) => socket.send(JSON.stringify({ event, data }));
     const timer = setTimeout(() => {
       socket.close();
       reject(new Error(`A execução não terminou em ${RUN_TIMEOUT_MS / 1000} s.`));
@@ -99,11 +109,24 @@ function watch(port: number, runId: string, seen: string[]): Promise<void> {
         terminalBytes += message.data.data?.length ?? 0;
         return;
       }
-      if (message.event === "error") return reject(new Error(JSON.stringify(message.data)));
+      if (message.event === "error") {
+        // The one refusal this demo asks for; anything else is a real problem.
+        const code = (message.data as { code?: string }).code;
+        if (code !== "not_a_terminal") return reject(new Error(JSON.stringify(message.data)));
+        seen.push("error:not_a_terminal");
+        return log(`terminal.input recusado como esperado: ${JSON.stringify(message.data)}`);
+      }
       if (message.event !== "run.event") return;
       const { seq, type = "?", agent = null, payload } = message.data;
       seen.push(type);
       log(`#${String(seq).padStart(2)} ${type.padEnd(15)} ${describeEvent(type, agent, payload)}`);
+      const state = (payload as { state?: string } | undefined)?.state;
+      if (type === "AgentStateChanged" && agent === "Pesquisador" && state === "busy" && !typed) {
+        typed = true;
+        log("digitando no terminal do Pesquisador e no do Revisor (que não tem terminal)");
+        say("terminal.input", { runId, agent: "Pesquisador", data: "x" });
+        say("terminal.input", { runId, agent: "Revisor", data: "x" });
+      }
       if (type === "RunFinished") {
         clearTimeout(timer);
         log(`saída de terminal recebida pelo WebSocket: ${terminalBytes} caracteres`);
@@ -239,7 +262,9 @@ async function main(): Promise<number> {
       detail.data?.status === "succeeded" &&
       detail.data.finish?.reason === "finished" &&
       seen.includes("MessageSent") &&
-      seen.includes("MessageDelivered");
+      seen.includes("MessageDelivered") &&
+      seen.includes("AgentStateChanged") &&
+      (realClaude || seen.includes("error:not_a_terminal"));
     log(
       ok
         ? "OK: a execução terminou como o grafo promete."

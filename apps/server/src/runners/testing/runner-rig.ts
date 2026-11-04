@@ -13,7 +13,7 @@ import {
 } from "../../agents/testing/fake-agent-runtime.js";
 import type { AppConfig } from "../../shared/config/app-config.js";
 import { testConfig } from "../../shared/config/testing/test-config.js";
-import { RemoteAgentRuntime } from "../remote-agent-runtime.js";
+import { RemoteAgentRuntime, RemoteTerminalRuntime } from "../remote-agent-runtime.js";
 import { RunnerRegistry } from "../runner-registry.js";
 
 export interface RunnerRigOptions {
@@ -50,11 +50,16 @@ export function createRunnerRig(options: RunnerRigOptions = {}) {
 
   /** What the Hub's Supervisor builds its agents with: every agent lives in the runner. */
   const factory: AgentRuntimeFactory = {
-    create: (agent: AgentNode, communication: AgentCommunication): AgentRuntime =>
-      new RemoteAgentRuntime(agent, communication, registry, {
+    create: (agent: AgentNode, communication: AgentCommunication): AgentRuntime => {
+      const remote = {
         settings: { askTimeoutMs: config.askTimeoutMs, usageFlushMs: 0 },
         stopWaitMs: options.stopWaitMs ?? 2_000,
-      }),
+      };
+      // Like the real factory: an agent with a screen gets the runtime that takes typed input.
+      return options.runtimeOptions?.[agent.name]?.terminal
+        ? new RemoteTerminalRuntime(agent, communication, registry, remote)
+        : new RemoteAgentRuntime(agent, communication, registry, remote);
+    },
   };
 
   return {

@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import type {
-  AgentCommunication,
-  AgentRuntime,
-  AgentRuntimeState,
-  InboundMessage,
-  TerminalAgentRuntime,
+import {
+  OutputBuffer,
+  type AgentCommunication,
+  type AgentRuntime,
+  type AgentRuntimeState,
+  type InboundMessage,
+  type TerminalAgentRuntime,
 } from "@neurons/agent-runtimes";
 import type { AgentNode } from "@neurons/graph-schema";
 import {
@@ -14,6 +15,7 @@ import {
   type RequestFrame,
   type StartSettings,
 } from "@neurons/runner-protocol";
+import { TerminalUnavailableError } from "../realtime/terminal-errors.js";
 import { settlesWithin } from "../shared/settles-within.js";
 import { Signal, type Unsubscribe } from "../shared/signal.js";
 
@@ -24,7 +26,8 @@ export interface RunnerEndpoint {
   unbind(instanceId: string): void;
   /** Sends the request and resolves when the runner answers it (repeating it after a reconnection). */
   request(build: (requestId: string) => RequestFrame, instanceId: string): Promise<void>;
-  sendInput(instanceId: string, data: string): void;
+  /** Whether the input was handed to a live connection (it is not queued: a keystroke has no later). */
+  sendInput(instanceId: string, data: string): boolean;
 }
 
 /** Where the runtimes find the runner that will host them. */
@@ -166,6 +169,9 @@ export class RemoteAgentRuntime implements AgentRuntime {
       case "report_usage":
         await hub.reportUsage(call.usage);
         return null;
+      case "report_tool_call":
+        await hub.reportToolCall(call.report);
+        return null;
     }
   }
 
@@ -209,16 +215,14 @@ export class RemoteAgentRuntime implements AgentRuntime {
   }
 }
 
-/** Bytes of terminal output kept for whoever opens the terminal after the session started. */
-const SNAPSHOT_CHARS = 200_000;
-
 /** A remote agent that has a terminal a person can watch and type into. */
 export class RemoteTerminalRuntime extends RemoteAgentRuntime implements TerminalAgentRuntime {
   private readonly outputs = new Signal<string>();
-  private tail = "";
+  /** The latest output, for whoever opens the terminal after the session started (or reconnects). */
+  private readonly tail = new OutputBuffer();
 
   override applyOutput(data: string): void {
-    this.tail = (this.tail + data).slice(-SNAPSHOT_CHARS);
+    this.tail.push(data);
     this.outputs.emit(data);
   }
 
@@ -227,11 +231,13 @@ export class RemoteTerminalRuntime extends RemoteAgentRuntime implements Termina
   }
 
   outputSnapshot(): string {
-    return this.tail;
+    return this.tail.snapshot();
   }
 
   writeInput(data: string): void {
-    this.endpoint?.sendInput(this.instanceId, data);
+    if (!this.endpoint?.sendInput(this.instanceId, data)) {
+      throw new TerminalUnavailableError(this.agent.name);
+    }
   }
 }
 

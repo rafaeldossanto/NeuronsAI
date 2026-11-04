@@ -7,6 +7,11 @@ import { type GuardLimits, guardEnvShape, resolveGuardLimits } from "./guard-con
 import { port, unlessEmpty } from "./env-schema.js";
 import { listenEnvShape, resolveListenHost } from "./listen-config.js";
 import {
+  type TerminalInputLimits,
+  resolveTerminalInputLimits,
+  terminalEnvShape,
+} from "./terminal-config.js";
+import {
   type Profile,
   type RunnerLimits,
   resolveRunnerLimits,
@@ -18,6 +23,7 @@ export { DATABASE_KINDS } from "./database-config.js";
 export type { GuardLimits } from "./guard-config.js";
 export { PROFILES } from "./runner-config.js";
 export type { Profile, RunnerLimits } from "./runner-config.js";
+export type { TerminalInputLimits } from "./terminal-config.js";
 export type { DatabaseConfig, DatabaseKind, PostgresConnection } from "./database-config.js";
 
 export const APP_MODES = ["api", "worker", "all"] as const;
@@ -31,6 +37,8 @@ export interface AppConfig {
   /** How long an agent's `ask` waits for the answer before failing. */
   askTimeoutMs: number;
   guards: GuardLimits;
+  /** Size and rate limits of what is typed into an agent's terminal. */
+  terminalInput: TerminalInputLimits;
   /** Where the agents run (see {@link Profile}). */
   profile: Profile;
   runners: RunnerLimits;
@@ -65,6 +73,7 @@ const envSchema = z.object({
   NEURONS_DATA_DIR: unlessEmpty(z.string().trim().min(1).optional()),
   ...databaseEnvShape,
   ...guardEnvShape,
+  ...terminalEnvShape,
   ...runnerEnvShape,
   NEURONS_CLAUDE_BIN: unlessEmpty(z.string().trim().min(1).optional()),
   NEURONS_MASTER_KEY: unlessEmpty(
@@ -101,6 +110,7 @@ export function loadConfig(
     port: values.NEURONS_PORT,
     askTimeoutMs: values.NEURONS_ASK_TIMEOUT_SEC * 1000,
     guards: resolveGuardLimits(values),
+    terminalInput: resolveTerminalInputLimits(values),
     profile: values.NEURONS_PROFILE,
     runners: resolveRunnerLimits(values),
     usageFlushMs: values.NEURONS_USAGE_FLUSH_MS,

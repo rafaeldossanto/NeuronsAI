@@ -1,4 +1,6 @@
 import { Logger } from "@nestjs/common";
+import type { FakeTerminalRuntime } from "../agents/testing/fake-agent-runtime.js";
+import { TerminalUnavailableError } from "../realtime/terminal-errors.js";
 import { PROTOCOL_VERSION, createMemoryChannelPair } from "@neurons/runner-protocol";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { HUMAN } from "../hub/addresses.js";
@@ -367,5 +369,125 @@ describe("the link to a runner", () => {
     const closed = new Promise<number>((resolve) => runner.onClose((info) => resolve(info.code)));
 
     await expect(closed).resolves.toBe(4408);
+  });
+});
+
+describe("what the dashboard shows, through the protocol", () => {
+  const statesOf = (runId: string, agent: string): string[] =>
+    persistence.runLog
+      .eventsOf(runId, "AgentStateChanged")
+      .filter((event) => event.agent === agent)
+      .map((event) => (event.payload as { state: string }).state);
+
+  it("writes ToolCalled for a tool the agent used in the runner, with the summary it sent", async () => {
+    const wiring = start({
+      scripts: {
+        Beta: (turn) =>
+          turn.toolCall({
+            tool: "consulta_crm",
+            inputSummary: '{"token":"[oculto]","id":"{{secret:CRM}}"}',
+            durationMs: 31,
+            ok: false,
+            errorCode: "HTTP_ERROR",
+          }),
+      },
+    });
+    const runId = await wiring.openRun();
+
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+
+    await eventually(() =>
+      expect(persistence.runLog.eventsOf(runId, "ToolCalled")).toMatchObject([
+        {
+          agent: "Beta",
+          payload: {
+            tool: "consulta_crm",
+            inputSummary: '{"token":"[oculto]","id":"{{secret:CRM}}"}',
+            durationMs: 31,
+            ok: false,
+            errorCode: "HTTP_ERROR",
+          },
+        },
+      ]),
+    );
+  });
+
+  it("writes the states the runner reports, once each, and finished when the run stops", async () => {
+    const wiring = start({ scripts: { Beta: (turn) => turn.work(20) } });
+    const runId = await wiring.openRun();
+
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+    await eventually(() =>
+      expect(statesOf(runId, "Beta")).toEqual(["starting", "idle", "busy", "idle"]),
+    );
+    await wiring.supervisor.stopRun(runId);
+
+    expect(statesOf(runId, "Beta")).toEqual(["starting", "idle", "busy", "idle", "finished"]);
+  });
+
+  it("tells waiting_reply for an ask made from the runner, and busy again once it is answered", async () => {
+    const wiring = start({
+      scripts: {
+        Alfa: async (turn) => void (await turn.ask("Beta", "tudo bem?")),
+        Beta: async (turn) => {
+          await turn.work(40);
+          await turn.reply("sim");
+        },
+      },
+    });
+    const runId = await wiring.openRun();
+
+    await wiring.hub.send(runId, HUMAN, "Alfa", "message", "comece");
+
+    await eventually(() =>
+      expect(statesOf(runId, "Alfa")).toEqual([
+        "starting",
+        "idle",
+        "busy",
+        "waiting_reply",
+        "busy",
+        "idle",
+      ]),
+    );
+  });
+
+  it("keeps the latest terminal output of an agent in the runner for a client that connects late, never cutting a chunk", async () => {
+    const wiring = start({ runtimeOptions: { Beta: { terminal: true } } });
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+    await eventually(() => expect(received("Beta")).toEqual(["oi"]));
+    const terminal = rig.fakes.runtimeOf("Beta") as FakeTerminalRuntime;
+    const session = (): string => {
+      const seen: string[] = [];
+      wiring.terminals.replayTo(
+        { send: () => undefined, sendEphemeral: (event) => void seen.push(event.data) },
+        runId,
+      );
+      return seen.join("");
+    };
+
+    terminal.print("a".repeat(100_000));
+    terminal.print("b".repeat(100_000));
+    terminal.print("c".repeat(100_000));
+
+    await eventually(() => expect(session()).toBe("b".repeat(100_000) + "c".repeat(100_000)));
+  });
+
+  it("types into the terminal of an agent in the runner, and says so when the connection is down", async () => {
+    const wiring = start({ runtimeOptions: { Beta: { terminal: true } } });
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+    await eventually(() => expect(received("Beta")).toEqual(["oi"]));
+    const terminal = rig.fakes.runtimeOf("Beta") as FakeTerminalRuntime;
+
+    wiring.terminals.writeInput(runId, "Beta", "ls\r");
+    await eventually(() => expect(terminal.typed).toEqual(["ls\r"]));
+
+    rig.sever();
+    await eventually(() => expect(rig.link?.connected).toBe(false));
+    expect(() => wiring.terminals.writeInput(runId, "Beta", "perdido")).toThrow(
+      TerminalUnavailableError,
+    );
+    expect(terminal.typed).toEqual(["ls\r"]);
   });
 });

@@ -1,4 +1,5 @@
 import type { AgentPeers } from "@neurons/graph-schema";
+import type { ToolCallReport } from "./tool-call.js";
 import type { AgentUsage } from "./usage.js";
 
 /**
@@ -23,4 +24,7 @@ export interface AgentCommunication {
 
   /** Records what a turn consumed (only runtimes that learn it call this). */
   reportUsage(usage: AgentUsage): Promise<void>;
+
+  /** Records that the agent called a tool (not one of these): it enters the run log as `ToolCalled`. */
+  reportToolCall(report: ToolCallReport): Promise<void>;
 }

@@ -13,6 +13,7 @@ const defaults = {
   host: "127.0.0.1",
   port: 3100,
   guards: { runMaxMessages: 200, pingPongMessages: 20 },
+  terminalInput: { maxChars: 4_096, maxPerSecond: 100 },
   profile: "local",
   runners: { graceMs: 60_000, heartbeatMs: 15_000, waitMs: 30_000 },
   usageFlushMs: 4_000,
@@ -38,6 +39,16 @@ describe("loadConfig", () => {
     });
 
     expect(config).toEqual(defaults);
+  });
+
+  it("reads the limits of what is typed into a terminal", () => {
+    const config = loadConfig({
+      NEURONS_TERMINAL_INPUT_MAX_CHARS: "512",
+      NEURONS_TERMINAL_INPUT_PER_SEC: "30",
+    });
+
+    expect(config.terminalInput).toEqual({ maxChars: 512, maxPerSecond: 30 });
+    expect(() => loadConfig({ NEURONS_TERMINAL_INPUT_MAX_CHARS: "0" })).toThrow(ConfigError);
   });
 
   it("reads the profile and the runner timings", () => {
