@@ -2,7 +2,7 @@
 
 Interface do NeuronsAI: Vite 8, React 19, Tailwind 4 (componentes no estilo shadcn/ui), TanStack Query e `react-router`. Consome a API real pelo [`@neurons/api-client`](../../packages/api-client/README.md).
 
-Telas: **Grafos** (`/graphs`: listar e criar), **Editor** (`/graphs/:id`: canvas, inspetor, validação ao vivo, salvar rascunho, publicar versão e versões publicadas) e **Execuções** (`/runs` e `/runs/:id`: status, consumo e eventos).
+Telas: **Grafos** (`/graphs`: listar e criar), **Editor** (`/graphs/:id`: canvas, inspetor, validação ao vivo, salvar rascunho, publicar versão e versões publicadas) e **Execuções** (`/runs` e `/runs/:id`: ao vivo pelo `/ws`, com status, agentes, custo, mensagens, botão Parar e envio de mensagem como `@human`).
 
 ## Rodar
 
@@ -20,7 +20,7 @@ pnpm --filter @neurons/server dev   # API em http://127.0.0.1:3100 (banco embuti
 pnpm --filter @neurons/web dev      # app em http://127.0.0.1:5173
 ```
 
-O Vite encaminha `/api/*` para o servidor (o prefixo é removido), então o navegador só fala com uma origem. Variáveis (todas opcionais):
+O Vite encaminha `/api/*` para o servidor (o prefixo é removido) e `/ws` (WebSocket, sem prefixo) como está, então o navegador só fala com uma origem. Variáveis (todas opcionais):
 
 | Variável             | Onde            | Padrão                  | Para quê                                                  |
 | -------------------- | --------------- | ----------------------- | --------------------------------------------------------- |
@@ -58,6 +58,7 @@ src/
   config.ts          única leitura de import.meta.env
   styles.css         tokens (cores, fonte, raios) no formato de variáveis do shadcn/ui
   lib/               api (cliente, ApiError, unwrap), queries (TanStack Query), format
+  live/              dados ao vivo de uma execução: cliente do /ws, reducer puro e useRunLive (ver live/README.md)
   components/        layout, estados (carregando, erro, vazio) e ui/ (button, card, input, badge, skeleton)
   editor/            canvas e inspetor: model (reducer e histórico), issues, nodes, inspector, graph-editor
   routes/            uma página por tela, com seus testes
