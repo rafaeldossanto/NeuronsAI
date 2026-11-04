@@ -1,6 +1,6 @@
 # `src/live` — a execução ao vivo (T14a e T14c)
 
-Os dados ao vivo de uma execução (cliente do `/ws`, reducer puro, hook) e, por cima deles, o que a tela `/runs/:id` desenha: estado nos blocos, pulso nas setas, painel do agente e terminal. O reducer não tem canvas nem estilo; a T15b (replay) reaproveita o reducer e os componentes abaixo.
+Os dados ao vivo de uma execução (cliente do `/ws`, reducer puro, hook) e, por cima deles, o que a tela `/runs/:id` desenha: estado nos blocos, pulso nas setas, painel do agente e terminal. O reducer não tem canvas nem estilo; o replay (T15b) reaproveita o reducer e os componentes abaixo.
 
 ```ts
 import { useRunLive, reduceRunEvent, initialRunLiveState, selectActivity } from "@/live";
@@ -79,7 +79,11 @@ A tela `/runs/:id` (`routes/run-detail-page.tsx`) abre o **desenho da versão** 
 - **Linha do tempo** (`activity-list.tsx`): mensagens e chamadas de ferramenta/memória juntas, a mesma lista na tela (`selectActivity(state)`) e na conversa de cada agente (`selectActivity(state, nome)`). Uma ferramenta mostra operação, agente, caminho, duração e resultado, nunca o conteúdo de uma nota.
 - **CSP:** xterm.js usa só estilos inline (permitidos); `script-src` continua `'self'`, sem eval nem script inline.
 
-### Para o replay (T15b)
+### Replay (T15b)
+
+Implementado em `replay.ts` (puro), `use-run-events.ts` (carga paginada), `use-replay-player.ts` (cursor, tocar, velocidade) e `replay-controls.tsx`; o contrato acima não mudou. `buildReplay(events)` ordena por `seq`, tira duplicatas, calcula as esperas e guarda um snapshot do estado a cada 50 eventos; `stateAt(replay, n)` dá o estado depois de `n` eventos a partir do snapshot mais próximo; `pulsesBetween(replay, de, para)` dá o pulso do evento que um passo de um evento aplicou (voltar e saltos não têm pulso). Em vez de `useActivePulses` (que lembra o maior `seq` e por isso não repetiria um pulso ao voltar), o player mantém a própria lista, com a mesma duração (`PULSE_TTL_MS`) e teto de 12. Tempo: espera real entre eventos, no mínimo 150 ms e no máximo 2 s em 1×, dividida pela velocidade.
+
+A ideia geral:
 
 `reduceRunEvent` dobrado de `initialRunLiveState` até o `seq` do cursor dá o estado de qualquer instante. Dali saem `liveByNode` (em `run-detail-page.tsx`, estado do bloco), `pulsesByEdge` (passe os `pulses` do instante), `GraphViewer` e `ActivityList`/`selectActivity`. Para animar o replay, passe `isFresh` sempre verdadeiro a `useActivePulses`, ou monte direto o `Record<edgeId, EdgePulse[]>` do passo atual.
 
@@ -90,4 +94,4 @@ A tela `/runs/:id` (`routes/run-detail-page.tsx`) abre o **desenho da versão** 
 
 ## Testes
 
-`reduce-run-event.test.ts` (fixture em `fixtures/two-terminals-demo.json`, os eventos da demo `pnpm --filter @neurons/server demo` de **antes** da T14b, o que exercita a reserva; mais `AgentStateChanged`, linha do tempo e terminal), `run-live-client.test.ts` (reconexão, duplicatas, fora de ordem, buraco, `terminal.input`) com o `FakeSocket` de `fake-socket.ts`, `pulse-edges.test.ts` (sentido do pulso) e `editor/pulse-edge.test.tsx`. As telas: `routes/run-detail-page.test.tsx` e `routes/run-detail-live.test.tsx` (blocos, painel e terminal com um xterm de mentira) trocam o `WebSocket` global pelo mesmo falso. O React Flow não desenha setas no jsdom (não há layout), por isso o pulso é testado na seta e no mapeamento, não pela tela inteira.
+`replay.test.tsx` e `routes/run-detail-replay.test.tsx` (replay: estado, linha do tempo e pulso em cada posição, voltar, arrastar, tempo, paginação), `reduce-run-event.test.ts` (fixture em `fixtures/two-terminals-demo.json`, os eventos da demo `pnpm --filter @neurons/server demo` de **antes** da T14b, o que exercita a reserva; mais `AgentStateChanged`, linha do tempo e terminal), `run-live-client.test.ts` (reconexão, duplicatas, fora de ordem, buraco, `terminal.input`) com o `FakeSocket` de `fake-socket.ts`, `pulse-edges.test.ts` (sentido do pulso) e `editor/pulse-edge.test.tsx`. As telas: `routes/run-detail-page.test.tsx` e `routes/run-detail-live.test.tsx` (blocos, painel e terminal com um xterm de mentira) trocam o `WebSocket` global pelo mesmo falso. O React Flow não desenha setas no jsdom (não há layout), por isso o pulso é testado na seta e no mapeamento, não pela tela inteira.

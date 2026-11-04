@@ -23,6 +23,8 @@ interface Props {
   onSendInput: (agent: string, data: string) => boolean;
   onClearInputError: () => void;
   onClose: () => void;
+  /** In the replay the log has no terminal output, so the terminal is replaced by a notice. */
+  replay?: boolean;
 }
 
 /**
@@ -38,6 +40,7 @@ export function AgentPanel({
   onSendInput,
   onClearInputError,
   onClose,
+  replay = false,
 }: Props) {
   const agent = state.agents[name];
   const hasTerminal = node?.runtime.kind === "terminal" && node.runtime.mode === "pty";
@@ -76,7 +79,13 @@ export function AgentPanel({
       </header>
       {agent?.failure && <p className="text-sm text-destructive">Falhou: {agent.failure}</p>}
 
-      {hasTerminal && (
+      {hasTerminal && replay && (
+        <p className="text-sm text-muted-foreground">
+          O terminal não é reproduzido no replay: a saída dele não fica no registro da execução. A
+          conversa abaixo é a que foi gravada.
+        </p>
+      )}
+      {hasTerminal && !replay && (
         <div className="flex flex-col gap-2">
           <h3 className="text-sm font-bold">Terminal</h3>
           {state.terminals[name] === undefined && (
