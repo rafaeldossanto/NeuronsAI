@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router";
 import { App } from "./app";
 import { createApi } from "./lib/api";
 import { SessionGate } from "./auth/session-gate";
+import { DesktopFrame } from "./components/desktop-frame";
 import "./styles.css";
 
 const root = document.getElementById("root");
@@ -13,9 +14,11 @@ const api = createApi();
 createRoot(root).render(
   <StrictMode>
     <BrowserRouter>
-      <SessionGate api={api}>
-        <App api={api} />
-      </SessionGate>
+      <DesktopFrame>
+        <SessionGate api={api}>
+          <App api={api} />
+        </SessionGate>
+      </DesktopFrame>
     </BrowserRouter>
   </StrictMode>,
 );

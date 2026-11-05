@@ -18,7 +18,14 @@ export function isAllowedRequest(url: string, serverOrigin: string): boolean {
   }
   if (LOCAL_SCHEMES.has(parsed.protocol)) return true;
   if (!NETWORK_SCHEMES.has(parsed.protocol)) return false;
-  return parsed.host === new URL(serverOrigin).host;
+  const server = new URL(serverOrigin);
+  const schemes = server.protocol === "https:" ? ["https:", "wss:"] : ["http:", "ws:"];
+  return (
+    !parsed.username &&
+    !parsed.password &&
+    parsed.host === server.host &&
+    schemes.includes(parsed.protocol)
+  );
 }
 
 /** Links that should open in the system browser: web pages only, never `file:` or app schemes. */

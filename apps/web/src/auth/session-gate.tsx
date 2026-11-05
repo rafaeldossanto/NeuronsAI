@@ -134,6 +134,10 @@ export function SessionGate({
     setBusy(true);
     setError("");
     try {
+      if (window.neuronsDesktop?.account) {
+        await window.neuronsDesktop.account.signIn();
+        return;
+      }
       const { authorizationUrl } = await unwrap(api.POST("/auth/google"));
       const url = new URL(authorizationUrl);
       if (url.origin !== "https://accounts.google.com")
@@ -214,9 +218,23 @@ export function SessionGate({
                 Tentar novamente
               </Button>
             ) : (
-              <Button variant="accent" onClick={() => void signIn()} disabled={busy}>
-                {busy ? "Abrindo login…" : "Entrar com Google"}
-              </Button>
+              <>
+                <Button variant="accent" onClick={() => void signIn()} disabled={busy}>
+                  {busy
+                    ? window.neuronsDesktop?.account
+                      ? "Conclua a entrada no navegador…"
+                      : "Abrindo login…"
+                    : "Entrar com Google"}
+                </Button>
+                {busy && window.neuronsDesktop?.account && (
+                  <Button
+                    variant="outline"
+                    onClick={() => void window.neuronsDesktop?.account?.cancelLogin()}
+                  >
+                    Cancelar entrada
+                  </Button>
+                )}
+              </>
             )}
           </>
         )}

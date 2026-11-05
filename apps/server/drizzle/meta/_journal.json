@@ -78,6 +78,13 @@
       "when": 1793882644979,
       "tag": "0010_runner_organizations",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793897072073,
+      "tag": "0011_desktop_login",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,7 @@ import { AuthController } from "./auth.controller.js";
 import { RequestScopeInterceptor } from "./request-scope.interceptor.js";
 import { APP_INTERCEPTOR } from "@nestjs/core";
 import { SocketAuthorization } from "./socket-authorization.js";
+import { DesktopLoginService } from "./desktop-login.service.js";
 
 /** Local remains account-free; configured servers authenticate every resource request. */
 @Module({
@@ -16,6 +17,7 @@ import { SocketAuthorization } from "./socket-authorization.js";
   providers: [
     AccountsService,
     AccountAuth,
+    DesktopLoginService,
     SocketAuthorization,
     { provide: APP_INTERCEPTOR, useClass: RequestScopeInterceptor },
     {

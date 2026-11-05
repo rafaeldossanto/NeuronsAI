@@ -182,7 +182,7 @@ export function NewProjectPage() {
                   Informe uma pasta absoluta no computador que executará os terminais. Ela será
                   aplicada aos agentes deste projeto.
                 </p>
-                {window.neuronsDesktop && (
+                {window.neuronsDesktop && window.neuronsDesktop.localResources !== false && (
                   <Button
                     type="button"
                     variant="outline"
