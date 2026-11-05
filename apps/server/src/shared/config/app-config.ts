@@ -5,6 +5,7 @@ import { type HostInfo, resolveDataDir } from "./data-dir.js";
 import { type DatabaseConfig, databaseEnvShape, resolveDatabase } from "./database-config.js";
 import { type GuardLimits, guardEnvShape, resolveGuardLimits } from "./guard-config.js";
 import { port, unlessEmpty } from "./env-schema.js";
+import { type QuotaLimits, quotaEnvShape, resolveQuotas } from "./quota-config.js";
 import { type HooksConfig, hooksEnvShape, resolveHooks } from "./hooks-config.js";
 import { listenEnvShape, resolveListenHost } from "./listen-config.js";
 import { type OutboundConfig, outboundEnvShape, resolveOutbound } from "./outbound-config.js";
@@ -24,6 +25,7 @@ import {
 export { ConfigError } from "./config-error.js";
 export { DATABASE_KINDS } from "./database-config.js";
 export type { GuardLimits } from "./guard-config.js";
+export type { QuotaLimits } from "./quota-config.js";
 export type { HooksConfig } from "./hooks-config.js";
 export { PROFILES } from "./runner-config.js";
 export type { OutboundConfig } from "./outbound-config.js";
@@ -57,6 +59,8 @@ export interface AppConfig {
   /** How long an agent's `ask` waits for the answer before failing. */
   askTimeoutMs: number;
   guards: GuardLimits;
+  /** Per-organization limits; they do not apply to the local workspace (no organization). */
+  quotas?: QuotaLimits;
   /** Size and rate limits of what is typed into an agent's terminal. */
   terminalInput: TerminalInputLimits;
   /** Where the agents run (see {@link Profile}). */
@@ -98,6 +102,7 @@ const envSchema = z.object({
   NEURONS_DATA_DIR: unlessEmpty(z.string().trim().min(1).optional()),
   ...databaseEnvShape,
   ...guardEnvShape,
+  ...quotaEnvShape,
   ...terminalEnvShape,
   ...runnerEnvShape,
   NEURONS_CLAUDE_BIN: unlessEmpty(z.string().trim().min(1).optional()),
@@ -159,6 +164,7 @@ export function loadConfig(
     ...(hooks && { hooks }),
     askTimeoutMs: values.NEURONS_ASK_TIMEOUT_SEC * 1000,
     guards: resolveGuardLimits(values),
+    quotas: resolveQuotas(values),
     terminalInput: resolveTerminalInputLimits(values),
     profile: values.NEURONS_PROFILE,
     runners: resolveRunnerLimits(values),

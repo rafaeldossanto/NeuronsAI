@@ -105,7 +105,11 @@ export const runListSchema = z.object({
   offset: z.number().int(),
 });
 export const messageListSchema = z.object({ items: z.array(messageSchema) });
-export const runEventListSchema = z.object({ items: z.array(runEventSchema) });
+export const runEventListSchema = z.object({
+  items: z.array(runEventSchema),
+  /** How many events the run has in all, whatever `fromSeq` and `limit` ask for. */
+  total: z.number().int(),
+});
 
 export const runParams = idParamsSchema;
 

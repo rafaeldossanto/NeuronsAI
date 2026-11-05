@@ -70,6 +70,12 @@ export class RunQueryService {
     return this.history.readFrom(runId, fromSeq, limit);
   }
 
+  /** How many events the run has in all (the answer for `total`). @throws RunNotFoundError */
+  async eventCount(runId: string): Promise<number> {
+    await this.require(runId);
+    return this.runs.countEvents(runId);
+  }
+
   /** @throws RunNotFoundError */
   async messagesOf(runId: string, afterSeq: number, limit: number): Promise<MessageRecord[]> {
     await this.require(runId);

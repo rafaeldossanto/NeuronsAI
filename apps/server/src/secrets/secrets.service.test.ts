@@ -87,3 +87,24 @@ describe("SecretsService", () => {
     await expect(withoutKey.get("token")).rejects.toBeInstanceOf(MasterKeyNotConfiguredError);
   });
 });
+
+describe("SecretsService.delete", () => {
+  it("removes a secret and says whether it existed", async () => {
+    const repository = new InMemorySecretRepository();
+    const service = new SecretsService(repository, new AesGcmSecretCipher(randomBytes(32)));
+    await service.set("token", "v");
+
+    expect(await service.delete("token")).toBe(true);
+    expect(await service.delete("token")).toBe(false);
+    await expect(service.get("token")).rejects.toBeInstanceOf(SecretNotFoundError);
+  });
+
+  it("refuses an invalid name", async () => {
+    const service = new SecretsService(
+      new InMemorySecretRepository(),
+      new AesGcmSecretCipher(randomBytes(32)),
+    );
+
+    await expect(service.delete("com espaço")).rejects.toBeInstanceOf(InvalidSecretNameError);
+  });
+});

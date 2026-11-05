@@ -17,6 +17,7 @@ const STATUS_BY_KIND: Record<DomainErrorKind, HttpStatus> = {
   invalid: HttpStatus.BAD_REQUEST,
   forbidden: HttpStatus.FORBIDDEN,
   conflict: HttpStatus.CONFLICT,
+  quota_exceeded: HttpStatus.TOO_MANY_REQUESTS,
   unavailable: HttpStatus.SERVICE_UNAVAILABLE,
   internal: HttpStatus.INTERNAL_SERVER_ERROR,
 };

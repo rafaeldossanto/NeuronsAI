@@ -28,7 +28,7 @@ export interface RunListItem extends RunSummaryRecord {
   unknownCostTurns: number;
 }
 
-export const RUN_SORTS = ["startedAt", "costUsd"] as const;
+export const RUN_SORTS = ["startedAt", "costUsd", "durationMs"] as const;
 export type RunSort = (typeof RUN_SORTS)[number];
 
 export interface RunListFilter {
@@ -41,7 +41,10 @@ export interface RunListFilter {
   /** Bounds on `startedAt`, inclusive; runs that never started never match when one is given. */
   from?: Date;
   to?: Date;
-  /** Defaults to `startedAt`. */
+  /**
+   * Defaults to `startedAt`. `durationMs` sorts by `finishedAt - startedAt`; runs without both
+   * (still going, never started) always come last, ascending or descending.
+   */
   sort?: RunSort;
   /** Defaults to `desc` (newest / dearest first). */
   order?: "asc" | "desc";
@@ -87,6 +90,15 @@ export interface RunRepository {
 
   /** The run as the listings show it. */
   findSummary(runId: string): Promise<RunSummaryRecord | undefined>;
+
+  /** How many events the run's log holds (a count over the primary key; 0 for an unknown run). */
+  countEvents(runId: string): Promise<number>;
+
+  /** Runs of the current organization (or the local workspace) that are `pending` or `running`. */
+  countActive(): Promise<number>;
+
+  /** Runs of the current organization (or the local workspace) that started at or after `since`. */
+  countStartedSince(since: Date): Promise<number>;
 
   listRunning(): Promise<ActiveRun[]>;
 

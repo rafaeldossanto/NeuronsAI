@@ -8,6 +8,7 @@ import { AuthController } from "./auth.controller.js";
 import { RequestScopeInterceptor } from "./request-scope.interceptor.js";
 import { APP_INTERCEPTOR } from "@nestjs/core";
 import { SocketAuthorization } from "./socket-authorization.js";
+import { LocalDataAdoption } from "./local-data-adoption.service.js";
 import { DesktopLoginService } from "./desktop-login.service.js";
 import { SIGNUP_POLICY, SignupPolicy } from "./signup-policy.js";
 import { APP_CONFIG } from "../shared/config/tokens.js";
@@ -25,6 +26,7 @@ import type { AppConfig } from "../shared/config/app-config.js";
         config.auth ? new SignupPolicy(config.auth.signup) : SignupPolicy.closed(),
     },
     AccountsService,
+    LocalDataAdoption,
     AccountAuth,
     DesktopLoginService,
     SocketAuthorization,

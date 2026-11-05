@@ -62,6 +62,39 @@ function accountApp(
 }
 
 describe("organizações e membros", () => {
+  it("o proprietário vê e confirma a mudança dos dados locais; o administrador não vê", async () => {
+    const user = userEvent.setup();
+    const summary = { graphs: 2, versions: 3, runs: 5, secrets: 1, triggers: 0, memories: 4 };
+    const { calls } = accountApp("/organizations", "owner", {
+      [`GET /auth/organizations/${orgId}/local-data`]: { body: summary },
+      [`POST /auth/organizations/${orgId}/adopt-local-data`]: { body: summary },
+    });
+
+    expect(
+      await screen.findByText(/2 grafos, 5 execuções, 1 segredo e 4 memórias/),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Mover dados locais para esta organização" }),
+    );
+    expect(screen.getByText(/Não dá para desfazer/)).toBeInTheDocument();
+    expect(calls.some((call) => call.path.includes("adopt-local-data"))).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Confirmar e mover" }));
+
+    expect(
+      await screen.findByText(/Dados locais movidos para Equipe principal/),
+    ).toBeInTheDocument();
+    const posted = calls.find(
+      (call) => call.path === `POST /auth/organizations/${orgId}/adopt-local-data`,
+    );
+    expect(posted?.body).toEqual({ confirm: true });
+  });
+
+  it("quem não é proprietário nem consulta os dados locais", async () => {
+    const { calls } = accountApp("/organizations", "admin");
+    await screen.findByText("Bruno");
+    expect(calls.some((call) => call.path.includes("local-data"))).toBe(false);
+  });
+
   it("mantém o modo local sem consultas ou navegação de conta", async () => {
     const { calls } = renderApp("/organizations", {});
     expect(await screen.findByText("Seu espaço local está pronto")).toBeInTheDocument();
