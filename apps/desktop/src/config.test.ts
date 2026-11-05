@@ -21,6 +21,19 @@ describe("loadDesktopConfig", () => {
     });
   });
 
+  it("reads the update switch and the AppImage marker", () => {
+    expect(
+      loadDesktopConfig({ NEURONS_DESKTOP_UPDATES: "off", APPIMAGE: "/x/NeuronsAI.AppImage" }),
+    ).toEqual({
+      updatesOff: true,
+      appImage: true,
+    });
+    expect(loadDesktopConfig({ NEURONS_DESKTOP_UPDATES: "on" })).toEqual({});
+    expect(() => loadDesktopConfig({ NEURONS_DESKTOP_UPDATES: "maybe" })).toThrow(
+      DesktopConfigError,
+    );
+  });
+
   it.each([
     [
       "arguments that are not JSON",

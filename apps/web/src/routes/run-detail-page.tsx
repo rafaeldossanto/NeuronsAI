@@ -1,11 +1,13 @@
 import type { GraphNode } from "@neurons/graph-schema";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router";
+import { Play } from "lucide-react";
+import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { Link, useParams, useSearchParams } from "react-router";
 import { GraphViewer } from "@/editor/graph-viewer";
 import type { BlockLive } from "@/editor/nodes";
 import { RunStatusBadge } from "@/components/run-status-badge";
 import { ErrorState, LoadingRows } from "@/components/states";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,10 +19,17 @@ import {
   useRunLive,
   type ConnectionState,
   type LivePulse,
+  type RunLiveFinish,
   type RunLiveState,
+  type RunLiveStatus,
 } from "@/live";
 import { ActivityList } from "@/live/activity-list";
 import { AgentPanel } from "@/live/agent-panel";
+import { buildReplay, type Replay } from "@/live/replay";
+import { ReplayControls } from "@/live/replay-controls";
+import type { TerminalInputError } from "@/live/terminal-errors";
+import { useReplayPlayer } from "@/live/use-replay-player";
+import { useRunEvents } from "@/live/use-run-events";
 import { pulsesByEdge, useActivePulses } from "@/live/pulse-edges";
 import { useRunDetail, useRunGraph, useSendHumanMessage, useStopRun } from "@/live/run-queries";
 
@@ -30,22 +39,62 @@ const costLabel = (usd: number | null) => (usd === null ? "custo desconhecido" :
 /** A message counts as "just happened" (worth a pulse) for this long after its timestamp. */
 const FRESH_MS = 8_000;
 
+type RunDetail = NonNullable<ReturnType<typeof useRunDetail>["data"]>;
+type GraphQuery = ReturnType<typeof useRunGraph>;
+
+const FINISHED = new Set(["succeeded", "failed", "cancelled"]);
+
 export function RunDetailPage() {
   const { id = "" } = useParams();
+  const [params, setParams] = useSearchParams();
   const detail = useRunDetail(id);
+  const graph = useRunGraph(detail.data?.graphId, detail.data?.graphVersionId);
+
+  if (detail.isPending) return <LoadingRows label="Carregando execução" rows={4} />;
+  if (detail.isError)
+    return <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />;
+
+  const finished = FINISHED.has(detail.data.status);
+  const replayWanted = params.get("replay") === "1";
+  const setReplay = (on: boolean) => setParams(on ? { replay: "1" } : {}, { replace: true });
+
+  return replayWanted && finished ? (
+    <ReplayRunView
+      key={id}
+      id={id}
+      data={detail.data}
+      graph={graph}
+      onLeave={() => setReplay(false)}
+    />
+  ) : (
+    <LiveRunView
+      key={id}
+      id={id}
+      data={detail.data}
+      graph={graph}
+      onReplay={finished ? () => setReplay(true) : undefined}
+      replayBlocked={replayWanted && !finished}
+    />
+  );
+}
+
+interface ViewProps {
+  id: string;
+  data: RunDetail;
+  graph: GraphQuery;
+}
+
+function LiveRunView({
+  id,
+  data,
+  graph,
+  onReplay,
+  replayBlocked,
+}: ViewProps & { onReplay: (() => void) | undefined; replayBlocked: boolean }) {
   const { state, connection, error, inputError, sendTerminalInput, clearInputError } =
     useRunLive(id);
-  const graph = useRunGraph(detail.data?.graphId, detail.data?.graphVersionId);
   const queryClient = useQueryClient();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const doc = graph.data;
-  const live = useMemo(
-    () => liveByNode(doc?.nodes ?? [], state.agents),
-    [doc?.nodes, state.agents],
-  );
   const moving = useActivePulses(state.pulses, (pulse) => isRecent(state, pulse));
-  const edgePulses = useMemo(() => (doc ? pulsesByEdge(doc, moving) : {}), [doc, moving]);
 
   // The final figures (and the dates) come from the server once, when the live state says it ended.
   const finishedSeq = state.finish?.seq;
@@ -53,14 +102,136 @@ export function RunDetailPage() {
     if (finishedSeq) void queryClient.invalidateQueries({ queryKey: ["runs", id] });
   }, [finishedSeq, id, queryClient]);
 
-  if (detail.isPending) return <LoadingRows label="Carregando execução" rows={4} />;
-  if (detail.isError)
-    return <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />;
-
-  const { data } = detail;
   const status = state.lastSeq > 0 ? state.status : data.status;
   const active = status === "pending" || status === "running";
-  const finish = state.finish ?? data.finish;
+
+  return (
+    <RunScreen
+      id={id}
+      data={data}
+      graph={graph}
+      state={state}
+      status={status}
+      finish={state.finish ?? data.finish}
+      movingPulses={moving}
+      terminal={{ inputError, sendTerminalInput, clearInputError }}
+      headerExtra={
+        <>
+          <ConnectionIndicator connection={connection} />
+          {active && <StopButton runId={id} />}
+          {!active && onReplay && (
+            <Button variant="outline" size="sm" className="ml-auto" onClick={onReplay}>
+              <Play className="size-4" aria-hidden /> Replay
+            </Button>
+          )}
+        </>
+      }
+      notice={
+        <>
+          {error && (
+            <p role="alert" className="mt-2 text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          {replayBlocked && (
+            <p role="status" className="mt-2 text-sm text-muted-foreground">
+              O replay só existe para execuções terminadas. Esta ainda está em andamento.
+            </p>
+          )}
+        </>
+      }
+    />
+  );
+}
+
+function ReplayRunView({ id, data, graph, onLeave }: ViewProps & { onLeave: () => void }) {
+  const events = useRunEvents(id, true);
+  const replay = useMemo(() => (events.data ? buildReplay(events.data) : null), [events.data]);
+  if (events.isError)
+    return <ErrorState error={events.error} onRetry={() => void events.refetch()} />;
+  if (!replay)
+    return (
+      <p role="status" className="text-sm text-muted-foreground">
+        Carregando os eventos da execução… {events.loaded} carregados
+      </p>
+    );
+  return <ReplayLoaded id={id} data={data} graph={graph} replay={replay} onLeave={onLeave} />;
+}
+
+function ReplayLoaded({
+  id,
+  data,
+  graph,
+  replay,
+  onLeave,
+}: ViewProps & { replay: Replay; onLeave: () => void }) {
+  const player = useReplayPlayer(replay);
+  const { state } = player;
+  return (
+    <RunScreen
+      id={id}
+      data={data}
+      graph={graph}
+      state={state}
+      status={state.lastSeq > 0 ? state.status : "pending"}
+      finish={state.finish}
+      movingPulses={player.pulses}
+      replay
+      headerExtra={
+        <Button variant="outline" size="sm" className="ml-auto" onClick={onLeave}>
+          Sair do replay
+        </Button>
+      }
+      controls={<ReplayControls player={player} replay={replay} />}
+    />
+  );
+}
+
+interface ScreenProps extends ViewProps {
+  state: RunLiveState;
+  status: RunLiveStatus;
+  finish: RunLiveFinish | RunDetail["finish"];
+  /** Pulses to animate right now. */
+  movingPulses: readonly LivePulse[];
+  headerExtra?: ReactNode;
+  notice?: ReactNode;
+  /** Replay controls, shown above the drawing. */
+  controls?: ReactNode;
+  /** True in the replay: the log has no terminal output, so the terminal is not drawn. */
+  replay?: boolean;
+  /** Typing into the agent's terminal; absent in the replay. */
+  terminal?: {
+    inputError: TerminalInputError | null;
+    sendTerminalInput: (agent: string, data: string) => boolean;
+    clearInputError: () => void;
+  };
+}
+
+function RunScreen({
+  data,
+  graph,
+  state,
+  status,
+  finish,
+  movingPulses,
+  headerExtra,
+  notice,
+  controls,
+  replay = false,
+  terminal,
+}: ScreenProps) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const doc = graph.data;
+  const live = useMemo(
+    () => liveByNode(doc?.nodes ?? [], state.agents),
+    [doc?.nodes, state.agents],
+  );
+  const edgePulses = useMemo(
+    () => (doc ? pulsesByEdge(doc, movingPulses) : {}),
+    [doc, movingPulses],
+  );
+
+  const active = !replay && (status === "pending" || status === "running");
   const agents = Object.values(state.agents);
   const timeline = selectActivity(state);
   const selectedNode = doc?.nodes.filter(isAgent).find((n) => n.id === selectedId);
@@ -77,8 +248,8 @@ export function RunDetailPage() {
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h1 className="font-mono text-xl font-bold">{data.id}</h1>
           <RunStatusBadge status={status} />
-          <ConnectionIndicator connection={connection} />
-          {active && <StopButton runId={id} />}
+          {replay && <Badge variant="default">Replay</Badge>}
+          {headerExtra}
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Início {formatDateTime(data.startedAt)} · fim {formatDateTime(data.finishedAt)} ·{" "}
@@ -86,14 +257,11 @@ export function RunDetailPage() {
             ver grafo
           </Link>
         </p>
-        {error && (
-          <p role="alert" className="mt-2 text-sm text-destructive">
-            {error}
-          </p>
-        )}
+        {notice}
       </div>
 
       <section aria-label="Execução no desenho" className="flex flex-col gap-4">
+        {controls}
         <div className="h-[420px] overflow-hidden rounded-lg border bg-background">
           {doc ? (
             <GraphViewer
@@ -118,9 +286,10 @@ export function RunDetailPage() {
             node={selectedNode}
             state={state}
             runActive={active}
-            inputError={inputError}
-            onSendInput={sendTerminalInput}
-            onClearInputError={clearInputError}
+            inputError={terminal?.inputError ?? null}
+            onSendInput={terminal?.sendTerminalInput ?? (() => false)}
+            onClearInputError={terminal?.clearInputError ?? (() => undefined)}
+            replay={replay}
             onClose={() => setSelectedId(null)}
           />
         )}
@@ -171,7 +340,7 @@ export function RunDetailPage() {
         </Card>
       </div>
 
-      {active && <SendMessageForm runId={id} agents={agents.map((a) => a.name)} />}
+      {active && <SendMessageForm runId={data.id} agents={agents.map((a) => a.name)} />}
 
       {state.guardEvents.length > 0 && (
         <section aria-label="Guardas">
@@ -192,7 +361,10 @@ export function RunDetailPage() {
 
       <section aria-label="Linha do tempo">
         <h2 className="mb-3 text-lg font-bold">Linha do tempo</h2>
-        <ActivityList items={timeline} empty="Nenhuma mensagem ainda" />
+        <ActivityList
+          items={timeline}
+          empty={replay ? "Nenhuma mensagem até aqui" : "Nenhuma mensagem ainda"}
+        />
       </section>
     </div>
   );

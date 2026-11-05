@@ -57,6 +57,21 @@ const graphRoutes = {
 const last = <T,>(items: T[]) => items[items.length - 1]!;
 
 describe("execuções", () => {
+  it("só as execuções terminadas têm o botão Replay, que abre /runs/:id?replay=1", async () => {
+    const running = {
+      ...item,
+      id: "0b5c7f1e-3a42-4d6b-8e21-9c4d7a6b5e31",
+      status: "running" as const,
+    };
+    const { route } = runsRoute(() => page([item, running]));
+    renderApp("/runs", { ...graphRoutes, "GET /runs": route });
+    const link = await screen.findByRole("link", {
+      name: `Replay da execução ${runId.slice(0, 8)}`,
+    });
+    expect(link).toHaveAttribute("href", `/runs/${runId}?replay=1`);
+    expect(screen.getAllByRole("link", { name: /^Replay da execução/ })).toHaveLength(1);
+  });
+
   it("lista as execuções com grafo, versão, status, datas, duração e custo", async () => {
     const { route } = runsRoute(() => page([item]));
     renderApp("/runs", { ...graphRoutes, "GET /runs": route });

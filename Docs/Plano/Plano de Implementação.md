@@ -31,15 +31,15 @@ A branch `codex/modeler-connections-memories` foi revisada (achados em [[Interfa
 - **T07 · Runtime de API: parcial.** Feito: `ApiRuntime` em `apps/server/src/agents/api-runtime.ts`, com OpenAI (Responses API) e Anthropic pelos SDKs oficiais; ferramentas `send_message`, `ask`, `reply`, `list_peers`, `finish` mais `list_tools` e `use_tool` (as ferramentas ligadas por `uses`); retentativas com espera crescente feitas pelo SDK; uso gravado em tokens; custo desconhecido (`reportsCost = false`, nunca 0); chave escolhida por nome em `runtime.secretName`. Falta: `ModelProvider`/`ProviderRegistry`/`OpenAICompatibleProvider`; tabela de preços versionada e `UsageCalculator` em US$ (é ela que faz a guarda de custo valer para agentes de API); tradução do esforço por modelo (hoje envia sempre); rodada real do `two-agents.json`/`mixed.json` (só há testes com cliente simulado).
 - **T09 · Ferramentas: quase feita.** Feito: Obsidian com `create` e `edit` (sem exclusão), permissão do bloco **e** da ligação, memória por `memoryId` ou `vaultPath`; `list_tools`/`use_tool` no MCP do agente de terminal, no runner (protocolo revisão 3) e no agente de API; cada chamada grava `ToolCalled` (só `nodeId` e `path`). Falta: o teste manual com o cofre do Rafael; ToolCalled para as ferramentas embutidas do Claude Code (Bash, Read...), que não são reportadas; conferir na prática que MCP e HTTP também passam por `use_tool`.
 - **T14c · Estados e terminal no web: feita (2026-11-04).** Ver "T14 — Execução ao vivo"; a seção "Memórias e ferramentas" virou a linha do tempo única.
-- **T15 · Histórico e replay: T15a feita, T15b não iniciada.** A lista com filtros está pronta (ver a T15). Replay no canvas não existe (o reducer puro e idempotente por `seq` serve de base) e pode vir agora que a T14c está pronta.
+- **T15 · Histórico e replay: feita (T15a e T15b, 2026-11-04).** Lista com filtros e replay no canvas (ver a T15).
 - **T17 · Templates: não iniciada.** Existe a tela "novo projeto" (`new-project-page.tsx`, projeto sem nome e importação de memória), mas sem escolha de template.
 - **T18 · Landing: parcial.** Feito: `apps/site` com a landing real, build pelo Vite, CTA "Criar meu projeto" abrindo `/new` e servida em `/` pelo servidor com `NEURONS_LANDING_DIR`. Falta: publicar no domínio, lista de espera com destino, botões de download por sistema, servir com CSP, e trocar os formulários de demonstração por funcionais.
 - **Novo no desktop e no servidor:** moldura própria da janela com preload/IPC, chave mestra por `safeStorage`, rotas `/connections` e `/memories`, acesso à IA por agente (assinatura do Claude Code ou chave de API).
 
 ## Ordem de execução
 
-- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T12, T14, T19, T20, T21, T24.
-- Próxima: T22. Depois: T13–T15 → T25 → T16–T18.
+- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T12, T14, T19, T20, T21, T22, T24.
+- Próxima: T13–T15 → T25 → T16–T18.
 - **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16) sai por túnel.
 
 **Paralelismo possível:** T04 e T05 em paralelo com T02–T03. A Fase 2 pode começar assim que
@@ -447,7 +447,13 @@ Decisões:
 Dividida em duas:
 
 - **T15a · Lista de execuções com filtros: feita.** `GET /runs` filtra por `status`, `graphId`, `graphVersionId`, faixa de custo (`minCostUsd`/`maxCostUsd`, sobre o custo conhecido) e início (`from`/`to`), ordena (`sort`/`order`) e pagina por `offset` (`{ items, total, limit, offset }`); cada item traz grafo, versão, status, datas, `durationMs`, `costUsd` e `unknownCostTurns`, com o custo agregado do log em uma consulta (sem N+1) e índices na migration `0004`. Custo desconhecido nunca vira 0 e o filtro compara a parte conhecida (detalhes no README do servidor). A tela `/runs` tem a barra de filtros, a tabela, a paginação e o estado vazio, com tudo no endereço.
-- **T15b · Replay no canvas: falta (depois da T14c).** Replay das mensagens de uma execução terminada no canvas, com controle de velocidade, reaproveitando o `reduceRunEvent`. Pode ganhar um botão "Replay" na linha da tabela e a ordenação por duração, se quiserem.
+- **T15b · Replay no canvas: feita (2026-11-04).** `/runs/:id?replay=1` (só para execução terminada; a lista `/runs` ganhou o botão "Replay"). Mesmo `GraphViewer`, sem `/ws`. Decisões:
+  - **Carga:** `GET /runs/{id}/events` em páginas de 1000 por `fromSeq` até uma página curta, com contador de eventos carregados.
+  - **Estado:** `reduceRunEvent` dobrado até o cursor; **ponto de controle (snapshot) a cada 50 eventos**, então arrastar a barra dobra no máximo 49 eventos.
+  - **Tempo:** horários reais dos eventos ÷ velocidade (0,5× a 8×); **esperas acima de 2 s em 1× viram 2 s** e há piso de 150 ms. A tela diz isso (trechos encurtados, duração do replay contra a real).
+  - **Pulsos:** só um passo para frente (um evento) desenha o pulso, na seta e no sentido certos; voltar e arrastar mostram o estado parado. Lista própria no player em vez de `useActivePulses`, que não repetiria um pulso depois de voltar.
+  - **Terminal:** não é reproduzido (a saída não fica no log); a tela e o painel do agente avisam.
+  - **Falta/anotado:** ordenação por duração na lista continua opcional; a API não informa o total de eventos, então o progresso é "N carregados".
 
 **Pronto quando (T15a):** com execuções de grafos e versões diferentes, cada filtro e as combinações dão o conjunto certo, na API e na tela (testes de integração nos dois bancos e da tela).
 **Pronto quando (T15b):** o replay de uma execução mostra as mensagens na ordem certa e nas setas certas.
@@ -536,6 +542,18 @@ Dividida em duas:
 - Sem assinatura nesta etapa: README e página de download explicam o aviso do sistema na primeira abertura (SmartScreen no Windows, Gatekeeper no macOS).
 
 **Pronto quando:** uma tag gera os instaladores dos três sistemas e o app instalado se atualiza sozinho para a versão seguinte.
+
+**Feito (2026-11-04)** — detalhes em `apps/desktop/README.md` (seções "Instaladores e release" e "Atualização automática"). Decisões:
+
+- **`release.yml`:** tag `v*` ou execução manual com `publish` (padrão `false`). Matriz Windows (NSIS), macOS (dmg + zip, arm64 e x64) e Linux (AppImage + deb). Com `publish: false` só sobem artefatos do workflow; com tag (ou `publish: true`) um job final, o único com `contents: write` e `GITHUB_TOKEN`, cria um **rascunho** de release com instaladores, `latest*.yml`, blockmaps e `SHA256SUMS.txt`. Nenhum segredo novo.
+- **Versão = tag.** O job `version` falha se `vX.Y.Z` não bater com `apps/desktop/package.json`.
+- **`asar: true`**, só o node-pty fora (`asarUnpack`: `prebuilds`, `build`, `third_party`). A interface (`extraResources`) já fica fora do asar; o MCP `neurons` roda dentro dele pelo `ELECTRON_RUN_AS_NODE`. O smoke passa com asar.
+- **`electron-updater` 6.8.11**, provedor GitHub (repositório público, sem token): checa 15 s após abrir e a cada 4 h; baixa em segundo plano; a barra "Nova versão pronta… Reiniciar para atualizar" usa o IPC restrito (`neurons:update`, `neurons:update-state`, origem validada). Nunca instala sozinho (`autoInstallOnAppQuit: false`); com execução em andamento, pergunta antes.
+- **macOS sem assinatura e `.deb`:** só avisam "baixe a nova versão" com o link da release (`MAC_BUILD_SIGNED` em `update-policy.ts` liga a atualização automática quando a T23 assinar). AppImage e Windows atualizam sozinhos.
+- **NSIS não é one-click:** no one-click o electron-builder nomeia a pasta pelo pacote (`@neuronsdesktop`) e o atalho do Menu Iniciar falhava.
+- **Ícone:** `make-icon.mjs` agora gera `icon.png` (512), `icon.ico` e `icon.icns`; o desenho continua provisório.
+- **Fica para a T23:** assinatura (Windows e macOS), notarização, atualização automática no macOS.
+- **Teste local no Windows:** 0.0.1 → 0.0.2 por servidor HTTP local (provedor `generic` só em build de teste), ver o README.
 
 ### T23 — Assinatura de código (por último, tem custo)
 

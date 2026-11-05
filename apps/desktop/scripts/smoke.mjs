@@ -99,6 +99,7 @@ async function main() {
   const env = {
     ...process.env,
     NEURONS_DATA_DIR: dataDir,
+    NEURONS_DESKTOP_UPDATES: "off",
     NEURONS_DESKTOP_CLAUDE_COMMAND: process.execPath,
     NEURONS_DESKTOP_CLAUDE_ARGS: JSON.stringify([FAKE_CLAUDE]),
   };

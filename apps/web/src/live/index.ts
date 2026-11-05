@@ -20,3 +20,11 @@ export type {
   TerminalMeta,
 } from "./types";
 export { terminalInputError, type TerminalInputError } from "./terminal-errors";
+export {
+  buildReplay,
+  stateAt,
+  pulsesBetween,
+  REPLAY_SPEEDS,
+  type Replay,
+  type ReplaySpeed,
+} from "./replay";

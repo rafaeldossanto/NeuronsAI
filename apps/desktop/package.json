@@ -5,6 +5,7 @@
   "type": "module",
   "description": "NeuronsAI — orquestrador visual de agentes de IA",
   "author": "Rafael dos Santos",
+  "homepage": "https://github.com/rafaeldossanto/NeuronsAI",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -15,11 +16,13 @@
     "start": "electron .",
     "icon": "node scripts/make-icon.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "dist:dir": "electron-builder --dir"
+    "dist:dir": "electron-builder --dir",
+    "dist": "electron-builder --publish never"
   },
   "dependencies": {
     "@neurons/mcp-neurons": "workspace:*",
     "@neurons/server": "workspace:*",
+    "electron-updater": "6.8.11",
     "zod": "4.6.7"
   },
   "devDependencies": {

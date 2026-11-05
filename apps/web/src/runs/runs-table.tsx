@@ -24,6 +24,8 @@ export function RunCost({ run }: { run: RunListItem }) {
 const head =
   "px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground";
 
+const FINISHED = new Set(["succeeded", "failed", "cancelled"]);
+
 export function RunsTable({ runs }: { runs: RunListItem[] }) {
   const navigate = useNavigate();
   return (
@@ -38,6 +40,9 @@ export function RunsTable({ runs }: { runs: RunListItem[] }) {
             <th className={head}>Fim</th>
             <th className={head}>Duração</th>
             <th className={head}>Custo</th>
+            <th className={head}>
+              <span className="sr-only">Ações</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -68,6 +73,18 @@ export function RunsTable({ runs }: { runs: RunListItem[] }) {
               <td className="px-4 py-3">{formatDuration(run.durationMs)}</td>
               <td className="px-4 py-3">
                 <RunCost run={run} />
+              </td>
+              <td className="px-4 py-3 text-right">
+                {FINISHED.has(run.status) && (
+                  <Link
+                    to={`/runs/${run.id}?replay=1`}
+                    className="text-sm font-bold text-foreground underline-offset-2 hover:underline"
+                    aria-label={`Replay da execução ${run.id.slice(0, 8)}`}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    Replay
+                  </Link>
+                )}
               </td>
             </tr>
           ))}
