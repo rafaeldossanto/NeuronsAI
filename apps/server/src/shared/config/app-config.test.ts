@@ -260,3 +260,46 @@ describe("guard limits", () => {
     expect(() => loadConfig({ NEURONS_RUN_BUDGET_USD: "-3" })).toThrow(ConfigError);
   });
 });
+
+describe("webhook listener", () => {
+  it("is off by default, so nothing but the API port listens", () => {
+    expect(loadConfig({}).hooks).toBeUndefined();
+    expect(loadConfig({ NEURONS_HOOKS_PORT: "" }).hooks).toBeUndefined();
+  });
+
+  it("turns on with its port, on loopback, with safe limits", () => {
+    expect(loadConfig({ NEURONS_HOOKS_PORT: "3101" }).hooks).toEqual({
+      port: 3101,
+      host: "127.0.0.1",
+      maxBodyBytes: 256 * 1024,
+      ratePerMinute: 60,
+    });
+  });
+
+  it("reads the body limit in KB and the rate per minute", () => {
+    const hooks = loadConfig({
+      NEURONS_HOOKS_PORT: "3101",
+      NEURONS_HOOKS_MAX_BODY_KB: "16",
+      NEURONS_HOOKS_RATE_PER_MIN: "10",
+    }).hooks;
+    expect(hooks).toMatchObject({ maxBodyBytes: 16 * 1024, ratePerMinute: 10 });
+  });
+
+  it("refuses a non-local address unless NEURONS_ALLOW_REMOTE=true, like the API", () => {
+    const env = { NEURONS_HOOKS_PORT: "3101", NEURONS_HOOKS_HOST: "0.0.0.0" };
+    expect(() => loadConfig(env)).toThrow(/NEURONS_HOOKS_HOST/);
+    expect(
+      loadConfig({ ...env, NEURONS_ALLOW_REMOTE: "true", NEURONS_HOST: "0.0.0.0" }).hooks,
+    ).toMatchObject({
+      host: "0.0.0.0",
+    });
+  });
+
+  it("refuses the API's own port and nonsense values", () => {
+    expect(() => loadConfig({ NEURONS_HOOKS_PORT: "3100" })).toThrow(/NEURONS_HOOKS_PORT/);
+    expect(() =>
+      loadConfig({ NEURONS_HOOKS_PORT: "3101", NEURONS_HOOKS_MAX_BODY_KB: "0" }),
+    ).toThrow(ConfigError);
+    expect(() => loadConfig({ NEURONS_HOOKS_PORT: "70000" })).toThrow(ConfigError);
+  });
+});

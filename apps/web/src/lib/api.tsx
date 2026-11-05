@@ -45,6 +45,11 @@ export function ApiProvider({ api, children }: { api: ApiClient; children: React
   return <ApiContext.Provider value={api}>{children}</ApiContext.Provider>;
 }
 
+/** Whether an API is provided (the editor's pieces that talk to the server only show up when it is). */
+export function useHasApi(): boolean {
+  return useContext(ApiContext) !== null;
+}
+
 export function useApi(): ApiClient {
   const api = useContext(ApiContext);
   if (!api) throw new Error("useApi fora do ApiProvider");
