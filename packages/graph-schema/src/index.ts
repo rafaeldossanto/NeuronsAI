@@ -21,3 +21,12 @@ export {
   GraphMigrationError,
   type GraphMigrationErrorCode,
 } from "./migrate-graph.js";
+export {
+  listTemplates,
+  getTemplate,
+  instantiateTemplate,
+  type GraphTemplate,
+  type TemplateId,
+  type TemplateCategory,
+  type InstantiateTemplateOptions,
+} from "../templates/index.js";

@@ -1,0 +1,98 @@
+{
+  "id": "research-review",
+  "name": "Pesquisa com revisor",
+  "description": "Um pesquisador consulta um revisor antes de entregar o resumo. Usa Claude Code pela assinatura.",
+  "category": "research",
+  "requiredSecrets": [],
+  "graph": {
+    "schemaVersion": 1,
+    "id": "7e852f42-a0c7-4f54-8e61-67a9f8459f72",
+    "name": "Pesquisa com revisor",
+    "nodes": [
+      {
+        "id": "manual-start",
+        "type": "trigger",
+        "position": {
+          "x": 0,
+          "y": 80
+        },
+        "kind": "manual",
+        "target": "researcher"
+      },
+      {
+        "id": "researcher",
+        "type": "agent",
+        "name": "Pesquisador",
+        "position": {
+          "x": 260,
+          "y": 0
+        },
+        "role": "Pesquisa o tema e valida o resumo com o Revisor",
+        "instructions": "Produza um resumo curto sobre o tema recebido. Antes de concluir, use ask para perguntar ao Revisor se o resumo está correto e espere a resposta. Corrija o resumo se necessário e chame finish com o resultado final. Respeite o limite de mensagens.",
+        "effort": "low",
+        "budgetUsd": 0.2,
+        "idleTimeoutSec": 120,
+        "runtime": {
+          "kind": "terminal",
+          "cli": "claude",
+          "model": "claude-haiku-5-5",
+          "mode": "stream-json",
+          "args": [],
+          "cwd": ".",
+          "access": "subscription"
+        }
+      },
+      {
+        "id": "reviewer",
+        "type": "agent",
+        "name": "Revisor",
+        "position": {
+          "x": 560,
+          "y": 0
+        },
+        "role": "Verifica a clareza e a precisão do resumo",
+        "instructions": "Leia a pergunta do Pesquisador, aponte possíveis erros ou lacunas e responda usando reply com o id da pergunta. Se precisar, pergunte de volta ao Pesquisador. Não chame finish: o Pesquisador encerra a execução.",
+        "effort": "medium",
+        "budgetUsd": 0.2,
+        "idleTimeoutSec": 120,
+        "runtime": {
+          "kind": "terminal",
+          "cli": "claude",
+          "model": "claude-haiku-5-5",
+          "mode": "stream-json",
+          "args": [],
+          "cwd": ".",
+          "access": "subscription"
+        }
+      }
+    ],
+    "links": [
+      {
+        "id": "research-review-dialogue",
+        "from": "researcher",
+        "to": "reviewer",
+        "kind": "talk",
+        "bidirectional": true,
+        "maxMessages": 10
+      }
+    ],
+    "annotations": [
+      {
+        "id": "research-setup",
+        "kind": "note",
+        "position": {
+          "x": 260,
+          "y": 180
+        },
+        "size": {
+          "width": 540,
+          "height": 144
+        },
+        "text": "Na criação, informe a pasta de trabalho no computador do runner. Conecte a assinatura pela CLI oficial do Claude Code antes de executar. O Pesquisador pergunta, o Revisor responde e o Pesquisador entrega o resumo com finish. Sem chave de API.",
+        "style": {
+          "fontSize": 14
+        }
+      }
+    ]
+  }
+}

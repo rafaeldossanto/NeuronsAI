@@ -1,0 +1,135 @@
+{
+  "id": "api-cli-team",
+  "name": "Agente principal + CLIs no terminal",
+  "description": "Um agente de API planeja o trabalho e delega execução e revisão a dois terminais Claude Code.",
+  "category": "development",
+  "requiredSecrets": ["ANTHROPIC_API_KEY"],
+  "graph": {
+    "schemaVersion": 1,
+    "id": "b7f452d7-bf96-4c97-9bbc-1573825ea80f",
+    "name": "Agente principal + CLIs no terminal",
+    "nodes": [
+      {
+        "id": "manual-start",
+        "type": "trigger",
+        "position": {
+          "x": 0,
+          "y": 120
+        },
+        "kind": "manual",
+        "target": "lead"
+      },
+      {
+        "id": "lead",
+        "type": "agent",
+        "name": "Principal",
+        "position": {
+          "x": 260,
+          "y": 120
+        },
+        "role": "Planeja, delega e consolida o trabalho",
+        "instructions": "Entenda o objetivo e divida o trabalho. Peça ao Executor uma proposta de alteração e ao Revisor uma análise independente usando ask. Não peça alterações destrutivas. Consolide as respostas, sinalize pendências e chame finish apenas quando o trabalho completo estiver concluído.",
+        "effort": "high",
+        "budgetUsd": 0.8,
+        "idleTimeoutSec": 120,
+        "runtime": {
+          "kind": "api",
+          "provider": "anthropic",
+          "model": "claude-sonnet-5-5",
+          "access": "api-key",
+          "secretName": "ANTHROPIC_API_KEY"
+        }
+      },
+      {
+        "id": "executor",
+        "type": "agent",
+        "name": "Executor",
+        "position": {
+          "x": 560,
+          "y": 0
+        },
+        "role": "Implementa a tarefa solicitada pelo Principal",
+        "instructions": "Trabalhe apenas na pasta configurada. Inspecione o projeto antes de alterar arquivos, faça as mudanças solicitadas e rode os testes pertinentes. Não apague dados nem faça publicação. Responda ao Principal usando reply; não encerre a execução inteira.",
+        "effort": "medium",
+        "budgetUsd": 0.4,
+        "idleTimeoutSec": 120,
+        "runtime": {
+          "kind": "terminal",
+          "cli": "claude",
+          "model": "claude-sonnet-5-5",
+          "mode": "stream-json",
+          "args": [],
+          "cwd": ".",
+          "access": "subscription"
+        }
+      },
+      {
+        "id": "reviewer",
+        "type": "agent",
+        "name": "Revisor",
+        "position": {
+          "x": 560,
+          "y": 240
+        },
+        "role": "Revisa o resultado e os testes",
+        "instructions": "Inspecione as alterações e verifique requisitos e testes sem modificar arquivos. Se necessário, converse com Executor sobre inconsistências. Responda ao Principal usando reply com achados e limitações. Não chame finish.",
+        "effort": "medium",
+        "budgetUsd": 0.3,
+        "idleTimeoutSec": 120,
+        "runtime": {
+          "kind": "terminal",
+          "cli": "claude",
+          "model": "claude-haiku-5-5",
+          "mode": "stream-json",
+          "args": [],
+          "cwd": ".",
+          "access": "subscription"
+        }
+      }
+    ],
+    "links": [
+      {
+        "id": "lead-executor",
+        "from": "lead",
+        "to": "executor",
+        "kind": "talk",
+        "bidirectional": true,
+        "maxMessages": 12
+      },
+      {
+        "id": "lead-reviewer",
+        "from": "lead",
+        "to": "reviewer",
+        "kind": "talk",
+        "bidirectional": true,
+        "maxMessages": 10
+      },
+      {
+        "id": "executor-reviewer",
+        "from": "executor",
+        "to": "reviewer",
+        "kind": "talk",
+        "bidirectional": true,
+        "maxMessages": 6
+      }
+    ],
+    "annotations": [
+      {
+        "id": "team-setup",
+        "kind": "note",
+        "position": {
+          "x": 260,
+          "y": 440
+        },
+        "size": {
+          "width": 540,
+          "height": 144
+        },
+        "text": "Crie o segredo ANTHROPIC_API_KEY em Conexões de IA e revise o acesso do Principal. Os terminais usam a assinatura pela CLI oficial. Informe a pasta no computador do runner ao criar o projeto. A validação com API real depende da T07.",
+        "style": {
+          "fontSize": 14
+        }
+      }
+    ]
+  }
+}
