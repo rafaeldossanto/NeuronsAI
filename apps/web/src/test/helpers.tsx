@@ -25,7 +25,9 @@ export function mockFetch(routes: Routes) {
     if (!route) return Response.json({ code: "no_route", message: key }, { status: 500 });
     const reply: Reply = typeof route === "function" ? route(input) : route;
     if (typeof reply === "function") return reply();
-    return Response.json(reply.body ?? null, { status: reply.status ?? 200 });
+    return reply.status === 204
+      ? new Response(null, { status: 204 })
+      : Response.json(reply.body ?? null, { status: reply.status ?? 200 });
   });
   return { fetch: fetchMock as unknown as typeof fetch, calls };
 }

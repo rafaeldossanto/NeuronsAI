@@ -215,7 +215,7 @@ export class AuthController {
     params: z.object({ id: z.uuid(), userId: z.uuid() }),
     body: z.object({ role: z.enum(["owner", "admin", "member", "viewer"]).nullable() }),
     status: 204,
-    errors: [403, 409, 503],
+    errors: [403, 404, 409, 503],
   })
   async setMember(
     @ValidParams() params: { id: string; userId: string },

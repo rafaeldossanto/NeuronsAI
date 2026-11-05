@@ -584,6 +584,16 @@
               }
             }
           },
+          "404": {
+            "description": "Não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "409": {
             "description": "Conflito com o estado atual.",
             "content": {
@@ -2423,6 +2433,14 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "connected": {
+                            "type": "boolean"
+                          },
+                          "activeAgents": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
                           }
                         },
                         "required": [
@@ -2430,7 +2448,9 @@
                           "name",
                           "createdAt",
                           "lastSeenAt",
-                          "revokedAt"
+                          "revokedAt",
+                          "connected",
+                          "activeAgents"
                         ],
                         "additionalProperties": false
                       }

@@ -12,6 +12,8 @@ import { GraphEditorPage } from "@/routes/graph-editor-page";
 import { GraphsPage } from "@/routes/graphs-page";
 import { RunDetailPage } from "@/routes/run-detail-page";
 import { RunsPage } from "@/routes/runs-page";
+import { OrganizationsPage } from "@/routes/organizations-page";
+import { RunnersPage } from "@/routes/runners-page";
 
 export function createQueryClient() {
   return new QueryClient({
@@ -35,6 +37,8 @@ export function App({ api, queryClient }: { api: ApiClient; queryClient?: QueryC
                 <Route path="graphs/:id" element={<GraphEditorPage />} />
                 <Route path="runs" element={<RunsPage />} />
                 <Route path="runs/:id" element={<RunDetailPage />} />
+                <Route path="organizations" element={<OrganizationsPage />} />
+                <Route path="runners" element={<RunnersPage />} />
                 <Route path="*" element={<EmptyState title="Página não encontrada" />} />
               </Route>
             </Routes>

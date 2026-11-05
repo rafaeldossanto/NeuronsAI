@@ -1199,6 +1199,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description Conflito com o estado atual. */
             409: {
                 headers: {
@@ -2129,6 +2138,8 @@ export interface operations {
                             createdAt: string;
                             lastSeenAt: string | null;
                             revokedAt: string | null;
+                            connected: boolean;
+                            activeAgents: number;
                         }[];
                     };
                 };

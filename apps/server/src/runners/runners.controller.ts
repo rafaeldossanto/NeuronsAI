@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Endpoint, ValidBody, ValidParams } from "../api/endpoint.js";
 import { AccountAuth } from "../accounts/account-auth.service.js";
 import { RunnerTokens } from "./runner-tokens.service.js";
+import { RunnerRegistry } from "./runner-registry.js";
 
 const runnerName = z.string().trim().min(1).max(100);
 const runnerView = z.object({
@@ -11,6 +12,8 @@ const runnerView = z.object({
   createdAt: z.string(),
   lastSeenAt: z.string().nullable(),
   revokedAt: z.string().nullable(),
+  connected: z.boolean(),
+  activeAgents: z.number().int().nonnegative(),
 });
 
 /** Tokens can only be issued through an authenticated organization; local uses the existing CLI. */
@@ -19,6 +22,7 @@ export class RunnersController {
   constructor(
     @Inject(AccountAuth) private readonly auth: AccountAuth,
     @Inject(RunnerTokens) private readonly tokens: RunnerTokens,
+    @Inject(RunnerRegistry) private readonly registry: RunnerRegistry,
   ) {}
   @Endpoint({
     method: "get",
@@ -35,6 +39,8 @@ export class RunnersController {
         createdAt: runner.createdAt.toISOString(),
         lastSeenAt: runner.lastSeenAt?.toISOString() ?? null,
         revokedAt: runner.revokedAt?.toISOString() ?? null,
+        connected: !runner.revokedAt && (this.registry.find(runner.id)?.connected ?? false),
+        activeAgents: runner.revokedAt ? 0 : (this.registry.find(runner.id)?.load ?? 0),
       })),
     };
   }

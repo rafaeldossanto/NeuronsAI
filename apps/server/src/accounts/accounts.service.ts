@@ -9,7 +9,7 @@ import {
   users,
   type OrganizationRole,
 } from "../database/schema/accounts.js";
-import { LastOwnerError, OrganizationAccessError } from "./account.errors.js";
+import { AccountNotFoundError, LastOwnerError, OrganizationAccessError } from "./account.errors.js";
 import type { VerifiedIdentity } from "./identity-provider.js";
 import { requireOrganizationAccess, type OrganizationPermission } from "./organization-access.js";
 
@@ -149,6 +149,8 @@ export class AccountsService {
         // The composite session FK cascades: rejoining later cannot revive an old session.
         await tx.delete(memberships).where(key);
       } else {
+        const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
+        if (!user) throw new AccountNotFoundError();
         await tx
           .insert(memberships)
           .values({ organizationId, userId, role })

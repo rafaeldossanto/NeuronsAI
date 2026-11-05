@@ -1,8 +1,11 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import type { ApiClient } from "@neurons/api-client";
 import { Button } from "@/components/ui/button";
 import { LoadingRows } from "@/components/states";
-import { ApiError, unwrap } from "@/lib/api";
+import { ApiError, expectNoContent, unwrap } from "@/lib/api";
+import { SessionContext, type AccountSession } from "./session-context";
+import { invalidateWorkspaceRequests } from "./session-fetch";
 
 type Status = "checking" | "local" | "authenticated" | "login" | "failed";
 /** Production shell. The local app discovers that accounts are off and renders the same workspace. */
@@ -19,39 +22,113 @@ export function SessionGate({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [account, setAccount] = useState<AccountSession | null>(null);
+  const checkVersion = useRef(0);
+  const changingScope = useRef(false);
+  const channel = useRef<BroadcastChannel | null>(null);
+  const check = useCallback(async () => {
+    const version = ++checkVersion.current;
+    try {
+      const session = await unwrap(api.GET("/auth/session"));
+      if (version !== checkVersion.current) return;
+      if (!session.enabled) {
+        setAccount(null);
+        setStatus("local");
+      } else if (
+        session.authenticated &&
+        session.userId &&
+        session.organizationId &&
+        session.role
+      ) {
+        setAccount({
+          userId: session.userId,
+          organizationId: session.organizationId,
+          role: session.role,
+        });
+        setStatus("authenticated");
+      } else {
+        setAccount(null);
+        setStatus("login");
+      }
+    } catch (failure) {
+      if (version !== checkVersion.current) return;
+      setAccount(null);
+      if (failure instanceof ApiError && failure.code === "invalid_session") setStatus("login");
+      else {
+        setError(
+          failure instanceof Error ? failure.message : "Não foi possível verificar a sessão.",
+        );
+        setStatus("failed");
+      }
+    }
+  }, [api]);
   useEffect(() => {
     let disposed = false;
-    const check = async () => {
-      try {
-        const session = await unwrap(api.GET("/auth/session"));
-        if (!disposed)
-          setStatus(!session.enabled ? "local" : session.authenticated ? "authenticated" : "login");
-      } catch (failure) {
-        if (disposed) return;
-        if (failure instanceof ApiError && failure.code === "invalid_session") setStatus("login");
-        else {
-          setError(
-            failure instanceof Error ? failure.message : "Não foi possível verificar a sessão.",
-          );
-          setStatus("failed");
-        }
-      }
-    };
     const ended = () => {
       if (!disposed) {
+        checkVersion.current++;
+        setAccount(null);
         setStatus("login");
         setError("");
       }
     };
     window.addEventListener("neurons:session-ended", ended);
-    void check();
-    const timer = window.setInterval(() => void check(), 5 * 60_000);
+    const changed = () => {
+      checkVersion.current++;
+      changingScope.current = true;
+      setStatus("checking");
+      void invalidateWorkspaceRequests()
+        .then(check)
+        .finally(() => {
+          changingScope.current = false;
+        });
+    };
+    const focus = () => {
+      if (!changingScope.current) void check();
+    };
+    if (typeof BroadcastChannel !== "undefined") {
+      channel.current = new BroadcastChannel("neurons-session");
+      channel.current.onmessage = changed;
+    }
+    window.addEventListener("focus", focus);
+    window.addEventListener("neurons:session-changed", changed);
+    queueMicrotask(() => {
+      if (!disposed) void check();
+    });
+    const timer = window.setInterval(focus, 5 * 60_000);
     return () => {
       disposed = true;
+      // This is a request generation counter, not a DOM ref captured by the effect.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      checkVersion.current++;
+      channel.current?.close();
+      channel.current = null;
       window.clearInterval(timer);
       window.removeEventListener("neurons:session-ended", ended);
+      window.removeEventListener("focus", focus);
+      window.removeEventListener("neurons:session-changed", changed);
     };
-  }, [api, attempt]);
+  }, [check, attempt]);
+
+  async function switchOrganization(organizationId: string) {
+    changingScope.current = true;
+    checkVersion.current++;
+    flushSync(() => setStatus("checking"));
+    await invalidateWorkspaceRequests();
+    try {
+      await expectNoContent(api.POST("/auth/organization", { body: { organizationId } }));
+      setError("");
+      channel.current?.postMessage("changed");
+      await check();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Não foi possível mudar de organização.",
+      );
+      setStatus("failed");
+    } finally {
+      changingScope.current = false;
+    }
+  }
 
   async function signIn() {
     setBusy(true);
@@ -76,6 +153,9 @@ export function SessionGate({
       if (result.response.status !== 204)
         throw new Error("Não foi possível encerrar a sessão. Tente novamente.");
       setStatus("login");
+      setAccount(null);
+      channel.current?.postMessage("changed");
+      await invalidateWorkspaceRequests();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Não foi possível sair.");
     } finally {
@@ -83,9 +163,9 @@ export function SessionGate({
     }
   }
   if (status === "local") return children;
-  if (status === "authenticated")
+  if (status === "authenticated" && account)
     return (
-      <>
+      <SessionContext.Provider value={{ account, reload: check, switchOrganization }}>
         <div className="flex items-center justify-end gap-4 bg-muted px-6 py-2">
           {error && (
             <p role="alert" className="body-6 text-destructive">
@@ -96,8 +176,8 @@ export function SessionGate({
             Sair da conta
           </Button>
         </div>
-        {children}
-      </>
+        <div key={`${account.userId}:${account.organizationId}:${account.role}`}>{children}</div>
+      </SessionContext.Provider>
     );
   return (
     <main className="flex min-h-screen items-center justify-center p-6">

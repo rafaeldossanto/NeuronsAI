@@ -2,6 +2,18 @@
 @import "@fontsource-variable/manrope";
 
 @layer components {
+  .heading-4 {
+    @apply text-3xl font-semibold;
+    text-wrap: balance;
+  }
+  .title-3 {
+    @apply text-base font-medium;
+    text-wrap: pretty;
+  }
+  .title-4 {
+    @apply text-sm font-medium;
+    text-wrap: pretty;
+  }
   .heading-5 {
     @apply text-2xl font-semibold;
     text-wrap: balance;

@@ -1,5 +1,15 @@
 import { DomainError } from "../shared/errors/domain-error.js";
 
+export class AccountNotFoundError extends DomainError {
+  readonly kind = "not_found" as const;
+  constructor() {
+    super(
+      "account_not_found",
+      "Conta não encontrada. A pessoa precisa entrar no NeuronsAI primeiro.",
+    );
+  }
+}
+
 export class OrganizationAccessError extends DomainError {
   readonly kind = "forbidden" as const;
   constructor() {

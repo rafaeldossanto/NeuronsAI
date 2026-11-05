@@ -17,6 +17,8 @@ import { GraphToolsService } from "../memories/graph-tools.service.js";
 import { SecretsService } from "../secrets/secrets.service.js";
 import { AesGcmSecretCipher } from "../secrets/secret-cipher.js";
 import { RunnerTokens } from "../runners/runner-tokens.service.js";
+import { RunnerRegistry } from "../runners/runner-registry.js";
+import { createMemoryChannelPair, PROTOCOL_VERSION } from "@neurons/runner-protocol";
 import { HooksServer } from "../triggers/hooks-server.js";
 import { testConfig } from "../shared/config/testing/test-config.js";
 import { AccountAuth } from "./account-auth.service.js";
@@ -157,6 +159,20 @@ afterAll(async () => {
 });
 
 describe("T25 — API entre organizações", () => {
+  it("responde conta inexistente sem revelar dados a quem não gerencia membros", async () => {
+    const url = `/auth/organizations/${alice.organizationId}/members/00000000-0000-4000-8000-000000000099`;
+    const missing = await api(alice, "PUT", url, { role: "member" });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json()).toMatchObject({ code: "account_not_found" });
+    expect((await api(bob, "PUT", url, { role: "member" })).statusCode).toBe(403);
+    await accounts.setMember(alice.userId, alice.organizationId, bob.userId, "viewer");
+    const viewer = asActor(
+      await sessions.issue(bob.userId, alice.organizationId),
+      bob.userId,
+      alice.organizationId,
+    );
+    expect((await api(viewer, "PUT", url, { role: "member" })).statusCode).toBe(403);
+  });
   it("retoma execuções de organizações diferentes sem perder o dono ao encerrar", async () => {
     const first = await run(alice, await publish(alice, await graph(alice)));
     const second = await run(bob, await publish(bob, await graph(bob)));
@@ -426,8 +442,32 @@ describe("T25 — API entre organizações", () => {
     expect(await tokens.authenticate(issued.token)).toMatchObject({
       organizationId: alice.organizationId,
     });
+    const pair = createMemoryChannelPair();
+    app.get(RunnerRegistry).accept((await tokens.authenticate(issued.token))!, pair.server);
+    pair.runner.send({
+      v: PROTOCOL_VERSION,
+      type: "register",
+      runner: { name: "Meu computador", platform: "win32" },
+      capabilities: { terminal: true, streamJson: true },
+      agents: [],
+    });
+    expect((await api(alice, "GET", "/runners")).json()).toMatchObject({
+      items: [{ id: issued.id, connected: true, activeAgents: 0, lastSeenAt: null }],
+    });
+    expect((await api(bob, "GET", "/runners")).json()).toMatchObject({
+      items: [{ id: other.id, connected: false, activeAgents: 0 }],
+    });
+    pair.runner.close(1000, "test disconnect");
+    expect((await api(alice, "GET", "/runners")).json()).toMatchObject({
+      items: [{ connected: false }],
+    });
     await api(alice, "DELETE", "/runners/Meu%20computador");
     expect(await tokens.authenticate(issued.token)).toBeUndefined();
+    const revokedList = (await api(alice, "GET", "/runners")).json<{
+      items: { connected: boolean; activeAgents: number; revokedAt: string | null }[];
+    }>();
+    expect(revokedList).toMatchObject({ items: [{ connected: false, activeAgents: 0 }] });
+    expect(revokedList.items[0]!.revokedAt).toEqual(expect.any(String));
     expect(await tokens.authenticate(other.token)).toMatchObject({
       organizationId: bob.organizationId,
     });

@@ -17,6 +17,8 @@ Continuação autorizada por Rafael em 2026-11-05: avançar nas partes que não 
 - **WebSocket:** origem, sessão, papel e propriedade verificados em subscribe e terminal.input. A entrega de eventos/histórico/saída também revalida a sessão; revogação/expiração fecha a conexão antes de novos dados.
 - **Runners:** nomes únicos por organização, emissão/revogação autenticada com papel apropriado, token mostrado uma vez e omitido da lista. Upgrade continua autenticado por token; a identidade inclui a organização armazenada no servidor. Seleção e espera aceitam somente runners do mesmo namespace; embedded permanece local.
 - **Interface web:** tela de entrada Google, estado de carregamento, falhas com nova tentativa, sessão expirada e sair. Cliente envia CSRF apenas à mesma origem e compartilha uma renovação entre chamadas concorrentes. Sem conta configurada, abre o workspace local normalmente.
+- **Painéis administrativos:** `/organizations` permite criar e trocar espaços, copiar o ID da conta, adicionar contas existentes, alterar papéis e remover membros com confirmação. Proprietários gerenciam todos os papéis; administradores apenas membros/leitores; o último proprietário fica protegido. `/runners` lista conexão real e agentes vinculados, cadastra token mostrado uma única vez e revoga com confirmação. Token fica apenas no estado efêmero do painel, fora do cache de consultas e armazenamento do navegador. Membros/leitores consultam sem controles administrativos. Não há convite por email nesta etapa.
+- **Troca de espaço:** remonta o workspace por usuário/organização/papel, descartando caches e assinaturas anteriores. Respostas de requisições antigas são ignoradas e não podem ser repetidas sob a nova organização. Aguarda renovação em curso antes de mudar cookies; BroadcastChannel sincroniza outras abas, com revalidação ao focar a janela.
 - **Desktop:** continua com servidor embutido local e sem conta. Preparado `DesktopAccountStore`, exclusivo do processo principal, com safeStorage, isolamento por origem, gravação atômica e recusa de basic_text. O fluxo remoto do Electron ainda não está ligado; nenhum token novo foi exposto ao renderer.
 
 MCP por stdio em contexto de organização é recusado no servidor compartilhado; use MCP por HTTP. Processos locais pertencem ao computador do runner. O modo local existente preserva MCP stdio.
@@ -40,13 +42,14 @@ Rotas: `/auth/session`, `/auth/google`, `/auth/google/callback`, `/auth/refresh`
 
 ## Verificação sem contas reais
 
-- Suíte completa do servidor: **555 testes passaram**, e do Postgres 18: **157 passaram**. Depois foram acrescentados dois cenários de retomada/agendamento: o arquivo de isolamento, agora com **13 testes**, foi repetido integralmente nos dois bancos e passou.
-- Web: **166 testes**. Desktop: **33 testes**, incluindo o cofre protegido. Lint, tipagem e build dos pacotes afetados passaram.
+- Suíte completa do servidor atual: **558 testes passaram**. Na continuação dos painéis, as suítes de contas e isolamento passaram com **39 testes em Postgres 18**; a seleção de runners também foi verificada em PGlite. O arquivo de isolamento agora tem 14 cenários, incluindo conta inexistente sem revelar dados a atores sem permissão e conexão real de runners por organização.
+- Web: **183 testes**. Desktop: **33 testes** na etapa anterior, incluindo o cofre protegido. Lint, tipagem e build dos pacotes afetados passaram.
 - Electron real no Windows: smoke confirmou UI/CSP, moldura/IPC isolado, banco embutido, execução com CLI simulada e memória escrita pelo MCP/runner; trava liberada ao sair.
 - Dois usuários testados contra listagens/totais, IDs alheios, versões, start/stop, mensagens/eventos, memórias/ferramentas, segredos homônimos, papéis, seleção de organização, callback, webhook e WebSocket. Revogação corta eventos novos. Seleção de runner testada também enquanto aguarda conexão.
 - Teste de atualização aplica todas as migrações novas a uma base T17 e preserva projeto, versão imutável, execução, evento e segredo.
 - Teste de reinício retoma/encerra runs com seus donos e recarrega/dispara cron de duas organizações. O teste revelou a necessidade de ligar explicitamente o escopo ao temporizador; corrigido com captura do contexto, sem depender da requisição de origem.
 - Navegador real: entrada conferida em desktop e 390 px; sem rolagem horizontal. Capturas em `C:\Users\rafae\Work\neurons-validation\t25-login-desktop.jpg` e `t25-login-mobile.jpg`.
+- Painéis conferidos em navegador real com contas sintéticas e servidor descartável em loopback: criação de organização, troca propagada entre duas abas, emissão/revogação de token, restrições de leitor e formulários em 390 px, sem overflow horizontal ou erros de console. Runners conectado/desconectado/revogado usam o registry real; conexão da demonstração por canal em memória. Capturas `t25-admin-organizations-desktop.jpg`, `t25-admin-runners-desktop.jpg` e versões mobile no mesmo diretório de validação. Smoke Electron repetido com sucesso após os painéis. Preview encerrado e sua base temporária removida.
 - Relatórios locais das suítes em `C:\Users\rafae\Work\neurons-validation\t25-*-20261105.json`. Nenhuma chave Google real, chamada paga de modelo, assinatura de instalador, AWS ou release nesta etapa.
 
 ## O que ainda falta na T25
@@ -54,7 +57,6 @@ Rotas: `/auth/session`, `/auth/google`, `/auth/google/callback`, `/auth/refresh`
 1. Revisão e integração da branch na dev, com CI multiplataforma.
 2. OAuth client Google e domínio/retorno reais para aceitação do login e renovação no navegador.
 3. Fluxo remoto do Electron: servidor de destino, abertura do navegador do sistema, retorno por deep link/loopback e uso do cofre preparado, sem levar tokens ao renderer. O desktop atual continua local.
-4. Tela de administração de organizações/membros e gerenciamento de runners; os endpoints e as regras já existem. A tela atual oferece entrada/saída, sem painel administrativo novo.
 
 T25 permanece em andamento até a aceitação integrada. Não marcar a tarefa completa apenas porque os testes simulados passaram.
 
