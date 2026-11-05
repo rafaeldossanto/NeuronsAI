@@ -38,9 +38,9 @@ A branch `codex/modeler-connections-memories` foi revisada (achados em [[Interfa
 
 ## Ordem de execução
 
-- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T12, T14, T19, T20, T21, T22, T24.
-- Próxima: T13–T15 → T25 → T16–T18.
-- **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16) sai por túnel.
+- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T12, T14, T16a, T19, T20, T21, T22, T24.
+- Próxima: T13–T15 → T25 → T16b–T18.
+- **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16b) sai por túnel.
 
 **Paralelismo possível:** T04 e T05 em paralelo com T02–T03. A Fase 2 pode começar assim que
 a T10 publicar a API (o modelador só depende do contrato da T02 e da API).
@@ -464,13 +464,23 @@ Dividida em duas:
 
 ### T16 — Gatilhos externos e WhatsApp
 
-- Gatilho `webhook` com URL e assinatura HMAC por grafo; `schedule` com cron.
-- **WhatsApp Cloud API** oficial (número de teste da Meta) como gatilho e como ferramenta de
-  resposta; validar `X-Hub-Signature-256`. Agente que lê mensagem de cliente começa sem
-  ferramenta de escrita.
-- Enquanto for local, o webhook sai por túnel (Cloudflare Tunnel).
+Dividida em duas:
 
-**Pronto quando:** mensagem no número de teste dispara a execução e a resposta volta no WhatsApp.
+- **T16a · Webhook e agendamento: feita (2026-11-04).** Detalhes e exemplos no README do servidor ("Gatilhos externos"). Decisões:
+  - **Versão que roda:** sempre a **publicada mais recente**, lida na hora de disparar; sem versão publicada (ou sem o gatilho nela) o disparo é recusado com erro claro. Não há versão fixada; se fizer falta, um campo `version` opcional no gatilho.
+  - **Porta separada** (`NEURONS_HOOKS_PORT`, desligada por padrão): outra instância do Fastify com uma só rota, `POST /hooks/{hookId}`; a API nunca responde ali. Escuta em `127.0.0.1` (outro endereço segue `NEURONS_ALLOW_REMOTE`); o túnel (Cloudflare, documentado, nada instalado) aponta só para ela.
+  - **Id opaco por gatilho** (128 bits) na URL, em vez de `graphId/triggerId`: não vaza ids internos nem se adivinha.
+  - **Assinatura:** HMAC-SHA256 de `timestamp.corpo cru` (`X-Neurons-Timestamp`, `X-Neurons-Signature: sha256=<hex>`), segredo gerado pelo servidor, cifrado pelo `SecretsService` e mostrado uma vez (criação e troca); janela de 5 min, comparação em tempo constante, reenvio recusado (assinaturas gravadas por 11 min, atômico). Tudo que é credencial errada volta o mesmo `401`; `202` com o `runId`.
+  - **Limites:** 256 KB (`NEURONS_HOOKS_MAX_BODY_KB`), 60 chamadas/min por gatilho (`NEURONS_HOOKS_RATE_PER_MIN`; ids inexistentes dividem um limite), só JSON ou texto. O corpo é a entrada da execução (mensagem do `@trigger`); log nunca grava segredo, assinatura nem corpo.
+  - **Agendamento** no processo do servidor com `croner` 10.0.1 (5 campos, `timezone?` opcional, padrão o fuso do sistema), validado no `graph-schema` com mensagem em pt-BR. **Sem sobreposição** (pula e registra o motivo); **horários perdidos não são recuperados** (app fechado ou computador dormindo); última e próxima execução gravadas no gatilho.
+  - **Estado fora do grafo:** ativo/desativado (padrão desativado), segredo e última/próxima execução em `graph_triggers` (migration `0005`); ativar não publica versão. API: `GET /graphs/{id}/triggers/{triggerId}`, `POST …/secret`, `PUT …/enabled`.
+  - **Tela:** o inspetor do gatilho mostra URL, "Gerar/Trocar segredo" (uma vez, com aviso), `curl` assinado, cron com explicação em português, as próximas 3 execuções e o fuso.
+  - **Desktop:** o agendador e a porta dos webhooks só funcionam com o app aberto.
+  - **Falta/anotado:** rodar manualmente um `* * * * *` por 1–2 minutos no app real; a porta dos gatilhos no app desktop só liga por variável de ambiente (sem tela de configuração).
+- **T16b · WhatsApp: pendente.** Depende do número de teste da Meta que o Rafael vai criar. **WhatsApp Cloud API** oficial como gatilho e como ferramenta de resposta; validar `X-Hub-Signature-256` (reaproveita a porta dos gatilhos da T16a); agente que lê mensagem de cliente começa sem ferramenta de escrita.
+
+**Pronto quando (T16a):** um `POST` assinado dispara a versão publicada mais recente; assinatura errada, vencida ou repetida volta 401 sem criar execução; a API normal não responde na porta dos gatilhos; o `schedule` dispara no horário e não sobrepõe.
+**Pronto quando (T16b):** mensagem no número de teste dispara a execução e a resposta volta no WhatsApp.
 
 ### T17 — Templates
 

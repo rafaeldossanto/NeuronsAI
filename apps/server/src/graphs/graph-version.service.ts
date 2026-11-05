@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { Subject } from "rxjs";
 import {
   createIssue,
   validateGraph,
@@ -18,6 +19,9 @@ export type PublishResult =
 
 @Injectable()
 export class GraphVersionService {
+  /** Emits after a version is stored, so what depends on the latest version (schedules) can follow it. */
+  readonly published = new Subject<{ graphId: string; version: number }>();
+
   constructor(
     @Inject(GRAPH_REPOSITORY) private readonly graphs: GraphRepository,
     @Inject(GRAPH_VERSION_REPOSITORY) private readonly versions: GraphVersionRepository,
@@ -37,7 +41,9 @@ export class GraphVersionService {
     const mismatch = this.checkGraphId(graphId, validation.graph);
     if (mismatch) return { ok: false, issues: [mismatch] };
 
-    return { ok: true, version: await this.versions.appendNext(graphId, validation.graph) };
+    const version = await this.versions.appendNext(graphId, validation.graph);
+    this.published.next({ graphId, version: version.version });
+    return { ok: true, version };
   }
 
   /** The id inside the definition must be the id of the graph it is published to. */
