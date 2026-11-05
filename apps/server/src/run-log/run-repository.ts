@@ -58,6 +58,7 @@ export interface RunListPage {
 
 /** A run that is still going, with the graph it executes. */
 export interface ActiveRun {
+  organizationId?: string | null;
   run: RunRecord;
   graph: GraphDefinition;
 }

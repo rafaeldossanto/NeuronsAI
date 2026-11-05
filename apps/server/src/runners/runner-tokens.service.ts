@@ -14,6 +14,7 @@ export interface IssuedRunner {
 }
 
 export interface RunnerIdentity {
+  organizationId?: string | null;
   id: string;
   name: string;
 }
@@ -34,7 +35,11 @@ export class RunnerTokens {
   async authenticate(token: string): Promise<RunnerIdentity | undefined> {
     const record = await this.runners.findByTokenHash(hashRunnerToken(token));
     if (!record || record.revokedAt) return undefined;
-    return { id: record.id, name: record.name };
+    return {
+      id: record.id,
+      name: record.name,
+      ...(record.organizationId && { organizationId: record.organizationId }),
+    };
   }
 
   /** Whether the runner may stay connected (it was not revoked since it connected). */

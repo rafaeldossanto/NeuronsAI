@@ -1,6 +1,6 @@
 import type { GraphNode } from "@neurons/graph-schema";
 import mixed from "@neurons/graph-schema/examples/mixed.json";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect, useReducer } from "react";
 import { describe, expect, it } from "vitest";
@@ -106,6 +106,57 @@ describe("inspetor", () => {
       cron: "0 9 * * *",
       target: "agente-executor",
     });
+  });
+
+  it("gatilho agendado explica o cron em português e lista as 3 próximas execuções", async () => {
+    render(<Harness selection={{ nodeIds: ["gatilho-1"], linkIds: [] }} />);
+    await userEvent.selectOptions(screen.getByLabelText("Tipo"), "schedule");
+    await userEvent.type(screen.getByLabelText("Expressão cron"), "0 9 * * 1");
+
+    expect(screen.getByText("Às 09:00, somente de segunda-feira")).toBeInTheDocument();
+    const next = screen.getByRole("list", { name: "Próximas execuções" });
+    expect(within(next).getAllByRole("listitem")).toHaveLength(3);
+    for (const item of within(next).getAllByRole("listitem"))
+      expect(item).toHaveTextContent("09:00");
+  });
+
+  it("gatilho agendado: cron inválido mostra o motivo na hora e some a prévia", async () => {
+    render(<Harness selection={{ nodeIds: ["gatilho-1"], linkIds: [] }} />);
+    await userEvent.selectOptions(screen.getByLabelText("Tipo"), "schedule");
+    await userEvent.type(screen.getByLabelText("Expressão cron"), "toda segunda");
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Expressão cron inválida");
+    expect(screen.queryByRole("list", { name: "Próximas execuções" })).not.toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Problemas deste item" })).toHaveTextContent(
+      "Expressão cron inválida",
+    );
+  });
+
+  it("gatilho agendado: o fuso entra no bloco e a prévia o usa; fuso desconhecido avisa", async () => {
+    render(<Harness selection={{ nodeIds: ["gatilho-1"], linkIds: [] }} />);
+    await userEvent.selectOptions(screen.getByLabelText("Tipo"), "schedule");
+    await userEvent.type(screen.getByLabelText("Expressão cron"), "0 9 * * *");
+    await userEvent.type(screen.getByLabelText("Fuso horário"), "America/Sao_Paulo");
+
+    expect(node("gatilho-1")).toMatchObject({ timezone: "America/Sao_Paulo" });
+    expect(screen.getByText(/Próximas execuções \(America\/Sao_Paulo\)/)).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByLabelText("Fuso horário"));
+    expect(node("gatilho-1")).not.toHaveProperty("timezone");
+    await userEvent.type(screen.getByLabelText("Fuso horário"), "Marte/Olympus");
+    expect(screen.getAllByRole("alert")[0]).toHaveTextContent("Fuso horário desconhecido");
+  });
+
+  it("trocar o gatilho para manual apaga o cron e o fuso", async () => {
+    render(<Harness selection={{ nodeIds: ["gatilho-1"], linkIds: [] }} />);
+    await userEvent.selectOptions(screen.getByLabelText("Tipo"), "schedule");
+    await userEvent.type(screen.getByLabelText("Expressão cron"), "0 9 * * *");
+    await userEvent.type(screen.getByLabelText("Fuso horário"), "UTC");
+
+    await userEvent.selectOptions(screen.getByLabelText("Tipo"), "manual");
+
+    expect(node("gatilho-1")).not.toHaveProperty("cron");
+    expect(node("gatilho-1")).not.toHaveProperty("timezone");
   });
 
   it("ferramenta: edita a pasta do cofre", async () => {

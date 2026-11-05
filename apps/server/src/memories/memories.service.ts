@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { AppConfig } from "../shared/config/app-config.js";
 import { APP_CONFIG } from "../shared/config/tokens.js";
 import { DomainError, type DomainErrorKind } from "../shared/errors/domain-error.js";
+import { resourceScope } from "../accounts/resource-scope.js";
 import {
   MAX_IMPORT_BYTES,
   memorySchema,
@@ -50,9 +51,16 @@ export function importPath(value: string): string[] {
 /** One manifest per memory, published last: a failed import never appears in the catalog. */
 @Injectable()
 export class MemoriesService {
-  private readonly root: string;
+  private readonly baseRoot: string;
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {
-    this.root = path.join(config.dataDir, "memories");
+    this.baseRoot = path.join(config.dataDir, "memories");
+  }
+
+  private get root(): string {
+    const organizationId = resourceScope.current().organizationId;
+    return organizationId === null
+      ? this.baseRoot
+      : path.join(this.baseRoot, "organizations", organizationId);
   }
 
   async list(): Promise<MemoryRecord[]> {
@@ -86,7 +94,7 @@ export class MemoriesService {
   async resolve(id: string): Promise<string> {
     const memory = await this.get(id);
     if (memory.storage === "local") {
-      if (this.config.profile !== "local")
+      if (this.config.profile !== "local" || resourceScope.current().organizationId !== null)
         throw new MemoryError(
           "unavailable",
           "local_memory_unavailable",
@@ -100,7 +108,10 @@ export class MemoriesService {
   async create(body: CreateMemory): Promise<MemoryRecord> {
     if (
       body.storage === "local" &&
-      (this.config.profile !== "local" || !body.vaultPath || body.files?.length)
+      (this.config.profile !== "local" ||
+        resourceScope.current().organizationId !== null ||
+        !body.vaultPath ||
+        body.files?.length)
     ) {
       throw new MemoryError(
         "invalid",

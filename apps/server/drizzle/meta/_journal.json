@@ -36,6 +36,62 @@
       "when": 1793826014520,
       "tag": "0004_run_listing_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793837419416,
+      "tag": "0005_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793877811307,
+      "tag": "0006_accounts_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793882208670,
+      "tag": "0007_oidc_login_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793882469221,
+      "tag": "0008_graph_organizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793882579822,
+      "tag": "0009_secret_organizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793882644979,
+      "tag": "0010_runner_organizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793897072073,
+      "tag": "0011_desktop_login",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793913916604,
+      "tag": "0012_organization_invitations",
+      "breakpoints": true
     }
   ]
 }

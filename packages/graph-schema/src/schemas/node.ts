@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { checkCron, isValidTimezone } from "../cron.js";
 import { idSchema, positionSchema } from "./common.js";
 
 const nodeBase = { id: idSchema, position: positionSchema };
@@ -16,12 +17,39 @@ export const triggerNodeSchema = z
     type: z.literal("trigger"),
     kind: z.enum(["manual", "webhook", "schedule"]),
     target: idSchema,
+    /** Standard 5-field cron expression; only `schedule` triggers use it. */
     cron: z.string().min(1).optional(),
+    /** IANA time zone of the cron (`America/Sao_Paulo`); without it the server's own zone applies. */
+    timezone: z.string().min(1).optional(),
   })
   .refine((trigger) => trigger.kind !== "schedule" || trigger.cron !== undefined, {
     error: "Gatilhos do tipo agenda exigem uma expressão cron.",
     path: ["cron"],
     params: { code: "cron_required" },
+  })
+  .check((context) => {
+    const trigger = context.value;
+    if (trigger.cron !== undefined) {
+      const check = checkCron(trigger.cron);
+      if (!check.ok) {
+        context.issues.push({
+          code: "custom",
+          input: trigger.cron,
+          path: ["cron"],
+          message: check.message,
+          params: { code: "cron_invalid" },
+        });
+      }
+    }
+    if (trigger.timezone !== undefined && !isValidTimezone(trigger.timezone)) {
+      context.issues.push({
+        code: "custom",
+        input: trigger.timezone,
+        path: ["timezone"],
+        message: 'Fuso horário desconhecido. Use um nome como "America/Sao_Paulo" ou "UTC".',
+        params: { code: "timezone_invalid" },
+      });
+    }
   });
 
 // ---------- agent ----------

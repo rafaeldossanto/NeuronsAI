@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ConfigError } from "./config-error.js";
 import { unlessEmpty } from "./env-schema.js";
 
-/** The server has no login yet, so by default only this machine can reach it. */
+/** Without configured accounts the API has no login, so by default only this machine can reach it. */
 export const DEFAULT_LISTEN_HOST = "127.0.0.1";
 
 export const listenEnvShape = {
@@ -25,13 +25,15 @@ export function isLoopbackHost(host: string): boolean {
 
 /**
  * Where the server listens. Anything but loopback is an explicit opt-in (`NEURONS_ALLOW_REMOTE`),
- * because anyone who can reach the port can use the API: there is no authentication yet.
+ * because anyone who can reach the port can use the API unless accounts are configured (T25:
+ * NEURONS_PUBLIC_ORIGIN + NEURONS_GOOGLE_*). Listening beyond loopback WITHOUT accounts leaves the API
+ * open to the network, including tools that run commands on the server: only do it on a trusted network.
  */
 export function resolveListenHost(env: ListenEnv): string {
   const host = env.NEURONS_HOST;
   if (!isLoopbackHost(host) && !env.NEURONS_ALLOW_REMOTE) {
     throw new ConfigError([
-      "NEURONS_HOST: o servidor ainda não tem login, então só aceita endereços locais (127.0.0.1, ::1, localhost). Para escutar em outro endereço, defina também NEURONS_ALLOW_REMOTE=true.",
+      "NEURONS_HOST: sem contas configuradas o servidor não tem login, então só aceita endereços locais (127.0.0.1, ::1, localhost). Para escutar em outro endereço, defina também NEURONS_ALLOW_REMOTE=true.",
     ]);
   }
   return host;

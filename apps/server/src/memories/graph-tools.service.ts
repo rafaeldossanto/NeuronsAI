@@ -7,6 +7,7 @@ import type { ToolCallReport } from "@neurons/agent-runtimes";
 import type { AppConfig } from "../shared/config/app-config.js";
 import { APP_CONFIG } from "../shared/config/tokens.js";
 import { MemoriesService, MemoryError } from "./memories.service.js";
+import { resourceScope } from "../accounts/resource-scope.js";
 
 @Injectable()
 export class GraphToolsService {
@@ -18,7 +19,14 @@ export class GraphToolsService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
-  async list(runId: string, agent: string) {
+  list(runId: string, agent: string) {
+    const owner = this.runs.requireOpen(runId);
+    return resourceScope.run({ organizationId: owner.organizationId }, () =>
+      this.listScoped(runId, agent),
+    );
+  }
+
+  private async listScoped(runId: string, agent: string) {
     const graph = this.runs.require(runId).graph;
     const descriptions = [];
     for (const node of toolsOf(graph, agent)) {
@@ -39,7 +47,21 @@ export class GraphToolsService {
     return descriptions;
   }
 
-  async use(
+  use(
+    runId: string,
+    agent: string,
+    nodeId: string,
+    name: string,
+    input: Record<string, unknown>,
+    report: (record: ToolCallReport) => Promise<void>,
+  ): Promise<unknown> {
+    const owner = this.runs.requireOpen(runId);
+    return resourceScope.run({ organizationId: owner.organizationId }, () =>
+      this.useScoped(runId, agent, nodeId, name, input, report),
+    );
+  }
+
+  private async useScoped(
     runId: string,
     agent: string,
     nodeId: string,
@@ -108,6 +130,16 @@ export class GraphToolsService {
 
   private async open(runId: string, agent: string, nodeId: string): Promise<ToolSet> {
     const original = this.allowed(runId, agent, nodeId);
+    if (
+      resourceScope.current().organizationId !== null &&
+      original.tool.kind === "mcp" &&
+      original.tool.transport === "stdio"
+    )
+      throw new MemoryError(
+        "unavailable",
+        "shared_stdio_unavailable",
+        "Neste servidor, conecte um MCP por HTTP. Processos locais pertencem ao computador do runner.",
+      );
     let node = original;
     if (original.tool.kind === "obsidian") {
       const graph = this.runs.require(runId).graph;
@@ -117,7 +149,10 @@ export class GraphToolsService {
       const link = graph.links.find(
         (entry) => entry.kind === "uses" && entry.from === agentId && entry.to === nodeId,
       );
-      if (!original.tool.memoryId && this.config.profile !== "local")
+      if (
+        !original.tool.memoryId &&
+        (this.config.profile !== "local" || resourceScope.current().organizationId !== null)
+      )
         throw new MemoryError(
           "unavailable",
           "local_memory_unavailable",
@@ -135,6 +170,10 @@ export class GraphToolsService {
         },
       };
     }
-    return createTools(node, { secrets: { resolve: (name) => this.secrets.get(name) } });
+    return createTools(node, {
+      secrets: { resolve: (name) => this.secrets.get(name) },
+      // Public servers keep tools away from loopback, private networks and the cloud metadata address.
+      ...(this.config.outbound && { network: this.config.outbound }),
+    });
   }
 }

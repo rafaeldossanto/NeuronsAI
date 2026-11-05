@@ -88,7 +88,7 @@ export async function createMcpTools(
   const { allowedTools } = node.tool;
   if (allowedTools.length === 0) return { tools: [], close: () => Promise.resolve() };
 
-  const connection = await createTransport(node.tool, deps.secrets);
+  const connection = await createTransport(node.tool, deps.secrets, deps.network);
   const client = new Client(CLIENT_INFO);
   const close = () => connection.shutdown();
 

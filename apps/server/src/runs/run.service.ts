@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { resourceScope } from "../accounts/resource-scope.js";
 import type { GraphDefinition, TriggerNode } from "@neurons/graph-schema";
 import {
   GRAPH_VERSION_REPOSITORY,
@@ -125,7 +126,17 @@ export class RunService {
     if (await this.supervisor.isQuiescent(runId)) await this.end(runId, "quiescent");
   }
 
-  private async end(
+  private end(
+    runId: string,
+    reason: RunFinishReason,
+    details: RunFinishDetails = {},
+  ): Promise<void> {
+    const owner = this.registry.findOpen(runId);
+    const scope = owner ? { organizationId: owner.organizationId } : resourceScope.current();
+    return resourceScope.run(scope, () => this.endScoped(runId, reason, details));
+  }
+
+  private async endScoped(
     runId: string,
     reason: RunFinishReason,
     details: RunFinishDetails = {},

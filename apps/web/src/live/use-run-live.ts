@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useApi } from "@/lib/api";
 import { reduceRunEvent, initialRunLiveState } from "./reduce-run-event";
 import { defaultSocketUrl, RunLiveClient } from "./run-live-client";
 import { terminalInputError, type TerminalInputError } from "./terminal-errors";
@@ -56,6 +57,7 @@ export function useRunLive(runId: string): {
 } {
   const [model, dispatch] = useReducer(reducer, initialModel);
   const clientRef = useRef<RunLiveClient | null>(null);
+  const api = useApi();
 
   useEffect(() => {
     dispatch({ type: "reset" });
@@ -63,6 +65,10 @@ export function useRunLive(runId: string): {
     const client = new RunLiveClient({
       runId,
       url: defaultSocketUrl(window.location),
+      // Any API call that meets an expired session renews the cookies (see sessionFetch).
+      renewSession: async () => {
+        await api.GET("/auth/session");
+      },
       onEvent: (event) => dispatch({ type: "event", event }),
       onConnection: (connection) => dispatch({ type: "connection", connection }),
       onError: (error, code) => {
@@ -77,7 +83,7 @@ export function useRunLive(runId: string): {
       clientRef.current = null;
       client.close();
     };
-  }, [runId]);
+  }, [runId, api]);
 
   const sendTerminalInput = useCallback((agent: string, data: string) => {
     return clientRef.current?.sendTerminalInput(agent, data) ?? false;

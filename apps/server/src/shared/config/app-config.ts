@@ -5,7 +5,10 @@ import { type HostInfo, resolveDataDir } from "./data-dir.js";
 import { type DatabaseConfig, databaseEnvShape, resolveDatabase } from "./database-config.js";
 import { type GuardLimits, guardEnvShape, resolveGuardLimits } from "./guard-config.js";
 import { port, unlessEmpty } from "./env-schema.js";
+import { type HooksConfig, hooksEnvShape, resolveHooks } from "./hooks-config.js";
 import { listenEnvShape, resolveListenHost } from "./listen-config.js";
+import { type OutboundConfig, outboundEnvShape, resolveOutbound } from "./outbound-config.js";
+import { authEnvShape, resolveAuth, type AuthConfig } from "./auth-config.js";
 import {
   type TerminalInputLimits,
   resolveTerminalInputLimits,
@@ -21,7 +24,10 @@ import {
 export { ConfigError } from "./config-error.js";
 export { DATABASE_KINDS } from "./database-config.js";
 export type { GuardLimits } from "./guard-config.js";
+export type { HooksConfig } from "./hooks-config.js";
 export { PROFILES } from "./runner-config.js";
+export type { OutboundConfig } from "./outbound-config.js";
+export type { SignupConfig } from "./auth-config.js";
 export type { Profile, RunnerLimits } from "./runner-config.js";
 export type { TerminalInputLimits } from "./terminal-config.js";
 export type { DatabaseConfig, DatabaseKind, PostgresConnection } from "./database-config.js";
@@ -30,12 +36,24 @@ export const APP_MODES = ["api", "worker", "all"] as const;
 export type AppMode = (typeof APP_MODES)[number];
 
 export interface AppConfig {
+  /** Optional OIDC settings for hybrid/hosted. Absent: account-free local workspace. */
+  auth?: AuthConfig;
+  /**
+   * What the HTTP / MCP-over-HTTP tools may reach. Absent on the `local` profile (the user's own
+   * machine); present on `hybrid`/`hosted`, where it keeps tools away from internal networks.
+   */
+  outbound?: OutboundConfig;
   uiRoot?: string;
   landingRoot?: string;
   mode: AppMode;
   /** Where the server listens: loopback unless `NEURONS_ALLOW_REMOTE` says otherwise. */
   host: string;
   port: number;
+  /**
+   * The separate listener for external triggers (webhooks). Absent means off, which is the default:
+   * only then does nothing outside this machine's API port receive anything.
+   */
+  hooks?: HooksConfig;
   /** How long an agent's `ask` waits for the answer before failing. */
   askTimeoutMs: number;
   guards: GuardLimits;
@@ -68,10 +86,13 @@ export interface AppConfig {
 const BASE64_32_BYTES = /^[A-Za-z0-9+/]{43}=$/;
 
 const envSchema = z.object({
+  ...authEnvShape,
+  ...outboundEnvShape,
   NEURONS_UI_DIR: unlessEmpty(z.string().min(1).optional()),
   NEURONS_LANDING_DIR: unlessEmpty(z.string().min(1).optional()),
   NEURONS_MODE: unlessEmpty(z.enum(APP_MODES).default("all")),
   ...listenEnvShape,
+  ...hooksEnvShape,
   NEURONS_PORT: port(3100),
   NEURONS_ASK_TIMEOUT_SEC: unlessEmpty(z.coerce.number().int().min(1).default(120)),
   NEURONS_DATA_DIR: unlessEmpty(z.string().trim().min(1).optional()),
@@ -107,13 +128,35 @@ export function loadConfig(
   }
   const values = parsed.data;
   const masterKey = values.NEURONS_MASTER_KEY;
+  const auth = resolveAuth({
+    NEURONS_PUBLIC_ORIGIN: values.NEURONS_PUBLIC_ORIGIN,
+    NEURONS_GOOGLE_CLIENT_ID: values.NEURONS_GOOGLE_CLIENT_ID,
+    NEURONS_GOOGLE_CLIENT_SECRET: values.NEURONS_GOOGLE_CLIENT_SECRET,
+    NEURONS_GOOGLE_REDIRECT_URI: values.NEURONS_GOOGLE_REDIRECT_URI,
+    NEURONS_SIGNUP_ALLOWED_DOMAINS: values.NEURONS_SIGNUP_ALLOWED_DOMAINS,
+    NEURONS_SIGNUP_ALLOWED_EMAILS: values.NEURONS_SIGNUP_ALLOWED_EMAILS,
+    NEURONS_SIGNUP_OPEN: values.NEURONS_SIGNUP_OPEN,
+  });
+  const outbound = resolveOutbound(values, values.NEURONS_PROFILE);
+  if (auth && (!masterKey || values.NEURONS_PROFILE === "local"))
+    throw new ConfigError([
+      "Contas exigem NEURONS_MASTER_KEY e perfil hybrid ou hosted. O perfil local continua sem conta.",
+    ]);
+
+  const hooks = resolveHooks(values, {
+    allowRemote: values.NEURONS_ALLOW_REMOTE,
+    apiPort: values.NEURONS_PORT,
+  });
 
   return {
+    ...(auth && { auth }),
+    ...(outbound && { outbound }),
     ...(values.NEURONS_UI_DIR && { uiRoot: values.NEURONS_UI_DIR }),
     ...(values.NEURONS_LANDING_DIR && { landingRoot: values.NEURONS_LANDING_DIR }),
     mode: values.NEURONS_MODE,
     host: resolveListenHost(values),
     port: values.NEURONS_PORT,
+    ...(hooks && { hooks }),
     askTimeoutMs: values.NEURONS_ASK_TIMEOUT_SEC * 1000,
     guards: resolveGuardLimits(values),
     terminalInput: resolveTerminalInputLimits(values),

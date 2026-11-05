@@ -8,8 +8,10 @@ import { DatabaseService } from "../../database/database.service.js";
 import type { TestDatabase } from "../../database/testing/test-database.js";
 import type { AppConfig } from "../../shared/config/app-config.js";
 import { testConfig } from "../../shared/config/testing/test-config.js";
+import { AccountAuth } from "../../accounts/account-auth.service.js";
 
 export interface TestApiOptions {
+  auth?: AccountAuth;
   /** Builds the agents' runtimes; without it the real ones stay (and no test should start a run). */
   runtimes?: AgentRuntimeFactory;
   config?: Partial<AppConfig>;
@@ -36,6 +38,7 @@ export async function startTestApi(
   if (options.runtimes) {
     builder = builder.overrideProvider(AGENT_RUNTIME_FACTORY).useValue(options.runtimes);
   }
+  if (options.auth) builder = builder.overrideProvider(AccountAuth).useValue(options.auth);
 
   const app = (await builder.compile()).createNestApplication<NestFastifyApplication>(
     new FastifyAdapter(),

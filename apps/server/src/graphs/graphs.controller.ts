@@ -116,7 +116,7 @@ export class GraphsController {
     body: publishVersionBody,
     response: graphVersionSchema,
     status: 201,
-    errors: [404],
+    errors: [403, 404],
   })
   async publish(@ValidParams() { id }: GraphParams, @ValidBody() body: PublishVersionBody) {
     return presentVersion(await this.graphs.publish(id, body.definition));

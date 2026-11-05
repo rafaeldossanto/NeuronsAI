@@ -72,7 +72,7 @@ export function MemoryFields({
               value={tool.vaultPath ?? ""}
               onChange={(event) => set(["tool", "vaultPath"], event.target.value)}
             />
-            {window.neuronsDesktop && (
+            {window.neuronsDesktop && window.neuronsDesktop.localResources !== false && (
               <Button
                 variant="outline"
                 size="sm"

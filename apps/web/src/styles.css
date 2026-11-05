@@ -1,6 +1,32 @@
 @import "tailwindcss";
 @import "@fontsource-variable/manrope";
 
+@layer components {
+  .heading-4 {
+    @apply text-3xl font-semibold;
+    text-wrap: balance;
+  }
+  .title-3 {
+    @apply text-base font-medium;
+    text-wrap: pretty;
+  }
+  .title-4 {
+    @apply text-sm font-medium;
+    text-wrap: pretty;
+  }
+  .heading-5 {
+    @apply text-2xl font-semibold;
+    text-wrap: balance;
+  }
+  .body-6 {
+    @apply text-sm font-normal;
+    text-wrap: pretty;
+  }
+  .caption-4 {
+    @apply text-xs font-medium;
+  }
+}
+
 /* Design tokens (from the landing page): the one place where colors, type and radii are defined.
    Names follow shadcn/ui's CSS variables. No blue anywhere. */
 :root {

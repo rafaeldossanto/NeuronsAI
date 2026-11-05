@@ -1,10 +1,11 @@
 import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
 
 /** The window behind an IPC call, only if the call comes from the app's own page (main frame). */
-export function trustedWindow(event: IpcMainInvokeEvent, origin: string): BrowserWindow {
+export type TrustedOrigin = string | (() => string);
+export function trustedWindow(event: IpcMainInvokeEvent, origin: TrustedOrigin): BrowserWindow {
   if (
     !event.senderFrame ||
-    new URL(event.senderFrame.url).origin !== origin ||
+    new URL(event.senderFrame.url).origin !== (typeof origin === "function" ? origin() : origin) ||
     event.senderFrame !== event.sender.mainFrame
   )
     throw new Error("Origem não autorizada.");
@@ -14,7 +15,10 @@ export function trustedWindow(event: IpcMainInvokeEvent, origin: string): Browse
 }
 
 /** Bind once, validate both origin and window identity before granting a narrow native action. */
-export function installWindowControls(origin: string): void {
+export function installWindowControls(
+  origin: TrustedOrigin,
+  localOrigin = typeof origin === "function" ? origin() : origin,
+): void {
   const target = (event: IpcMainInvokeEvent) => trustedWindow(event, origin);
   ipcMain.handle("neurons:window", (event, action: unknown) => {
     const window = target(event);
@@ -36,6 +40,8 @@ export function installWindowControls(origin: string): void {
     }
   });
   ipcMain.handle("neurons:directory", async (event) => {
+    // Remote pages cannot request local filesystem paths through the preload.
+    trustedWindow(event, localOrigin);
     const result = await dialog.showOpenDialog(target(event), {
       properties: ["openDirectory"],
       title: "Selecionar pasta",

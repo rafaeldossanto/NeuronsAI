@@ -117,7 +117,7 @@ export function AddMemoryPanel({
                 placeholder="Caminho absoluto do cofre"
                 onChange={(e) => setVaultPath(e.target.value)}
               />
-              {window.neuronsDesktop && (
+              {window.neuronsDesktop && window.neuronsDesktop.localResources !== false && (
                 <Button
                   type="button"
                   variant="outline"

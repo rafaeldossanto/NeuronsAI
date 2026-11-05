@@ -38,9 +38,9 @@ A branch `codex/modeler-connections-memories` foi revisada (achados em [[Interfa
 
 ## Ordem de execução
 
-- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T12, T14, T19, T20, T21, T22, T24.
-- Próxima: T13–T15 → T25 → T16–T18.
-- **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16) sai por túnel.
+- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T12, T14, T16a, T19, T20, T21, T22, T24.
+- Próxima: T13–T15 → T25 → T16b–T18.
+- **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16b) sai por túnel.
 
 **Paralelismo possível:** T04 e T05 em paralelo com T02–T03. A Fase 2 pode começar assim que
 a T10 publicar a API (o modelador só depende do contrato da T02 e da API).
@@ -464,26 +464,56 @@ Dividida em duas:
 
 ### T16 — Gatilhos externos e WhatsApp
 
-- Gatilho `webhook` com URL e assinatura HMAC por grafo; `schedule` com cron.
-- **WhatsApp Cloud API** oficial (número de teste da Meta) como gatilho e como ferramenta de
-  resposta; validar `X-Hub-Signature-256`. Agente que lê mensagem de cliente começa sem
-  ferramenta de escrita.
-- Enquanto for local, o webhook sai por túnel (Cloudflare Tunnel).
+Dividida em duas:
 
-**Pronto quando:** mensagem no número de teste dispara a execução e a resposta volta no WhatsApp.
+- **T16a · Webhook e agendamento: feita (2026-11-04).** Detalhes e exemplos no README do servidor ("Gatilhos externos"). Decisões:
+  - **Versão que roda:** sempre a **publicada mais recente**, lida na hora de disparar; sem versão publicada (ou sem o gatilho nela) o disparo é recusado com erro claro. Não há versão fixada; se fizer falta, um campo `version` opcional no gatilho.
+  - **Porta separada** (`NEURONS_HOOKS_PORT`, desligada por padrão): outra instância do Fastify com uma só rota, `POST /hooks/{hookId}`; a API nunca responde ali. Escuta em `127.0.0.1` (outro endereço segue `NEURONS_ALLOW_REMOTE`); o túnel (Cloudflare, documentado, nada instalado) aponta só para ela.
+  - **Id opaco por gatilho** (128 bits) na URL, em vez de `graphId/triggerId`: não vaza ids internos nem se adivinha.
+  - **Assinatura:** HMAC-SHA256 de `timestamp.corpo cru` (`X-Neurons-Timestamp`, `X-Neurons-Signature: sha256=<hex>`), segredo gerado pelo servidor, cifrado pelo `SecretsService` e mostrado uma vez (criação e troca); janela de 5 min, comparação em tempo constante, reenvio recusado (assinaturas gravadas por 11 min, atômico). Tudo que é credencial errada volta o mesmo `401`; `202` com o `runId`.
+  - **Limites:** 256 KB (`NEURONS_HOOKS_MAX_BODY_KB`), 60 chamadas/min por gatilho (`NEURONS_HOOKS_RATE_PER_MIN`; ids inexistentes dividem um limite), só JSON ou texto. O corpo é a entrada da execução (mensagem do `@trigger`); log nunca grava segredo, assinatura nem corpo.
+  - **Agendamento** no processo do servidor com `croner` 10.0.1 (5 campos, `timezone?` opcional, padrão o fuso do sistema), validado no `graph-schema` com mensagem em pt-BR. **Sem sobreposição** (pula e registra o motivo); **horários perdidos não são recuperados** (app fechado ou computador dormindo); última e próxima execução gravadas no gatilho.
+  - **Estado fora do grafo:** ativo/desativado (padrão desativado), segredo e última/próxima execução em `graph_triggers` (migration `0005`); ativar não publica versão. API: `GET /graphs/{id}/triggers/{triggerId}`, `POST …/secret`, `PUT …/enabled`.
+  - **Tela:** o inspetor do gatilho mostra URL, "Gerar/Trocar segredo" (uma vez, com aviso), `curl` assinado, cron com explicação em português, as próximas 3 execuções e o fuso.
+  - **Desktop:** o agendador e a porta dos webhooks só funcionam com o app aberto.
+  - **Falta/anotado:** rodar manualmente um `* * * * *` por 1–2 minutos no app real; a porta dos gatilhos no app desktop só liga por variável de ambiente (sem tela de configuração).
+- **T16b · WhatsApp: pendente.** Depende do número de teste da Meta que o Rafael vai criar. **WhatsApp Cloud API** oficial como gatilho e como ferramenta de resposta; validar `X-Hub-Signature-256` (reaproveita a porta dos gatilhos da T16a); agente que lê mensagem de cliente começa sem ferramenta de escrita.
+
+**Pronto quando (T16a):** um `POST` assinado dispara a versão publicada mais recente; assinatura errada, vencida ou repetida volta 401 sem criar execução; a API normal não responde na porta dos gatilhos; o `schedule` dispara no horário e não sobrepõe.
+**Pronto quando (T16b):** mensagem no número de teste dispara a execução e a resposta volta no WhatsApp.
 
 ### T17 — Templates
 
-- "Novo grafo a partir de template": Venda → pós-venda, Pesquisa com revisor, Agente principal +
-  CLIs no terminal. Cada template é uma fixture validada da T02 com textos de exemplo.
+Implementada em `codex/t17-templates`, a partir de `a2ce21e`. Catálogo portátil em `packages/graph-schema/templates`, com nome, descrição, categoria, grafo, instruções e anotações em pt-BR:
 
-**Pronto quando:** os três templates abrem, rodam e terminam com modelos reais.
+- **Venda → pós-venda:** webhook → Vendedor → PosVenda, com ferramenta HTTP de pedido, modelos Sonnet/Haiku 5.5 e referências de segredo. O endpoint `example.invalid` deve ser substituído; criar os segredos e configurar/ativar o webhook continua sendo decisão explícita do usuário.
+- **Pesquisa com revisor:** gatilho manual, Pesquisador e Revisor em Claude Code (Haiku 5.5, sessões estruturadas), conversa bidirecional com limite de mensagens. Usa a assinatura da CLI; sem agente de API.
+- **Agente principal + CLIs no terminal:** Principal por API (Sonnet 5.5) delega a Executor (Sonnet 5.5) e Revisor (Haiku 5.5) em terminais Claude Code. Cada ligação tem limite próprio.
+
+**Portabilidade aprovada por Rafael:** o contrato atual exige `cwd` absoluto. As receitas guardam apenas `cwd: "."`; a tela pede a pasta do computador do runner **antes de criar**. `instantiateTemplate` injeta essa pasta na cópia e o grafo configurado passa em `validateGraph` sem alteração por `migrateGraph`. Nenhum caminho da máquina fica no catálogo e o contrato não foi alterado.
+
+A tela `/new` oferece projeto em branco e os três templates, com prévia por `GraphViewer` só leitura e selo de necessidade de chave nos que usam API. Cria um id novo pela API existente, salva o rascunho e abre o editor. **Não publica, ativa webhook ou inicia execução automaticamente.** Falha no salvamento pode ser repetida sem criar outro projeto.
+
+**Verificação:** testes de catálogo cobrem validação/migração das instâncias, portabilidade, referências de segredo, modelos, orçamentos e limites. Testes da tela cobrem prévias, escolha, id novo, conteúdo salvo, projeto vazio e erros. O teste de aceitação `node packages/graph-schema/templates/verify-fake-cli.mjs` valida criação, reabertura, publicação explícita e a conversa Pesquisador ↔ Revisor pelo servidor e runner usando apenas o CLI de mentira.
+
+**Resultado da validação local (2026-11-04):** 48 tarefas de lint/tipagem/testes/build passaram no monorepo, com 127 testes do esquema e 159 da interface; contrato OpenAPI em dia. Aceitação gratuita concluída: três templates criados com ids próprios, reabertos e publicados no banco de teste; Pesquisa com revisor terminou com pergunta, resposta e resultado. No navegador, o fluxo de criação confirmou rascunho sem versão publicada, pasta aplicada e ausência de exceções JavaScript.
+
+**Guardas:** todos os agentes possuem `budgetUsd` e `idleTimeoutSec`; todas as ligações têm `maxMessages`. Orçamento configurado não resolve custo desconhecido: nos runtimes de API, a limitação real em USD continua dependente de relatório de custo/preços. Limites de mensagens e tempo ocioso seguem ativos.
+
+**Pendente da T07:** executar e encerrar os dois templates com agentes de API usando chaves e modelos reais. Nenhuma chamada paga ou rodada real com Claude Code faz parte desta validação. As chaves devem ser criadas pelo usuário em Conexões de IA; `secretName` é somente o nome de referência, e o cabeçalho HTTP usa `{{secret:ORDERS_API_TOKEN}}`.
 
 ### T18 — Landing
 
 - Trazer `E:\Notes\Design\NeuronsAI\pagina-real` para `apps/site` e publicar (Vercel ou GitHub
   Pages), com a lista de espera apontando para um destino definido pelo Rafael.
 - Botões de download por sistema (Windows, macOS, Linux) apontando para a última versão no GitHub Releases.
+
+
+**Estado (revisado e integrado na `dev`):**
+
+- Feito: seção "Baixar" com detecção do sistema e links vindos de `releases/latest` (API pública, sem token, cache em `sessionStorage` tolerante a falha, "Primeira versão em breve" sem release/erro/limite); "Como instalar" (SmartScreen, Gatekeeper, Linux, conferência do `SHA256SUMS.txt`); lista de espera desligada por padrão (destino em `src/config.ts`); CSP estrita sem script/estilo inline; `.github/workflows/pages.yml` só com `workflow_dispatch`, `pages: write`/`id-token: write` só no deploy; SEO e acessibilidade.
+- Nada foi publicado: o `pages.yml` não foi executado, não há tag nem release.
+- Depende do Rafael: (1) onde hospedar (GitHub Pages ou domínio próprio) e ativar o Pages; (2) o destino da lista de espera (`VITE_WAITLIST_URL` + `VITE_WAITLIST_ENABLED=true`); (3) a URL pública do modelador para o `pages.yml`; (4) a primeira release, para os botões de download ficarem ativos.
 
 **Pronto quando:** landing publicada no domínio escolhido.
 
@@ -589,6 +619,22 @@ Dividida em duas:
 - **Adiado:** a demo real (`--real-claude`) no perfil `hybrid` (a cota das rodadas reais foi usada na medição do custo); REST/UI para emitir e revogar tokens (T25); escolher o runner de cada agente no grafo (hoje o menos carregado); reenviar a saída do terminal perdida durante uma queda (o servidor guarda só o que chegou); o runtime de API (T07) rodando num runner.
 
 ### T25 — Contas e multiusuário
+
+**Integrada na `dev` após revisão (2026-11-05).** Google OIDC/PKCE, sessão web com renovação rotativa, isolamento dos recursos por organização, papéis, runners por organização e login do desktop pelo navegador do sistema. Testado só com provedor simulado. Ver [[T25 - Google e recursos por organizacao]] e [[T25 - Desktop remoto]].
+
+**Revisão de segurança e correção (Claude, 2026-11-05).** OIDC (PKCE S256, state/nonce de uso único, JWKS do Google, RS256 fixo, `iss`/`aud`/`azp`/`exp`/`nonce`), sessões (hash SHA-256, renovação rotativa com revogação da família no reuso, CSRF e cookies `__Host-`), isolamento REST, runners e desktop foram conferidos sem achado de vazamento entre organizações no estado atual. Corrigido: (1) `/ws` — `unsubscribe` antes de `subscribe` desligava a revalidação por evento (teste novo falha sem a correção); (2) web — o `/ws` autentica pelos cookies do handshake, então depois da rotação o servidor devolve `invalid_session`; o cliente agora renova a sessão e reabre o socket; (3) desktop — "Esquecer sessão salva" revoga no servidor mesmo sem cookies abertos nesta execução, e a partição remota recusa downloads; (4) `/new` — o projeto em branco deixado por uma falha ao salvar o template é reaproveitado.
+
+**Pendências que bloqueavam a exposição pública: resolvidas (2026-11-05).** A T26 está desbloqueada quanto a estas três; o que falta para ela está no fim desta seção. Detalhes e variáveis em [README do servidor](../../apps/server/README.md#servidor-público-guardas-t25).
+- **SSRF — resolvido.** Nos perfis `hybrid`/`hosted`, `http` e MCP por HTTP passam por `createGuardedFetch` (`packages/tools/src/net`): só `http(s)` nas portas de `NEURONS_OUTBOUND_ALLOWED_PORTS` (80 e 443), DNS resolvido uma vez no soquete e conexão no endereço validado (sem rebinding), qualquer endereço interno na resposta barra a chamada (loopback, `0.0.0.0`, link-local/metadados, RFC 1918, CGNAT, `fc00::/7`, reservados e IPv4 embutido em IPv6), redirecionamentos conferidos um a um (máximo 5; entre origens vão sem cabeçalhos nem corpo). Exceções por `NEURONS_OUTBOUND_ALLOW_HOSTS`. Perfil `local` sem guarda. Testes por classe de endereço, rebinding e redirecionamento.
+- **Cadastro aberto — resolvido.** Fechado por padrão: identidade nova só entra por convite de `owner`/`admin` (e-mail verificado, 14 dias, tabela `organization_invitations`, migration `0012`) ou se o e-mail/domínio está em `NEURONS_SIGNUP_ALLOWED_EMAILS`/`_DOMAINS`. Sem isso: "Acesso só por convite" na tela (web e desktop). `NEURONS_SIGNUP_OPEN=true` reabre (só servidor privado). Endpoints `…/organizations/:id/invitations`.
+- **Segredos — resolvido pelo modelo "admin publica".** Publicar versão com `{{secret:...}}` em qualquer string exige `admin`/`owner` (`403 secret_publish_forbidden`); `member` publica o resto. Lista de hosts permitidos por segredo ficou fora (seria coluna nova em `secrets` e UI): continua sendo a evolução natural.
+- **Sem contas, fora do loopback:** `NEURONS_ALLOW_REMOTE=true` sem as variáveis do Google deixa a API aberta (inclui MCP stdio no servidor). É o comportamento anterior, agora documentado nos comentários. Continua valendo: **não** exponha o servidor sem contas.
+
+**Dívidas menores:** quem entra (por convite ou lista) pode criar organizações novas sem cota; gatilhos/rotação do segredo de webhook pedem só papel `write` (mapa de papéis no interceptor depende do prefixo do controller; trocar por decorator por rota); dados antigos (organização `NULL`) ficam fora das contas e não há comando de adoção (cron antigo e tokens de runner antigos continuam valendo no escopo `NULL`); sem cotas de organizações/memórias/execuções; `/ws` não fecha upgrade sem sessão (cada operação já exige); HTTP em loopback aceito também no app empacotado; `Retry-After`/limite de tentativas usa `request.ip` (atrás de proxy é preciso configurar `trustProxy`).
+
+**Depende do Rafael:** criar o OAuth client no Google Cloud (tipo "Aplicativo da Web"; URI de redirecionamento exata `<origem>/api/auth/google/callback` com a interface servida junto, ou `/auth/google/callback` sem ela; HTTP só em loopback), configurar `NEURONS_PUBLIC_ORIGIN`, `NEURONS_GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI`, `NEURONS_MASTER_KEY` e perfil `hybrid`/`hosted` fora do Git, e aceitar o login real no Electron (reinício com o cofre) nos três sistemas.
+
+**Para a T26 (o que ainda falta quanto à exposição):** definir as listas `NEURONS_SIGNUP_ALLOWED_*` (ou convidar o primeiro e-mail: com cadastro fechado e sem lista o primeiro `owner` precisa ser criado antes, por lista ou `NEURONS_SIGNUP_OPEN=true` temporário), pôr `trustProxy` atrás do balanceador (limites por IP), e só então abrir. A guarda de SSRF no código é a primeira camada; o isolamento de rede da AWS (grupos de segurança e sub-redes do contêiner, metadados restritos) continua recomendado como a segunda.
 
 - **Login com Google** (OpenID Connect com PKCE), atrás de uma interface de provedor de identidade para dar para acrescentar outros depois. No app desktop, o login abre o **navegador do sistema** e volta para o app por deep link `neuronsai://` (ou endereço local de retorno) — nunca numa janela embutida, que o Google bloqueia.
 - Sessão do NeuronsAI com tokens próprios (acesso curto + renovação rotativa); no app desktop ficam no cofre do sistema (`safeStorage` do Electron: Keychain, Credential Manager, libsecret).

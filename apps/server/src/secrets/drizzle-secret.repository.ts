@@ -1,5 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
+import { resourceScope } from "../accounts/resource-scope.js";
 import { DatabaseService } from "../database/database.service.js";
 import { secrets } from "../database/schema/index.js";
 import type { EncryptedValue } from "./secret-cipher.js";
@@ -12,15 +13,18 @@ export class DrizzleSecretRepository implements SecretRepository {
   async upsert(name: string, value: EncryptedValue): Promise<void> {
     await this.database.db
       .insert(secrets)
-      .values({ name, ...value })
-      .onConflictDoUpdate({ target: secrets.name, set: { ...value, updatedAt: new Date() } });
+      .values({ name, ...value, organizationId: resourceScope.current().organizationId })
+      .onConflictDoUpdate({
+        target: [secrets.organizationId, secrets.name],
+        set: { ...value, updatedAt: new Date() },
+      });
   }
 
   async find(name: string): Promise<EncryptedValue | undefined> {
     const [row] = await this.database.db
       .select({ ciphertext: secrets.ciphertext, iv: secrets.iv, authTag: secrets.authTag })
       .from(secrets)
-      .where(eq(secrets.name, name));
+      .where(and(eq(secrets.name, name), resourceScope.matches(secrets.organizationId)));
     return row;
   }
 
@@ -28,6 +32,7 @@ export class DrizzleSecretRepository implements SecretRepository {
     const rows = await this.database.db
       .select({ name: secrets.name })
       .from(secrets)
+      .where(resourceScope.matches(secrets.organizationId))
       .orderBy(asc(secrets.name));
     return rows.map((row) => row.name);
   }

@@ -7,7 +7,7 @@ import {
   type UpdateMode,
   type UpdateState,
 } from "./update-policy.js";
-import { trustedWindow } from "./window-controls.js";
+import { trustedWindow, type TrustedOrigin } from "./window-controls.js";
 
 const FIRST_CHECK_MS = 15_000;
 const CHECK_EVERY_MS = 4 * 60 * 60 * 1000;
@@ -19,7 +19,12 @@ const CHECK_EVERY_MS = 4 * 60 * 60 * 1000;
  * (`manual`: unsigned macOS, `.deb`). Nothing is ever installed without the user asking, and asking
  * to install while a run is going on asks again, naming the risk.
  */
-export function installUpdater(origin: string, mode: UpdateMode, platform: NodeJS.Platform): void {
+export function installUpdater(
+  origin: TrustedOrigin,
+  mode: UpdateMode,
+  platform: NodeJS.Platform,
+  localOrigin = typeof origin === "function" ? origin() : origin,
+): void {
   let state: UpdateState = { kind: "idle" };
   const set = (next: UpdateState) => {
     state = next;
@@ -32,6 +37,7 @@ export function installUpdater(origin: string, mode: UpdateMode, platform: NodeJ
       trustedWindow(event, origin);
       if (action === "state") return state;
       if (action !== "install") throw new Error("Ação desconhecida.");
+      trustedWindow(event, localOrigin);
     });
     return;
   }
@@ -77,8 +83,9 @@ export function installUpdater(origin: string, mode: UpdateMode, platform: NodeJ
       case "state":
         return state;
       case "install": {
+        trustedWindow(event, localOrigin);
         if (state.kind !== "ready" || mode.kind !== "auto") return;
-        if (await confirmRestart(window, origin)) {
+        if (await confirmRestart(window, localOrigin)) {
           // On Linux the new AppImage is not started by the updater: the single-instance lock
           // would still be held by this process while it shuts down.
           autoUpdater.quitAndInstall(true, platform !== "linux");

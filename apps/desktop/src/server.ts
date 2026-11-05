@@ -20,8 +20,10 @@ export interface RunningServer {
  */
 export function serverConfigFor(desktop: DesktopConfig, env?: NodeJS.ProcessEnv): AppConfig {
   const config = env ? loadConfig(env) : loadConfig();
+  const { auth, ...localConfig } = config;
+  void auth; // The desktop's embedded server stays local/account-free even with cloud env settings.
   return {
-    ...config,
+    ...localConfig,
     mode: "all",
     profile: "local",
     host: "127.0.0.1",
