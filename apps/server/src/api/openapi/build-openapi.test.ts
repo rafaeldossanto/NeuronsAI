@@ -65,7 +65,7 @@ describe("buildOpenApi", () => {
       required: ["code", "message"],
     });
     const publish = operation(document, "/graphs/{id}/versions", "post");
-    expect(Object.keys(publish.responses).sort()).toEqual(["201", "400", "404"]);
+    expect(Object.keys(publish.responses).sort()).toEqual(["201", "400", "403", "404"]);
     for (const status of ["400", "404"]) {
       expect(publish.responses[status]?.content?.["application/json"]?.schema).toEqual({
         $ref: "#/components/schemas/ErrorBody",
