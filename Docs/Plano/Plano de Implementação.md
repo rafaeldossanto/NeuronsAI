@@ -508,6 +508,13 @@ A tela `/new` oferece projeto em branco e os três templates, com prévia por `G
   Pages), com a lista de espera apontando para um destino definido pelo Rafael.
 - Botões de download por sistema (Windows, macOS, Linux) apontando para a última versão no GitHub Releases.
 
+
+**Estado (revisado e integrado na `dev`):**
+
+- Feito: seção "Baixar" com detecção do sistema e links vindos de `releases/latest` (API pública, sem token, cache em `sessionStorage` tolerante a falha, "Primeira versão em breve" sem release/erro/limite); "Como instalar" (SmartScreen, Gatekeeper, Linux, conferência do `SHA256SUMS.txt`); lista de espera desligada por padrão (destino em `src/config.ts`); CSP estrita sem script/estilo inline; `.github/workflows/pages.yml` só com `workflow_dispatch`, `pages: write`/`id-token: write` só no deploy; SEO e acessibilidade.
+- Nada foi publicado: o `pages.yml` não foi executado, não há tag nem release.
+- Depende do Rafael: (1) onde hospedar (GitHub Pages ou domínio próprio) e ativar o Pages; (2) o destino da lista de espera (`VITE_WAITLIST_URL` + `VITE_WAITLIST_ENABLED=true`); (3) a URL pública do modelador para o `pages.yml`; (4) a primeira release, para os botões de download ficarem ativos.
+
 **Pronto quando:** landing publicada no domínio escolhido.
 
 ---
