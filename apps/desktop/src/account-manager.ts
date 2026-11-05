@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -198,6 +198,24 @@ export class DesktopAccountManager {
               .join("; "),
           },
         }).catch(() => {});
+      else {
+        // The server was not opened in this run (offline boot, for instance): the protected refresh
+        // credential is the only thing left that could keep the session alive. Revoke with it.
+        const saved = await this.options.store.load(origin).catch(() => undefined);
+        if (saved) {
+          const fresh = randomBytes(32).toString("base64url");
+          await this.transport(`${origin}/api/auth/logout`, {
+            method: "POST",
+            redirect: "error",
+            signal: AbortSignal.timeout(10_000),
+            headers: {
+              Origin: origin,
+              "x-neurons-csrf": fresh,
+              Cookie: `${prefix}refresh=${saved.refreshToken}; ${prefix}csrf=${fresh}`,
+            },
+          }).catch(() => {});
+        }
+      }
       await this.clearCookies(origin);
       await this.flush();
       await this.options.store.clear(origin);

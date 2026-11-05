@@ -188,6 +188,27 @@ describe("sessão remota no main", () => {
       ),
     ).toBe(true);
   });
+  it("revoga no servidor com a renovação protegida mesmo sem cookies abertos nesta execução", async () => {
+    const { manager, saved, transport } = fixture();
+    const refreshToken = credentials().refreshToken;
+    saved.set(origin, { serverOrigin: origin, refreshToken, expiresAt: credentials().expiresAt });
+    await writeFile(
+      path.join(directory, "desktop-connection.json"),
+      JSON.stringify({ serverOrigin: origin }),
+    );
+    transport.mockRejectedValueOnce(new Error("offline"));
+    await manager.initialize();
+    expect(manager.state().mode).toBe("local");
+    transport.mockClear();
+    transport.mockResolvedValue(new Response(null, { status: 204 }));
+    await manager.forget();
+    const [url, init] = transport.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${origin}/api/auth/logout`);
+    const headers = init.headers as Record<string, string>;
+    expect(headers["Cookie"]).toContain(`__Host-neurons-refresh=${refreshToken}`);
+    expect(headers["Cookie"]).toContain(`__Host-neurons-csrf=${headers["x-neurons-csrf"]}`);
+    expect(saved.has(origin)).toBe(false);
+  });
   it("fica local quando offline sem apagar a sessão protegida de outro servidor", async () => {
     const { manager, transport, saved } = fixture();
     saved.set(origin, {

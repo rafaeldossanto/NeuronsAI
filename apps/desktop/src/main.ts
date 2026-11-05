@@ -108,6 +108,8 @@ async function boot(): Promise<void> {
       // No persist: prefix: account cookies are memory-only; the refresh credential lives in safeStorage.
       selected = session.fromPartition(partitionFor(target));
       lockDownSession(selected, target);
+      // A remote server never gets to open a save dialog on this computer.
+      selected.on("will-download", (event) => event.preventDefault());
       selected.cookies.on("changed", (_event, cookie) => {
         if (cookie.name === `${cookiePrefix(target)}refresh`) accounts?.cookiesChanged(target);
       });
