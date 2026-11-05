@@ -21,6 +21,45 @@ describe("triggerNodeSchema", () => {
   it("does not require cron for manual triggers", () => {
     expect(triggerNodeSchema.safeParse(trigger("t", "a")).success).toBe(true);
   });
+
+  it("accepts an optional time zone on a schedule and keeps old triggers valid without it", () => {
+    const schedule = { ...trigger("t", "a"), kind: "schedule", cron: "0 9 * * 1" };
+    expect(triggerNodeSchema.safeParse(schedule).success).toBe(true);
+    expect(
+      triggerNodeSchema.safeParse({ ...schedule, timezone: "America/Sao_Paulo" }).success,
+    ).toBe(true);
+  });
+
+  it("rejects an invalid cron with a pt-BR message and the cron_invalid code", () => {
+    const result = triggerNodeSchema.safeParse({
+      ...trigger("t", "a"),
+      kind: "schedule",
+      cron: "toda segunda",
+    });
+    expect(result.success).toBe(false);
+    const issue = result.error?.issues[0];
+    expect(issue).toMatchObject({ path: ["cron"], params: { code: "cron_invalid" } });
+    expect(issue?.message).toContain("Expressão cron inválida");
+  });
+
+  it("rejects a cron that never fires and an unknown time zone", () => {
+    const never = triggerNodeSchema.safeParse({
+      ...trigger("t", "a"),
+      kind: "schedule",
+      cron: "0 0 31 2 *",
+    });
+    expect(never.success).toBe(false);
+    const zone = triggerNodeSchema.safeParse({
+      ...trigger("t", "a"),
+      kind: "schedule",
+      cron: "0 9 * * 1",
+      timezone: "Marte/Olympus",
+    });
+    expect(zone.error?.issues[0]).toMatchObject({
+      path: ["timezone"],
+      params: { code: "timezone_invalid" },
+    });
+  });
 });
 
 describe("agentNodeSchema", () => {

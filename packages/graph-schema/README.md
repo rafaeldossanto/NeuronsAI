@@ -10,11 +10,11 @@ Contrato central do NeuronsAI: a definição do grafo (JSON) que o modelador web
 
 Todo bloco tem `id` e `position: { x, y }`. Os blocos (`GraphNode`) são uma união discriminada por `type`:
 
-| `type`    | Campos principais                                                                                                                                                |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `trigger` | `kind` (`manual`, `webhook`, `schedule`), `target` (id de um agente), `cron` (obrigatório em `schedule`)                                                         |
-| `agent`   | `name` (endereço do `send_message`, `^[A-Za-z][A-Za-z0-9_-]{0,39}$`), `role`, `instructions`, `effort` (`low`…`max`), `budgetUsd?`, `idleTimeoutSec?`, `runtime` |
-| `tool`    | `name` e `tool`: `mcp` (`stdio` ou `http`, com `allowedTools`), `http` (`method`, `url`, `headers`, `bodySchema?`) ou `obsidian` (`vaultPath`, `readOnly: true`) |
+| `type`    | Campos principais                                                                                                                                                                  |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trigger` | `kind` (`manual`, `webhook`, `schedule`), `target` (id de um agente), `cron` (obrigatório em `schedule`: 5 campos, validado), `timezone?` (nome IANA; sem ele, o fuso do servidor) |
+| `agent`   | `name` (endereço do `send_message`, `^[A-Za-z][A-Za-z0-9_-]{0,39}$`), `role`, `instructions`, `effort` (`low`…`max`), `budgetUsd?`, `idleTimeoutSec?`, `runtime`                   |
+| `tool`    | `name` e `tool`: `mcp` (`stdio` ou `http`, com `allowedTools`), `http` (`method`, `url`, `headers`, `bodySchema?`) ou `obsidian` (`vaultPath`, `readOnly: true`)                   |
 
 `runtime` do agente: `{ kind: "api", provider, model }` ou `{ kind: "terminal", cli, mode, command?, args, cwd }` (`cli`: `claude`, `codex`, `gemini` ou `custom`; `mode`: `pty` (padrão, a tela da CLI que o usuário vê e digita) ou `stream-json` (sessão estruturada, sem tela); `command` é obrigatório em `custom`; `cwd` é um caminho absoluto, Windows ou POSIX).
 
@@ -52,7 +52,9 @@ Cada `GraphIssue` tem `code` (inglês, estável), `message` (pt-BR, para a tela)
 | `duplicate_link`                                       | sem ligação repetida entre o mesmo par e tipo (um `talk` bidirecional A↔B conflita com qualquer outro `talk` entre A e B) |
 | `group_member_not_found`                               | `memberIds` de grupo apontam para nós existentes                                                                          |
 
-Erros de formato (campo ausente, tipo errado, regex etc.) saem com o `code` do zod (`invalid_type`, `invalid_value`…) ou com o código próprio (`cron_required`, `command_required`).
+Erros de formato (campo ausente, tipo errado, regex etc.) saem com o `code` do zod (`invalid_type`, `invalid_value`…) ou com o código próprio (`cron_required`, `cron_invalid`, `timezone_invalid`, `command_required`).
+
+O cron é validado no próprio schema, com mensagem em pt-BR: cinco campos (minuto hora dia mês dia-da-semana), sem apelidos (`@daily`) nem segundos, e uma expressão que nunca dispara (`0 0 31 2 *`) também é recusada. Os mesmos ajudantes saem do pacote para o servidor (agendador) e para a tela (prévia): `checkCron`, `nextCronRuns`, `nextCronRun`, `isValidTimezone` e `systemTimezone`, sobre a biblioteca [`croner`](https://github.com/Hexagon/croner) `10.0.1`. `timezone` e a validação do cron são acréscimos compatíveis: grafos antigos continuam válidos.
 
 ## Exemplo
 

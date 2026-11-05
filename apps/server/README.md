@@ -14,6 +14,10 @@ Copie `.env.example` para `.env` (ignorado pelo git) e preencha. Valores vazios 
 | `NEURONS_HOST`                     | `127.0.0.1` | Onde escutar. Qualquer endereço que não seja local (`127.x`, `::1`, `localhost`) exige também `NEURONS_ALLOW_REMOTE=true`: sem login, quem alcança a porta usa a API.              |
 | `NEURONS_ALLOW_REMOTE`             | `false`     | Confirma que o servidor pode escutar fora desta máquina.                                                                                                                           |
 | `NEURONS_PORT`                     | `3100`      | Porta do servidor.                                                                                                                                                                 |
+| `NEURONS_HOOKS_PORT`               | —           | Porta **separada** dos gatilhos de webhook ([ver abaixo](#gatilhos-externos-t16a)). Sem ela (padrão) nada escuta além da API. Deve ser diferente de `NEURONS_PORT`.                |
+| `NEURONS_HOOKS_HOST`               | `127.0.0.1` | Onde a porta dos gatilhos escuta. Fora do endereço local exige `NEURONS_ALLOW_REMOTE=true`, como a API (o túnel conecta daqui mesmo).                                              |
+| `NEURONS_HOOKS_MAX_BODY_KB`        | `256`       | Maior corpo aceito na porta dos gatilhos, em KB (`413` acima disso). Não herda o limite da API.                                                                                    |
+| `NEURONS_HOOKS_RATE_PER_MIN`       | `60`        | Chamadas por minuto que cada gatilho atende (cabe uma rajada desse tamanho), certas ou erradas. Ids que não existem dividem um único limite. Acima: `429`.                         |
 | `NEURONS_RUN_MAX_MESSAGES`         | `200`       | Mensagens (de qualquer tipo) que uma execução troca antes de ser parada pela guarda.                                                                                               |
 | `NEURONS_PING_PONG_MESSAGES`       | `20`        | Mensagens seguidas entre os mesmos dois agentes, sem ninguém mais, até a guarda de pingue-pongue parar a execução (mínimo 2).                                                      |
 | `NEURONS_RUN_BUDGET_USD`           | —           | Orçamento em US$ de uma execução que não define o seu. Vazio: sem limite.                                                                                                          |
@@ -56,11 +60,11 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 
 ### Modos
 
-| Modo     | Módulos                                                      |
-| -------- | ------------------------------------------------------------ |
-| `api`    | comuns + `graphs`, `realtime`, `GET /openapi.json`           |
-| `worker` | comuns + `runs` (Hub, guardas, ciclo e endpoints de `/runs`) |
-| `all`    | tudo                                                         |
+| Modo     | Módulos                                                                                         |
+| -------- | ----------------------------------------------------------------------------------------------- |
+| `api`    | comuns + `graphs`, `realtime`, `GET /openapi.json`                                              |
+| `worker` | comuns + `runs` (Hub, guardas, ciclo e endpoints de `/runs`) e `triggers` (webhook e agendador) |
+| `all`    | tudo                                                                                            |
 
 Módulos comuns: `database`, `secrets`, `health`. Em qualquer modo o processo escuta HTTP em `NEURONS_HOST` (local por padrão).
 
@@ -138,6 +142,9 @@ Sem login ainda. Cada endpoint declara o seu contrato em zod (`*.contract.ts`: p
 | `POST /runs/{id}/stop`                              | Para a execução: encerra os runtimes e os terminais (`RunService` → `Supervisor.stopRun`). Pode repetir.                                                                                    |
 | `POST /runs/{id}/messages`                          | Manda uma mensagem como `@human` a qualquer agente da execução (as setas não valem para você).                                                                                              |
 | `GET /runs/{id}/messages`, `GET /runs/{id}/events`  | Mensagens e eventos em ordem (`afterSeq`/`fromSeq`, `limit`): o mesmo log que o WebSocket transmite.                                                                                        |
+| `GET /graphs/{id}/triggers/{triggerId}`             | Estado de um gatilho externo: `enabled`, `hookPath`, `hooksPort`, `hasSecret`, `lastRun` e `nextRunAt` ([ver abaixo](#gatilhos-externos-t16a)).                                             |
+| `POST /graphs/{id}/triggers/{triggerId}/secret`     | Gera o segredo do webhook ou **troca** o atual. O segredo aparece **só nesta resposta** (`201`); depois só se sabe que existe. Sem `NEURONS_MASTER_KEY`: `503`.                             |
+| `PUT /graphs/{id}/triggers/{triggerId}/enabled`     | `{ "enabled": true\|false }`. Ativar exige o gatilho (webhook ou agenda) na versão publicada mais recente e, no webhook, o segredo (`409`).                                                 |
 | `GET /secrets`, `PUT /secrets/{name}`               | **Só** nomes e escrita. O valor entra e nunca volta: nenhum schema de resposta o carrega, e erros de validação não repetem o que foi enviado.                                               |
 | `GET /openapi.json`, `GET /health`                  | Documento OpenAPI e saúde.                                                                                                                                                                  |
 
@@ -162,6 +169,79 @@ A resposta é `{ items, total, limit, offset }`; `total` conta tudo o que casa c
 - **Índices** (migration `0004_run_listing_indexes`): `runs(graph_version_id)`, `runs(started_at desc, id desc)` e, parcial, `run_events(run_id) where type = 'UsageRecorded'`, que alimenta a agregação.
 
 **Erros**: sempre `{ code, message, details? }`. `code` é estável e em inglês (o cliente decide por ele), `message` é pt-BR e `details` lista `{ path, code, message }` de cada campo errado (`body.name`, `params.id`...). Um corpo que não é JSON recebe `400 bad_request` sem citar o corpo. Códigos comuns: `graph_not_found`, `run_not_found` (404), `run_not_active` (409), `unknown_recipient` (400), `master_key_not_configured` (503).
+
+## Gatilhos externos (T16a)
+
+Um grafo pode ser iniciado de fora por um gatilho `webhook` (alguém chama uma URL) ou `schedule` (um cron). Os dois são **desligados até você ativá-los** (`PUT /graphs/{id}/triggers/{triggerId}/enabled`; na tela, o botão "Ativar" do inspetor do bloco). O estado (ativo, última e próxima execução) fica na tabela `graph_triggers`, fora da definição do grafo: as versões são imutáveis e ligar ou desligar um gatilho não publica nada.
+
+**Qual versão roda.** Sempre a **versão publicada mais recente** do grafo, lida no instante em que o gatilho dispara; publicar uma versão nova muda o que a próxima chamada executa. Não há versão fixada (um gatilho que rodasse uma versão antiga para sempre seria uma armadilha silenciosa; se um dia fizer falta, o caminho é um campo `version` opcional no gatilho). Sem versão publicada, ou se a versão mais recente já não tem o gatilho como webhook/agenda, o gatilho não roda e diz por quê (`409 no_published_version` / `trigger_not_in_version` ao chamador do webhook; no estado do gatilho, `lastRun.note`).
+
+### Webhook
+
+Uma **porta separada**, só para gatilhos (`NEURONS_HOOKS_PORT`, desligada por padrão), com uma única rota. Não é a API com rotas escondidas: é outra instância do Fastify que só conhece `POST /hooks/{hookId}`; `/health`, `/graphs`, `/ws`, `/openapi.json` e tudo o mais respondem `404` ali. Assim um túnel aponta para essa porta e nunca expõe a API, que não tem login. Ela escuta em `127.0.0.1` (o túnel conecta daqui); outro endereço segue a regra do `NEURONS_ALLOW_REMOTE`.
+
+**Rota: `POST /hooks/{hookId}`**, com um **id opaco** por gatilho (128 bits aleatórios em base64url, 22 caracteres), não `graphId/triggerId`. Os ids internos não vazam na URL, o id não dá para adivinhar e, trocado o id, a URL antiga morre sem mexer no grafo. O `hookId` nasce na primeira vez que o segredo é gerado e não muda quando o segredo é trocado.
+
+**Assinatura HMAC-SHA256 por gatilho.** O segredo (`whsec_…`) é gerado pelo servidor, guardado cifrado pelo `SecretsService` (nome `webhook.<hookId>`) e mostrado **uma vez só**, na criação e na troca (`POST …/secret`). Quem chama manda:
+
+| Cabeçalho             | Valor                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------- |
+| `X-Neurons-Timestamp` | Segundos desde 1970 (inteiro).                                                                    |
+| `X-Neurons-Signature` | `sha256=<hex>`: HMAC-SHA256, com o segredo, de `timestamp + "." + corpo cru` (os bytes enviados). |
+| `Content-Type`        | `application/json` ou `text/plain`; qualquer outro tipo dá `415`.                                 |
+
+```bash
+BODY='{"mensagem":"Olá!"}'
+TS=$(date +%s)
+SIG=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$NEURONS_WEBHOOK_SECRET" -hex | sed 's/^.* //')
+curl -X POST 'http://127.0.0.1:3101/hooks/<hookId>' \
+  -H 'Content-Type: application/json' \
+  -H "X-Neurons-Timestamp: $TS" \
+  -H "X-Neurons-Signature: sha256=$SIG" \
+  --data-binary "$BODY"
+```
+
+- **Janela de 5 minutos** para os dois lados do relógio do servidor e comparação em **tempo constante**.
+- **Sem reenvio:** a assinatura de cada chamada aceita fica gravada (`webhook_deliveries`, atômico) e a mesma chamada de novo é recusada. Como uma chamada carimbada 5 minutos adiante ainda vale por mais 5, as assinaturas são lembradas por 11 minutos e depois apagadas. Chamadas novas com o mesmo corpo passam: o carimbo faz parte do que se assina.
+- **Respostas:** `202 { "runId": "…" }` quando aceita. `401 { "code": "unauthorized", "message": "Não autorizado." }`, **sempre igual**, para id desconhecido, gatilho desativado, sem segredo, cabeçalho ausente ou malformado, assinatura errada, vencida ou repetida (o motivo só vai para o log do servidor). `409` (só depois de a assinatura estar certa) quando não há o que rodar; `413` corpo grande demais; `415` tipo não aceito; `429` + `Retry-After` taxa excedida.
+- **Limites:** corpo de até `NEURONS_HOOKS_MAX_BODY_KB` (256 KB; o limite global de 30 MB da API não vale nesta porta), `NEURONS_HOOKS_RATE_PER_MIN` por gatilho (conta chamadas certas e erradas, para limitar quem tenta adivinhar a assinatura), tempo máximo de 15 s por requisição.
+- **O corpo vira a entrada:** o texto do corpo é a primeira mensagem do `@trigger` ao agente `target` (corpo vazio vira "(requisição sem corpo)"). Entra no log da execução como qualquer entrada. O log do servidor **nunca** grava o segredo, a assinatura nem o corpo: só o tamanho em bytes e os primeiros 4 caracteres do id.
+- **Rotacionar** (`POST …/secret` de novo) vale na hora: quem ainda usa o segredo antigo recebe `401`.
+
+### Agendamento (`schedule`)
+
+O agendador roda **dentro do processo do servidor** (há um servidor por pasta de dados, pela trava do PGlite, então um agendamento nunca dispara em dobro). Usa a biblioteca [`croner`](https://github.com/Hexagon/croner) `10.0.1` (sem dependências, com fuso horário via `Intl`), a mesma que valida o cron no `graph-schema` e que a tela usa para mostrar as próximas execuções.
+
+- **Cron de 5 campos** (minuto hora dia mês dia-da-semana). Apelidos (`@daily`), campo de segundos e expressões que nunca disparam (31 de fevereiro) são recusados ao publicar, com mensagem em pt-BR.
+- **Fuso horário:** campo opcional `timezone` no gatilho (nome IANA, `America/Sao_Paulo`). Sem ele vale o fuso do sistema onde o servidor roda. O horário de verão do fuso é respeitado.
+- **Sem sobreposição:** se a execução que este gatilho iniciou por último ainda está rodando, o horário é **pulado** e o motivo fica em `lastRun` (`skipped_overlap`, com o id da execução) e no log.
+- **Horários perdidos não são recuperados.** Com o app fechado nada dispara, e ao abrir o agendamento só segue **a partir de agora**. Se o computador dormir (ou o processo ficar parado) e o alarme acordar mais de 60 s depois da hora, esse horário também é pulado (`skipped_missed`) em vez de disparar atrasado.
+- **Entrada:** `Execução agendada (cron "0 9 * * 1"), disparada em <ISO 8601>.`
+- **Estado:** `lastRun` (quando, resultado, motivo, id da execução) e `nextRunAt` ficam gravados no gatilho e voltam em `GET /graphs/{id}/triggers/{triggerId}`. Publicar uma versão com outro cron ou fuso reprograma na hora.
+- **No app desktop**, o agendador funciona **com o app aberto**. Fechado, nada dispara (e nada é recuperado depois).
+
+### Túnel (Cloudflare Tunnel)
+
+Para receber webhooks de fora enquanto o servidor é local, exponha **só a porta dos gatilhos**. Nada disto é instalado nem aberto pelo NeuronsAI: é o que você roda na sua máquina.
+
+1. Ligue a porta: `NEURONS_HOOKS_PORT=3101` no `.env` (ou no ambiente do app desktop) e reinicie. Confira o estado na tela ou com `GET /graphs/{id}/triggers/{triggerId}` (`hooksPort`).
+2. Instale o [`cloudflared`](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) e crie o túnel uma vez: `cloudflared tunnel login`, `cloudflared tunnel create neuronsai`, `cloudflared tunnel route dns neuronsai hooks.seudominio.com.br`.
+3. `config.yml` do `cloudflared` (`~/.cloudflared/config.yml`; no Windows, `%USERPROFILE%\.cloudflared\config.yml`). Repare que o serviço é a porta dos gatilhos, **não** a `3100`, e que só o caminho `/hooks/` é publicado:
+
+```yaml
+tunnel: <ID-DO-TUNEL>
+credentials-file: <PASTA-DO-USUARIO>/.cloudflared/<ID-DO-TUNEL>.json
+
+ingress:
+  - hostname: hooks.seudominio.com.br
+    path: ^/hooks/
+    service: http://127.0.0.1:3101
+  - service: http_status:404
+```
+
+4. `cloudflared tunnel run neuronsai`. A URL pública é `https://hooks.seudominio.com.br/hooks/<hookId>`: use o caminho (`hookPath`) que a tela mostra e troque só o endereço.
+
+Para um teste rápido, sem domínio: `cloudflared tunnel --url http://127.0.0.1:3101` imprime um endereço `https://….trycloudflare.com` temporário. Mesmo assim, ninguém sem o segredo passa da assinatura, e a porta da API (`3100`) continua só em `127.0.0.1`.
 
 ## Guardas
 
@@ -279,6 +359,7 @@ src/
   hub/           Hub, políticas de mensagem, Supervisor, briefing
   runners/       RemoteAgentRuntime, RunnerLink/RunnerRegistry, gateway /runner, runner embutido, tokens
   runs/          RunService (início e fim), consultas, controller e contrato de /runs
+  triggers/      webhook (porta dos gatilhos, assinatura HMAC), agendador cron, estado dos gatilhos; controller e contrato
   health/        GET /health
 demo/            api-demo.ts: a execução pela API, com os eventos do WebSocket
 drizzle/         migrations SQL versionadas

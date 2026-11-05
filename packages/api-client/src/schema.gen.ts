@@ -70,6 +70,57 @@ export interface paths {
         patch: operations["graphs_update"];
         trace?: never;
     };
+    "/graphs/{id}/triggers/{triggerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mostra o estado de um gatilho externo: ativo, rota do webhook, se tem segredo, última e próxima execução. */
+        get: operations["graphs_getTrigger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphs/{id}/triggers/{triggerId}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Ativa ou desativa o gatilho. Ativar exige o gatilho na versão publicada mais recente (e o segredo, no webhook). */
+        put: operations["graphs_setTriggerEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphs/{id}/triggers/{triggerId}/secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Gera o segredo do webhook (ou troca o atual, que deixa de valer na hora). O segredo só aparece nesta resposta. */
+        post: operations["graphs_rotateTriggerSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/graphs/{id}/versions": {
         parameters: {
             query?: never;
@@ -323,6 +374,7 @@ export interface components {
                     kind: "manual" | "webhook" | "schedule";
                     target: string;
                     cron?: string;
+                    timezone?: string;
                 } | {
                     id: string;
                     position: {
@@ -532,6 +584,27 @@ export interface components {
             costUsd: number;
             turns: number;
             unknownCostTurns: number;
+        };
+        TriggerSecret: {
+            secret: string;
+            state: components["schemas"]["TriggerState"];
+        };
+        TriggerState: {
+            triggerId: string;
+            enabled: boolean;
+            hookPath: string | null;
+            hooksPort: number | null;
+            hasSecret: boolean;
+            secretSetAt: string | null;
+            lastRun: {
+                /** Format: date-time */
+                at: string;
+                /** @enum {string} */
+                outcome: "started" | "skipped_overlap" | "skipped_missed" | "failed";
+                note: string | null;
+                runId: string | null;
+            } | null;
+            nextRunAt: string | null;
         };
         UsageTotals: {
             costUsd: number;
@@ -804,6 +877,153 @@ export interface operations {
             };
         };
     };
+    graphs_getTrigger: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                triggerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriggerState"];
+                };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graphs_setTriggerEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                triggerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Sucesso. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriggerState"];
+                };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflito com o estado atual. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graphs_rotateTriggerSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                triggerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriggerSecret"];
+                };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Indisponível no momento. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     graphs_listVersions: {
         parameters: {
             query?: never;
@@ -876,6 +1096,7 @@ export interface operations {
                             kind: "manual" | "webhook" | "schedule";
                             target: string;
                             cron?: string;
+                            timezone?: string;
                         } | {
                             id: string;
                             position: {

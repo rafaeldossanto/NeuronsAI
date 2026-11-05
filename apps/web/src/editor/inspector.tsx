@@ -8,12 +8,14 @@ import {
   type TriggerNode,
 } from "@neurons/graph-schema";
 import type { ReactNode } from "react";
+import { useHasApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { AgentAccess } from "@/workspace/agent-access";
 import { MemoryFields } from "@/workspace/memory-fields";
 import { AnnotationInspector } from "./annotation-inspector";
 import { Field, ListField, parseOptionalNumber, Select, TextArea, TextInput } from "./fields";
 import { issueField, type LocatedIssue } from "./issues";
+import { ExternalTriggerPanel, SchedulePreview, TimezoneHint } from "./trigger-panels";
 import {
   defaultApiRuntime,
   defaultTerminalRuntime,
@@ -430,40 +432,68 @@ function ToolFields({
 
 function TriggerFields({ doc, node, set }: { doc: GraphDoc; node: TriggerNode; set: Setter }) {
   const agents = doc.nodes.filter((n): n is AgentNode => n.type === "agent");
+  const hasApi = useHasApi();
   return (
-    <Section title="Configuração">
-      <Field label="Tipo">
-        <Select
-          value={node.kind}
-          onChange={(e) => {
-            set(["kind"], e.target.value);
-            if (e.target.value !== "schedule") set(["cron"], undefined);
-          }}
-        >
-          <option value="manual">Manual</option>
-          <option value="webhook">Webhook</option>
-          <option value="schedule">Agenda</option>
-        </Select>
-      </Field>
-      {node.kind === "schedule" && (
-        <Field label="Expressão cron" hint="Ex.: 0 9 * * 1-5">
-          <TextInput
-            value={node.cron ?? ""}
-            onChange={(e) => set(["cron"], e.target.value || undefined)}
-          />
+    <>
+      <Section title="Configuração">
+        <Field label="Tipo">
+          <Select
+            value={node.kind}
+            onChange={(e) => {
+              set(["kind"], e.target.value);
+              if (e.target.value !== "schedule") {
+                set(["cron"], undefined);
+                set(["timezone"], undefined);
+              }
+            }}
+          >
+            <option value="manual">Manual</option>
+            <option value="webhook">Webhook</option>
+            <option value="schedule">Agenda</option>
+          </Select>
         </Field>
+        {node.kind === "schedule" && (
+          <>
+            <Field
+              label="Expressão cron"
+              hint="Cinco campos: minuto hora dia mês dia-da-semana. Ex.: 0 9 * * 1-5"
+            >
+              <TextInput
+                value={node.cron ?? ""}
+                onChange={(e) => set(["cron"], e.target.value || undefined)}
+              />
+            </Field>
+            <Field
+              label="Fuso horário"
+              hint="Vazio: o fuso do servidor. Ex.: America/Sao_Paulo, UTC"
+            >
+              <TextInput
+                value={node.timezone ?? ""}
+                placeholder="fuso do servidor"
+                onChange={(e) => set(["timezone"], e.target.value.trim() || undefined)}
+              />
+            </Field>
+            <TimezoneHint timezone={node.timezone} />
+            <SchedulePreview cron={node.cron ?? ""} timezone={node.timezone} />
+          </>
+        )}
+        <Field label="Inicia o agente">
+          <Select value={node.target} onChange={(e) => set(["target"], e.target.value)}>
+            <option value="">Nenhum</option>
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </Section>
+      {hasApi && node.kind !== "manual" && (
+        <Section title={node.kind === "webhook" ? "Webhook" : "Agendamento"}>
+          <ExternalTriggerPanel graphId={doc.id} node={node} />
+        </Section>
       )}
-      <Field label="Inicia o agente">
-        <Select value={node.target} onChange={(e) => set(["target"], e.target.value)}>
-          <option value="">Nenhum</option>
-          {agents.map((agent) => (
-            <option key={agent.id} value={agent.id}>
-              {agent.name}
-            </option>
-          ))}
-        </Select>
-      </Field>
-    </Section>
+    </>
   );
 }
 
