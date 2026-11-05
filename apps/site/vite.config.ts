@@ -14,12 +14,28 @@ export default defineConfig(({ command, mode }) => {
     .replaceAll('"', "&quot;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+  const base = env["NEURONS_SITE_BASE"] ?? "./";
+  if (base !== "./" && !/^\/(?:[A-Za-z0-9_-]+\/)*$/.test(base))
+    throw new Error("NEURONS_SITE_BASE deve ser ./, / ou uma subpasta como /NeuronsAI/.");
+  const siteUrl = env["NEURONS_SITE_URL"];
+  if (siteUrl && !/^https?:\/\//.test(siteUrl))
+    throw new Error("NEURONS_SITE_URL deve ser um endereço HTTP(S).");
+  const socialImage = siteUrl
+    ? new URL("icon.png", siteUrl.endsWith("/") ? siteUrl : siteUrl + "/").href
+    : `${base}icon.png`;
   return {
+    base,
     server: { host: "127.0.0.1", port: 5191 },
     plugins: [
       {
         name: "modeler-entry",
-        transformIndexHtml: (html: string) => html.replaceAll("__MODELER_URL__", escaped),
+        transformIndexHtml: (html: string) =>
+          html
+            .replaceAll("__MODELER_URL__", escaped)
+            .replaceAll(
+              "__SITE_IMAGE__",
+              socialImage.replaceAll("&", "&amp;").replaceAll('"', "&quot;"),
+            ),
       },
     ],
   };
