@@ -12,7 +12,15 @@ import {
   type GraphVersionRepository,
 } from "./graph-version-repository.js";
 import type { GraphVersionRecord } from "./graph.records.js";
-import { GraphNotFoundError } from "./graphs.errors.js";
+import { resourceScope } from "../accounts/resource-scope.js";
+import { GraphNotFoundError, SecretPublishForbiddenError } from "./graphs.errors.js";
+
+const SECRET_PLACEHOLDER = /\{\{secret:[A-Za-z0-9_.-]+\}\}/;
+
+/** True when any string of the definition references a stored secret. */
+export function usesSecrets(definition: unknown): boolean {
+  return SECRET_PLACEHOLDER.test(JSON.stringify(definition) ?? "");
+}
 
 export type PublishResult =
   { ok: true; version: GraphVersionRecord } | { ok: false; issues: GraphIssue[] };
@@ -41,9 +49,22 @@ export class GraphVersionService {
     const mismatch = this.checkGraphId(graphId, validation.graph);
     if (mismatch) return { ok: false, issues: [mismatch] };
 
+    this.requireSecretPublisher(validation.graph);
+
     const version = await this.versions.appendNext(graphId, validation.graph);
     this.published.next({ graphId, version: version.version });
     return { ok: true, version };
+  }
+
+  /**
+   * On a server with accounts a `member` could otherwise point an HTTP tool at their own host and
+   * put `{{secret:NAME}}` in the URL or a header, sending the organization's secret out. The local
+   * workspace (no organization) has a single user, who owns every secret anyway.
+   */
+  private requireSecretPublisher(graph: GraphDefinition): void {
+    const { organizationId, role } = resourceScope.current();
+    if (organizationId === null || !usesSecrets(graph)) return;
+    if (role !== "owner" && role !== "admin") throw new SecretPublishForbiddenError();
   }
 
   /** The id inside the definition must be the id of the graph it is published to. */

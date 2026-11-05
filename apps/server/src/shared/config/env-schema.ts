@@ -6,3 +6,17 @@ export const unlessEmpty = <T extends z.ZodType>(schema: T) =>
 
 export const port = (fallback: number) =>
   unlessEmpty(z.coerce.number().int().min(1).max(65_535).default(fallback));
+
+/** A comma-separated list, trimmed and lower-cased; empty items are dropped. */
+export const csvList = () =>
+  unlessEmpty(
+    z
+      .string()
+      .optional()
+      .transform((value) =>
+        (value ?? "")
+          .split(",")
+          .map((item) => item.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+  );

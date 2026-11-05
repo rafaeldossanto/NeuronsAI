@@ -18,6 +18,21 @@ describe("entrada no espaço", () => {
     expect(await screen.findByText("Workspace local")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Entrar com Google" })).not.toBeInTheDocument();
   });
+  it("explica que o acesso é só por convite quando o servidor devolve o aviso", async () => {
+    window.history.replaceState({}, "", "/graphs?login_error=signup_closed");
+    const mock = mockFetch({
+      "GET /auth/session": { body: { enabled: true, authenticated: false } },
+    });
+    render(
+      <SessionGate api={createApi(mock.fetch)}>
+        <p>Projetos privados</p>
+      </SessionGate>,
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("Acesso só por convite");
+    expect(screen.getByRole("button", { name: "Entrar com Google" })).toBeInTheDocument();
+    expect(window.location.search).toBe("");
+    expect(screen.queryByText("Projetos privados")).not.toBeInTheDocument();
+  });
   it("oculta os projetos sem sessão e inicia somente o login oficial", async () => {
     const mock = mockFetch({
       "GET /auth/session": {

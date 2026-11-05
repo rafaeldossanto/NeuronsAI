@@ -170,6 +170,10 @@ export class GraphToolsService {
         },
       };
     }
-    return createTools(node, { secrets: { resolve: (name) => this.secrets.get(name) } });
+    return createTools(node, {
+      secrets: { resolve: (name) => this.secrets.get(name) },
+      // Public servers keep tools away from loopback, private networks and the cloud metadata address.
+      ...(this.config.outbound && { network: this.config.outbound }),
+    });
   }
 }

@@ -50,6 +50,12 @@ Para um novo `kind`: criar a fábrica (`ToolFactory<K>`) e registrá-la em `defa
   `SHELL`, `TERM`, `USER`. Nada além disso do servidor chega ao filho (há teste).
 - **Limites** (`deps.limits`): `maxResultChars` (20 000), `httpTimeoutMs` (30 s, somado ao `signal`),
   `maxNoteBytes` (1 MiB), `maxSearchFiles` (5 000).
+- **Política de saída** (`deps.network`, opcional): o servidor público a passa para que `http` e MCP por
+  HTTP não alcancem loopback, rede privada, link-local (metadados da nuvem) nem portas fora da lista.
+  Implementada em `src/net/`: `createGuardedFetch` resolve o DNS uma só vez no soquete e conecta no
+  endereço validado (sem rebinding), confere cada redirecionamento e, ao mudar de origem, segue sem
+  cabeçalhos nem corpo. `isBlockedAddress` classifica o IP (inclui IPv4 mapeado, NAT64 e 6to4). Erro:
+  `DESTINATION_BLOCKED`. Sem `network` (perfil local) o `fetch` é o do Node, sem restrição.
 - **Cofre Obsidian**: caminho resolvido com `realpath` e conferido depois de resolvido (recusa `..`,
   caminho absoluto, link simbólico/junction para fora, `.obsidian/`, `.trash/`, arquivos que não são
   `.md`). A busca não segue links simbólicos.

@@ -12,6 +12,7 @@ import { testConfig } from "../shared/config/testing/test-config.js";
 import { AccountAuth } from "./account-auth.service.js";
 import { AccountSessionsService } from "./account-sessions.service.js";
 import { AccountsService } from "./accounts.service.js";
+import { SignupPolicy } from "./signup-policy.js";
 import { BrowserSession } from "./browser-session.js";
 import { OidcLoginService } from "./oidc-login.service.js";
 
@@ -35,10 +36,11 @@ beforeAll(async () => {
 afterAll(async () => {
   await database?.stop();
 });
-beforeEach(async () => {
+async function startApp(policy: SignupPolicy) {
   const config = testConfig({
     auth: {
       publicOrigin: origin,
+      signup: { open: true, allowedDomains: [], allowedEmails: [] },
       google: {
         clientId: "native-test",
         clientSecret: "placeholder",
@@ -46,7 +48,7 @@ beforeEach(async () => {
       },
     },
   });
-  const accounts = new AccountsService(database.database);
+  const accounts = new AccountsService(database.database, policy);
   sessions = new AccountSessionsService(database.database);
   const browser = new BrowserSession(sessions, origin),
     subject = `native-${++sequence}`;
@@ -74,7 +76,10 @@ beforeEach(async () => {
     sessions,
     require: () => ({ browser, login }),
   } as AccountAuth;
-  app = await startTestApi(database, { config, auth });
+  return startTestApi(database, { config, auth });
+}
+beforeEach(async () => {
+  app = await startApp(SignupPolicy.open());
 });
 afterEach(async () => {
   await app?.close();
@@ -187,6 +192,23 @@ describe("login nativo com navegador e PKCE", () => {
     });
     expect(result.statusCode).toBe(403);
     expect(String(result.headers["set-cookie"])).not.toMatch(/nsa_|nsr_/);
+  });
+  it("devolve ao app o motivo quando a conta Google não foi convidada, sem emitir credenciais", async () => {
+    await app.close();
+    app = await startApp(SignupPolicy.closed());
+    const attempt = await begin();
+    const response = await app.inject({
+      method: "GET",
+      url: attempt.callback,
+      headers: { cookie: attempt.cookie },
+    });
+    expect(response.statusCode).toBe(302);
+    const returned = new URL(response.headers.location!);
+    expect(returned.origin + returned.pathname).toBe(redirectUri);
+    expect(returned.searchParams.get("error")).toBe("signup_closed");
+    expect(returned.searchParams.get("state")).toBe(state);
+    expect(returned.searchParams.has("code")).toBe(false);
+    expect(String(response.headers["set-cookie"])).not.toMatch(/nsa_|nsr_/);
   });
   it("cancela pelo navegador com vínculo e sem emitir credenciais", async () => {
     const attempt = await begin();

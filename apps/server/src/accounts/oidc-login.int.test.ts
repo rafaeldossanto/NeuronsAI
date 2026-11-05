@@ -5,9 +5,11 @@ import { loginAttempts } from "../database/schema/login-attempts.js";
 import { startTestDatabase, type TestDatabase } from "../database/testing/test-database.js";
 import { AesGcmSecretCipher } from "../secrets/secret-cipher.js";
 import { AccountsService } from "./accounts.service.js";
+import { SignupPolicy } from "./signup-policy.js";
 import { AccountSessionsService } from "./account-sessions.service.js";
 import { BrowserSession } from "./browser-session.js";
 import type { IdentityProvider } from "./identity-provider.js";
+import { SignupClosedError } from "./account.errors.js";
 import { LoginAttemptError, IdentityVerificationError } from "./login.errors.js";
 import { OidcLoginService } from "./oidc-login.service.js";
 
@@ -46,7 +48,7 @@ beforeEach(() => {
   sessions = new AccountSessionsService(database.database, () => now);
   login = new OidcLoginService(
     database.database,
-    new AccountsService(database.database),
+    new AccountsService(database.database, SignupPolicy.open()),
     sessions,
     provider,
     new AesGcmSecretCipher(randomBytes(32)),
@@ -198,5 +200,66 @@ describe("transporte de sessão web", () => {
     expect(() => browser.loginBinding({ headers: {} })).toThrow(LoginAttemptError);
     expect(() => new BrowserSession(sessions, "http://public.example.invalid")).toThrow();
     expect(() => new BrowserSession(sessions, "http://127.0.0.1:3100")).not.toThrow();
+  });
+});
+
+describe("login em servidor com cadastro fechado", () => {
+  function closedLogin(email: string | undefined) {
+    const accounts = new AccountsService(
+      database.database,
+      new SignupPolicy({ open: false, allowedDomains: [], allowedEmails: [] }),
+    );
+    const guest: IdentityProvider = {
+      authorizationUrl: (input) => provider.authorizationUrl(input),
+      exchange: () =>
+        Promise.resolve({
+          issuer: "https://issuer.example.invalid",
+          subject: `convidada-${email ?? "sem-email"}`,
+          displayName: "Convidada",
+          ...(email && { email }),
+        }),
+    };
+    return {
+      accounts,
+      login: new OidcLoginService(
+        database.database,
+        accounts,
+        sessions,
+        guest,
+        new AesGcmSecretCipher(randomBytes(32)),
+        redirectUri,
+        () => now,
+      ),
+    };
+  }
+
+  it("barra quem não foi convidado com SignupClosedError, sem sessão nem conta", async () => {
+    const { login: closed } = closedLogin("estranha@fora.example");
+    const attempt = await closed.begin();
+    await expect(closed.complete(callback(attempt))).rejects.toThrow(SignupClosedError);
+    // A tentativa foi consumida: não dá para reusar o mesmo retorno.
+    await expect(closed.complete(callback(attempt))).rejects.toThrow(LoginAttemptError);
+  });
+
+  it("abre a sessão do convidado na organização que o convidou", async () => {
+    const owner = await new AccountsService(
+      database.database,
+      SignupPolicy.open(),
+    ).provisionIdentity({
+      issuer: "https://issuer.example.invalid",
+      subject: "dona-do-espaco",
+      displayName: "Dona",
+    });
+    const organization = (
+      await new AccountsService(database.database, SignupPolicy.open()).listOrganizations(owner.id)
+    )[0]!;
+    const { accounts, login: guest } = closedLogin("convidada@fora.example");
+    await accounts.invite(owner.id, organization.id, "convidada@fora.example", "viewer");
+    const attempt = await guest.begin();
+    const credentials = await guest.complete(callback(attempt));
+    expect(await sessions.authenticate(credentials.accessToken)).toMatchObject({
+      organizationId: organization.id,
+      role: "viewer",
+    });
   });
 });

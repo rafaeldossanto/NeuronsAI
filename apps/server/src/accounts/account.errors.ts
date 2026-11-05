@@ -30,3 +30,21 @@ export class InvalidSessionError extends DomainError {
     super("invalid_session", "Sessão inválida ou expirada. Entre novamente.");
   }
 }
+
+/** A new identity tried to sign up on a server that only admits invited or listed people. */
+export class SignupClosedError extends DomainError {
+  readonly kind = "forbidden" as const;
+  constructor() {
+    super(
+      "signup_closed",
+      "Acesso só por convite. Peça a um administrador da sua organização para convidar o seu e-mail.",
+    );
+  }
+}
+
+export class InvitationNotFoundError extends DomainError {
+  readonly kind = "not_found" as const;
+  constructor() {
+    super("invitation_not_found", "Convite não encontrado.");
+  }
+}

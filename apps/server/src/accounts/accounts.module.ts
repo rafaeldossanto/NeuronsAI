@@ -9,12 +9,21 @@ import { RequestScopeInterceptor } from "./request-scope.interceptor.js";
 import { APP_INTERCEPTOR } from "@nestjs/core";
 import { SocketAuthorization } from "./socket-authorization.js";
 import { DesktopLoginService } from "./desktop-login.service.js";
+import { SIGNUP_POLICY, SignupPolicy } from "./signup-policy.js";
+import { APP_CONFIG } from "../shared/config/tokens.js";
+import type { AppConfig } from "../shared/config/app-config.js";
 
 /** Local remains account-free; configured servers authenticate every resource request. */
 @Module({
   imports: [DatabaseModule],
   controllers: [AuthController],
   providers: [
+    {
+      provide: SIGNUP_POLICY,
+      inject: [APP_CONFIG],
+      useFactory: (config: AppConfig) =>
+        config.auth ? new SignupPolicy(config.auth.signup) : SignupPolicy.closed(),
+    },
     AccountsService,
     AccountAuth,
     DesktopLoginService,

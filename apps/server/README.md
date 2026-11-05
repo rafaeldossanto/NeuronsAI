@@ -29,6 +29,11 @@ Copie `.env.example` para `.env` (ignorado pelo git) e preencha. Valores vazios 
 | `NEURONS_RUNNER_GRACE_SEC`         | `60`        | Quanto tempo um runner que perdeu a conexão pode levar para voltar antes de seus agentes falharem.                                                                                 |
 | `NEURONS_RUNNER_HEARTBEAT_SEC`     | `15`        | Intervalo do sinal de vida entre servidor e runner (3 perdidos fecham a conexão) e da checagem de token revogado.                                                                  |
 | `NEURONS_RUNNER_WAIT_SEC`          | `30`        | Quanto tempo iniciar um agente espera por um runner conectado antes de falhar.                                                                                                     |
+| `NEURONS_SIGNUP_ALLOWED_DOMAINS`   | —           | Só com contas. Domínios de e-mail (separados por vírgula, igualdade exata: `exemplo.com` não libera `sub.exemplo.com`) cujas contas Google podem se cadastrar sem convite.         |
+| `NEURONS_SIGNUP_ALLOWED_EMAILS`    | —           | Só com contas. E-mails completos que podem se cadastrar sem convite.                                                                                                               |
+| `NEURONS_SIGNUP_OPEN`              | `false`     | Só com contas. `true` reabre o cadastro para qualquer conta Google. Só para servidor privado: num servidor público qualquer pessoa viraria dona de uma organização.                |
+| `NEURONS_OUTBOUND_ALLOWED_PORTS`   | `80,443`    | Perfis `hybrid`/`hosted`. Portas que as ferramentas HTTP e MCP por HTTP podem chamar. Ver "Servidor público".                                                                      |
+| `NEURONS_OUTBOUND_ALLOW_HOSTS`     | —           | Perfis `hybrid`/`hosted`. Exceções da guarda de saída: nome exato, `*.sufixo` ou IP. O host listado dispensa as checagens de endereço e de porta.                                  |
 | `NEURONS_CLAUDE_BIN`               | —           | Caminho do executável do Claude Code usado pelos agentes de terminal. Vazio: procura sozinho (PATH, pastas dos instaladores e, no Windows, a CLI embutida no app desktop).         |
 | `NEURONS_DB`                       | `embedded`  | `embedded` (PGlite, dentro do processo) ou `postgres`. As variáveis `NEURONS_DB_*` abaixo só valem com `postgres`.                                                                 |
 | `NEURONS_DATA_DIR`                 | por sistema | Pasta de dados do app (ver abaixo). O banco embutido fica em `<pasta>/db`.                                                                                                         |
@@ -67,6 +72,34 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 | `all`    | tudo                                                                                            |
 
 Módulos comuns: `database`, `secrets`, `health`. Em qualquer modo o processo escuta HTTP em `NEURONS_HOST` (local por padrão).
+
+## Servidor público: guardas (T25)
+
+Três guardas valem para um servidor exposto à internet (perfis `hybrid`/`hosted` com contas). O perfil `local` continua sem conta, sem guarda de saída e sem restrição de segredos: é o computador do próprio usuário.
+
+### Saída das ferramentas (SSRF)
+
+A ferramenta `http` e o MCP por HTTP rodam **dentro do processo do servidor**. Sem guarda, `http://169.254.169.254/...` entregaria as credenciais da nuvem e `http://10.x` a rede interna. Nos perfis `hybrid`/`hosted` ([`@neurons/tools`](../../packages/tools/README.md), `net/`):
+
+- só `http` e `https`, nas portas de `NEURONS_OUTBOUND_ALLOWED_PORTS` (padrão 80 e 443);
+- o DNS é resolvido **uma vez**, no próprio soquete, e a conexão usa exatamente os endereços validados (não há segunda consulta que um rebinding possa trocar). Se **qualquer** endereço da resposta for interno, a chamada falha (`DESTINATION_BLOCKED`);
+- barrados: loopback, `0.0.0.0`, link-local (`169.254.0.0/16`, `fe80::/10`), RFC 1918, CGNAT (`100.64.0.0/10`), `fc00::/7` (inclui os metadados IPv6 da AWS), documentação, multicast e reservados, e as formas IPv6 que embutem um IPv4 interno (`::ffff:a.b.c.d`, NAT64, 6to4). IPs escritos em decimal/hexadecimal viram o endereço normal antes da checagem;
+- cada redirecionamento é uma requisição nova, com as mesmas checagens (máximo de 5). Ao mudar de origem o redirecionamento segue **sem cabeçalhos nem corpo** (nenhum segredo vai para outro host); `307`/`308` com corpo para outra origem é recusado;
+- exceção: `NEURONS_OUTBOUND_ALLOW_HOSTS` (nome exato, `*.sufixo` ou IP). Um host listado dispensa as checagens de endereço e de porta, nunca a de protocolo. Use com parcimônia (ex.: uma API interna sua).
+
+### Cadastro fechado
+
+Num servidor com contas, uma identidade nova só vira conta se (a) um `owner`/`admin` convidou o e-mail dela ou (b) o e-mail, ou o domínio dele, está em `NEURONS_SIGNUP_ALLOWED_EMAILS`/`NEURONS_SIGNUP_ALLOWED_DOMAINS`. Só vale e-mail **verificado** pelo Google. Fora disso nada é criado e a tela de entrada mostra "Acesso só por convite" (no app desktop, a mesma mensagem).
+
+- `POST /auth/organizations/:id/invitations` `{ email, role }` convida; `GET` lista os pendentes; `DELETE /auth/organizations/:id/invitations/:invitationId` cancela. Só `owner`/`admin` (`manage_members`); só `owner` convida ou cancela convite de `admin`/`owner`.
+- O convite vale por 14 dias e é aceito no primeiro login com aquele e-mail verificado (também por quem já tem conta: o papel é acrescentado, nunca rebaixado). Quem entra só por convite não ganha organização própria. Reconvidar o mesmo e-mail atualiza o papel.
+- **Primeiro acesso:** com o cadastro fechado e as listas vazias ninguém consegue entrar (convite exige um `owner` que já exista). Defina `NEURONS_SIGNUP_ALLOWED_EMAILS` com o e-mail do primeiro dono (ou `NEURONS_SIGNUP_OPEN=true` só até ele entrar) e convide os demais pela API.
+- Quem está na lista de permissão ganha, como antes, uma organização própria (`owner`).
+- Quem já é de uma organização ainda pode criar outras organizações (`POST /auth/organizations`): sem cotas por enquanto (ver Dívidas no plano).
+
+### Segredos em grafo publicado
+
+`{{secret:NOME}}` faz o servidor mandar o valor guardado para onde a ferramenta aponta. Por isso, numa organização, publicar uma versão cujas definições contêm `{{secret:...}}` (em qualquer string) exige papel `admin` ou `owner` (`403 secret_publish_forbidden` para `member`). O `member` continua publicando grafos sem segredos e editando rascunhos; quem publica o rascunho dele com segredo é o admin, que passa a ser responsável pelo conteúdo. Fora do alcance desta etapa: lista de hosts permitidos por segredo.
 
 ## Runners e perfis
 

@@ -7,6 +7,11 @@ import type { ResolvedDeps, ToolNodeOf } from "../core/registry.js";
 import { abortFailure, failure, success } from "../core/results.js";
 import { SecretNotFoundError, scrubSecrets } from "../core/secrets.js";
 import type { JsonSchema, Tool, ToolContext, ToolResult, ToolSet } from "../core/types.js";
+import {
+  DestinationBlockedError,
+  createGuardedFetch,
+  type FetchLike,
+} from "../net/guarded-fetch.js";
 import { buildRequest, InvalidUrlError, type RequestTemplate } from "./request.js";
 
 const MAX_TOOL_NAME_LENGTH = 64;
@@ -87,6 +92,7 @@ class HttpTool {
     private readonly config: HttpConfig,
     private readonly bodyValidator: BodyValidator | undefined,
     private readonly limits: ResolvedDeps["limits"],
+    private readonly doFetch: FetchLike,
   ) {
     this.template = { url: config.url, headers: config.headers };
   }
@@ -100,7 +106,7 @@ class HttpTool {
     try {
       const request = await buildRequest(this.template, input.body, ctx.secrets);
       secretValues = request.secretValues;
-      const response = await fetch(request.url, {
+      const response = await this.doFetch(request.url, {
         method: this.config.method,
         headers: request.headers,
         ...(request.body === undefined ? {} : { body: request.body }),
@@ -133,6 +139,9 @@ class HttpTool {
     if (signal.aborted) return abortFailure(signal);
     if (error instanceof SecretNotFoundError) return failure("SECRET_NOT_FOUND", error.message);
     if (error instanceof InvalidUrlError) return failure("INVALID_INPUT", error.message);
+    if (error instanceof DestinationBlockedError) {
+      return failure("DESTINATION_BLOCKED", scrubSecrets(error.message, secretValues));
+    }
     return failure(
       "NETWORK_ERROR",
       scrubSecrets(`Falha de rede ao chamar a API (${networkCode(error)}).`, secretValues),
@@ -142,7 +151,8 @@ class HttpTool {
 
 export function createHttpTools(node: ToolNodeOf<"http">, deps: ResolvedDeps): Promise<ToolSet> {
   const config = node.tool;
-  const handler = new HttpTool(config, compileBodySchema(config.bodySchema), deps.limits);
+  const doFetch: FetchLike = deps.network ? createGuardedFetch(deps.network) : fetch;
+  const handler = new HttpTool(config, compileBodySchema(config.bodySchema), deps.limits, doFetch);
   const bodiless = BODYLESS_METHODS.has(config.method);
   const tool: Tool = defineTool({
     name: toolNameFor(node.name),

@@ -23,9 +23,11 @@ import { HooksServer } from "../triggers/hooks-server.js";
 import { testConfig } from "../shared/config/testing/test-config.js";
 import { AccountAuth } from "./account-auth.service.js";
 import { AccountsService } from "./accounts.service.js";
+import { SignupPolicy } from "./signup-policy.js";
 import { AccountSessionsService } from "./account-sessions.service.js";
 import { BrowserSession } from "./browser-session.js";
 import { OidcLoginService } from "./oidc-login.service.js";
+import { SignupClosedError } from "./account.errors.js";
 import { resourceScope } from "./resource-scope.js";
 import type { SessionCredentials } from "./account-sessions.service.js";
 
@@ -100,7 +102,7 @@ beforeAll(async () => {
   Logger.overrideLogger(false);
   db = await startTestDatabase();
   directory = path.resolve(await mkdtemp(path.join(os.tmpdir(), "neurons-tenants-")));
-  accounts = new AccountsService(db.database);
+  accounts = new AccountsService(db.database, SignupPolicy.open());
   sessions = new AccountSessionsService(db.database);
   browser = new BrowserSession(sessions, origin);
 });
@@ -111,6 +113,7 @@ beforeEach(async () => {
     hooks: { port: 0, host: "127.0.0.1", maxBodyBytes: 1024, ratePerMinute: 100 },
     auth: {
       publicOrigin: origin,
+      signup: { open: true, allowedDomains: [], allowedEmails: [] },
       google: {
         clientId: "test",
         clientSecret: "placeholder",
@@ -644,5 +647,121 @@ describe("T25 — API entre organizações", () => {
         .slice(before)
         .some((frame) => JSON.stringify(frame).includes("PrivateAfterRevoke")),
     ).toBe(false);
+  });
+
+  it("manda a conta sem convite de volta para a interface com o aviso de acesso só por convite", async () => {
+    const begin = await app.inject({ method: "POST", url: "/auth/google", headers: { origin } });
+    const state = new URL(
+      begin.json<{ authorizationUrl: string }>().authorizationUrl,
+    ).searchParams.get("state")!;
+    const loginCookie = String(begin.headers["set-cookie"]).split(";")[0]!;
+    vi.spyOn(auth.login!, "complete").mockRejectedValueOnce(new SignupClosedError());
+    const complete = await app.inject({
+      method: "GET",
+      url: `/auth/google/callback?state=${state}&code=test`,
+      headers: { cookie: loginCookie },
+    });
+    expect(complete.statusCode).toBe(302);
+    expect(complete.headers.location).toBe("/graphs?login_error=signup_closed");
+    expect(String(complete.headers["set-cookie"])).not.toMatch(/nsa_|nsr_/);
+  });
+
+  it("convites: owner/admin convidam por e-mail; member e viewer não; o convite fica só na organização", async () => {
+    const url = `/auth/organizations/${alice.organizationId}/invitations`;
+    const created = await api(alice, "POST", url, {
+      email: "Convidada@Fora.example",
+      role: "member",
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ email: "convidada@fora.example", role: "member" });
+    const listed = await api(alice, "GET", url);
+    expect(listed.json<{ items: unknown[] }>().items).toHaveLength(1);
+    expect(
+      (await api(alice, "POST", url, { email: "nao-e-email", role: "member" })).statusCode,
+    ).toBe(400);
+
+    // Outra organização não vê nem cria convites aqui.
+    expect((await api(bob, "GET", url)).statusCode).toBe(403);
+    expect(
+      (await api(bob, "POST", url, { email: "x@fora.example", role: "viewer" })).statusCode,
+    ).toBe(403);
+
+    await accounts.setMember(alice.userId, alice.organizationId, bob.userId, "member");
+    const member = asActor(
+      await sessions.issue(bob.userId, alice.organizationId),
+      bob.userId,
+      alice.organizationId,
+    );
+    expect((await api(member, "GET", url)).statusCode).toBe(403);
+    expect(
+      (await api(member, "POST", url, { email: "y@fora.example", role: "viewer" })).statusCode,
+    ).toBe(403);
+
+    await accounts.setMember(alice.userId, alice.organizationId, bob.userId, "admin");
+    expect(
+      (await api(member, "POST", url, { email: "y@fora.example", role: "viewer" })).statusCode,
+    ).toBe(201);
+    expect(
+      (await api(member, "POST", url, { email: "z@fora.example", role: "admin" })).statusCode,
+    ).toBe(403);
+
+    const id = created.json<{ id: string }>().id;
+    expect((await api(alice, "DELETE", `${url}/${id}`)).statusCode).toBe(204);
+    expect((await api(alice, "DELETE", `${url}/${id}`)).statusCode).toBe(404);
+  });
+
+  it("só admin ou owner publicam uma versão que usa {{secret:...}}", async () => {
+    const id = await graph(alice);
+    const base = buildTestGraph();
+    const withSecret = {
+      ...base,
+      id,
+      nodes: [
+        ...base.nodes,
+        {
+          id: "ferramenta-externa",
+          type: "tool",
+          position: { x: 0, y: 0 },
+          name: "Externa",
+          tool: {
+            kind: "http",
+            method: "GET",
+            url: "https://api.exemplo.com.br/dados",
+            headers: { Authorization: "Bearer {{secret:CHAVE}}" },
+          },
+        },
+      ],
+      links: [
+        ...base.links,
+        {
+          id: "uso",
+          from: "agente-alfa",
+          to: "ferramenta-externa",
+          kind: "uses",
+          bidirectional: false,
+        },
+      ],
+    };
+    const publishWith = (who: Actor) =>
+      api(who, "POST", `/graphs/${id}/versions`, { definition: withSecret });
+
+    await accounts.setMember(alice.userId, alice.organizationId, bob.userId, "member");
+    const member = asActor(
+      await sessions.issue(bob.userId, alice.organizationId),
+      bob.userId,
+      alice.organizationId,
+    );
+    const denied = await publishWith(member);
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json()).toMatchObject({ code: "secret_publish_forbidden" });
+    // Sem segredo, o mesmo member publica normalmente.
+    expect(
+      (await api(member, "POST", `/graphs/${id}/versions`, { definition: { ...base, id } }))
+        .statusCode,
+    ).toBe(201);
+
+    await accounts.setMember(alice.userId, alice.organizationId, bob.userId, "admin");
+    expect((await publishWith(member)).statusCode).toBe(201);
+    expect((await publishWith(alice)).statusCode).toBe(201);
   });
 });

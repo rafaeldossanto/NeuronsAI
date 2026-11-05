@@ -34,6 +34,7 @@ export async function createTools(node: ToolNode, deps: ToolDeps): Promise<ToolS
   const resolved: ResolvedDeps = {
     secrets: deps.secrets,
     limits: { ...DEFAULT_LIMITS, ...deps.limits },
+    ...(deps.network && { network: deps.network }),
   };
   const toolSet = await factory(node, resolved);
   return {

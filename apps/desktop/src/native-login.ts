@@ -96,7 +96,13 @@ export class NativeLogin {
           "<!doctype html><html lang=pt-BR><meta charset=utf-8><title>NeuronsAI</title><h1>Volte ao NeuronsAI</h1><p>Você pode fechar esta aba e continuar no aplicativo.</p></html>",
         );
         server.close();
-        if (url.searchParams.has("error"))
+        if (url.searchParams.get("error") === "signup_closed")
+          refuse(
+            new Error(
+              "Acesso só por convite. Peça a um administrador da sua organização para convidar o seu e-mail.",
+            ),
+          );
+        else if (url.searchParams.has("error"))
           refuse(new Error("A entrada não foi autorizada. Você pode tentar novamente."));
         else accept(code);
       },

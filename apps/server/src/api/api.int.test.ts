@@ -667,6 +667,8 @@ describe("OpenAPI document", () => {
       "/auth/logout",
       "/auth/organization",
       "/auth/organizations",
+      "/auth/organizations/{id}/invitations",
+      "/auth/organizations/{id}/invitations/{invitationId}",
       "/auth/organizations/{id}/members",
       "/auth/organizations/{id}/members/{userId}",
       "/auth/refresh",
