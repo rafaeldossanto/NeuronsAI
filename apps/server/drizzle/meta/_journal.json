@@ -43,6 +43,13 @@
       "when": 1793837419416,
       "tag": "0005_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793877811307,
+      "tag": "0006_accounts_foundation",
+      "breakpoints": true
     }
   ]
 }

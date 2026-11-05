@@ -613,6 +613,8 @@ A tela `/new` oferece projeto em branco e os três templates, com prévia por `G
 
 ### T25 — Contas e multiusuário
 
+**Em andamento (2026-11-05):** T25a implementada em `codex/t25-accounts-foundation`, ainda não integrada. Fundação persistente de usuários/identidades, organizações/papéis e sessões opacas com renovação rotativa e detecção de replay. O módulo permanece interno, sem login ativado nem isolamento dos recursos atuais. Ver [[T25 - Contas e isolamento]] para testes e divisão T25b–d. Login Google, isolamento de grafos/execuções/memórias/segredos/gatilhos e runners por conta continuam pendentes.
+
 - **Login com Google** (OpenID Connect com PKCE), atrás de uma interface de provedor de identidade para dar para acrescentar outros depois. No app desktop, o login abre o **navegador do sistema** e volta para o app por deep link `neuronsai://` (ou endereço local de retorno) — nunca numa janela embutida, que o Google bloqueia.
 - Sessão do NeuronsAI com tokens próprios (acesso curto + renovação rotativa); no app desktop ficam no cofre do sistema (`safeStorage` do Electron: Keychain, Credential Manager, libsecret).
 - Credencial do provedor (client secret do Google) só na config/Secrets Manager, nunca no código.
