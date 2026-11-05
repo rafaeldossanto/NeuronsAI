@@ -1,9 +1,11 @@
 ---
 atualizado: 2026-11-05
-status: T25a implementada; integração e demais etapas pendentes
+status: T25a e backend T25b–d implementados; revisão e aceitação real pendentes
 ---
 
 # T25 — Contas e isolamento
+
+**Continuação de 05/11:** login Google, sessão web, escopo de recursos e runners por organização implementados e testados na mesma branch. Estado atual em [[T25 - Google e recursos por organizacao]]. As etapas abaixo preservam o plano inicial; login remoto do Electron e aceitação com credenciais reais continuam pendentes.
 
 Rafael autorizou em 2026-11-05 concluir a integração da T17 e começar a base da T25. Trabalho em `codex/t25-accounts-foundation`, na worktree `C:\Users\rafae\Work\NeuronsAI-codex-t25`, a partir do merge local da T17 (`88e63b8`).
 
@@ -17,7 +19,7 @@ Rafael autorizou em 2026-11-05 concluir a integração da T17 e começar a base 
 - Interface `IdentityProvider` para o futuro adaptador Google. `VerifiedIdentity` é exclusivamente saída de validação OIDC no servidor, nunca um objeto recebido do cliente.
 - Migração aditiva `0006_accounts_foundation`: seis tabelas novas, sem alterar dados/tabelas anteriores. Nenhuma dependência adicionada.
 
-O módulo não está conectado ao `AppModule` e não expõe rotas de login nem emite sessões no aplicativo atual. Isso permite revisar a fundação sem ativar contas antes do isolamento dos recursos. **As verificações de organização desta etapa ainda não isolam grafos, execuções, memórias, segredos, gatilhos ou runners do aplicativo. T25 não está concluída.** O perfil local continua sem conta.
+Na entrega inicial T25a, o módulo não estava conectado ao AppModule. Na continuação, foi conectado com configuração opcional de contas em hybrid/hosted, proteção dos recursos, sessão web e testes com dois usuários. O perfil local continua sem conta. **T25 ainda exige revisão, aceitação Google real e integração do login remoto do Electron.**
 
 ## Etapas seguintes
 

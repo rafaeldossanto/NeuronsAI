@@ -8,9 +8,10 @@ import type { AppConfig } from "../shared/config/app-config.js";
 import { APP_CONFIG, TERMINAL_INPUT_LIMITS } from "../shared/config/tokens.js";
 import { TerminalInput } from "./terminal-input.js";
 import { TerminalSessions } from "./terminal-sessions.js";
+import { AccountsModule } from "../accounts/accounts.module.js";
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, AccountsModule],
   providers: [
     RunEventsGateway,
     RunSubscriptions,

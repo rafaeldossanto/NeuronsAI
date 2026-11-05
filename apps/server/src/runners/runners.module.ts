@@ -6,10 +6,13 @@ import { RUNNER_REPOSITORY } from "./runner-repository.js";
 import { RunnerGateway } from "./runner.gateway.js";
 import { RunnerRegistry } from "./runner-registry.js";
 import { RunnerTokens } from "./runner-tokens.service.js";
+import { AccountsModule } from "../accounts/accounts.module.js";
+import { RunnersController } from "./runners.controller.js";
 
 /** Where the agents run: the embedded runner (profile `local`) or the ones that connect to /runner. */
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, AccountsModule],
+  controllers: [RunnersController],
   providers: [
     RunnerRegistry,
     RunnerTokens,

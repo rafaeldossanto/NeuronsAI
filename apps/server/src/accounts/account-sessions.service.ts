@@ -17,8 +17,8 @@ export interface SessionCredentials {
 }
 
 /**
- * Internal service only: no routes/cookies are exposed until OIDC + resource isolation are ready.
- * Credentials are returned once to the caller; only SHA-256 of 256-bit random values is stored.
+ * Internal credential service. Web routes return only HttpOnly cookies, never token JSON.
+ * Credentials are returned once to the trusted caller; only SHA-256 of random values is stored.
  */
 export class AccountSessionsService {
   constructor(

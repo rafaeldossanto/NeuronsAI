@@ -18,6 +18,7 @@ import {
   type TriggerStateRepository,
 } from "./trigger-state.js";
 import { TriggersService } from "./triggers.service.js";
+import { resourceScope } from "../accounts/resource-scope.js";
 
 /** `setTimeout` cannot wait longer than this; a longer wait is made in steps. */
 const MAX_TIMER_MS = 2 ** 31 - 1;
@@ -104,7 +105,8 @@ export class TriggerScheduler implements OnApplicationBootstrap, OnModuleDestroy
   }
 
   private enqueue(task: () => Promise<void>): Promise<void> {
-    const next = this.queue.then(task, task).catch((error: unknown) => {
+    const bound = resourceScope.bind(task);
+    const next = this.queue.then(bound, bound).catch((error: unknown) => {
       this.logger.error(
         `Falha ao atualizar um agendamento: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -115,7 +117,9 @@ export class TriggerScheduler implements OnApplicationBootstrap, OnModuleDestroy
 
   private async syncAll(): Promise<void> {
     for (const state of await this.states.listEnabled()) {
-      await this.sync(state.graphId, state.triggerId);
+      await resourceScope.run({ organizationId: state.organizationId ?? null }, () =>
+        this.sync(state.graphId, state.triggerId),
+      );
     }
   }
 
@@ -167,7 +171,10 @@ export class TriggerScheduler implements OnApplicationBootstrap, OnModuleDestroy
 
   private wait(spec: Omit<Armed, "timer">): void {
     const delay = Math.min(Math.max(spec.dueAt.getTime() - this.clock(), 0), MAX_TIMER_MS);
-    const timer = setTimeout(() => void this.onTimer(spec.graphId, spec.triggerId), delay);
+    const timer = setTimeout(
+      resourceScope.bind(() => void this.onTimer(spec.graphId, spec.triggerId)),
+      delay,
+    );
     timer.unref();
     this.armed.set(keyOf(spec.graphId, spec.triggerId), { ...spec, timer });
   }

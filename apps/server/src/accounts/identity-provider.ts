@@ -10,7 +10,7 @@ export interface VerifiedIdentity {
   email?: string;
 }
 
-/** No real or fake provider is registered by the foundation. Google is the first adapter (T25b). */
+/** Google is registered only when all OIDC settings are configured; tests replace the adapter. */
 export interface IdentityProvider {
   authorizationUrl(input: {
     state: string;

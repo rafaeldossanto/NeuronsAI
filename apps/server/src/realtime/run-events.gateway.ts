@@ -1,6 +1,9 @@
 import { Inject } from "@nestjs/common";
+import type { IncomingMessage } from "node:http";
+import { SocketAuthorization } from "../accounts/socket-authorization.js";
 import {
   type OnGatewayDisconnect,
+  type OnGatewayConnection,
   SubscribeMessage,
   WebSocketGateway,
   type WsResponse,
@@ -28,12 +31,18 @@ type Reply = WsResponse<unknown>;
  *             `run.ephemeral { ...EphemeralRunEvent }` (live only: terminal output, never stored)
  */
 @WebSocketGateway({ path: "/ws" })
-export class RunEventsGateway implements OnGatewayDisconnect {
+export class RunEventsGateway implements OnGatewayDisconnect, OnGatewayConnection {
+  private readonly requests = new WeakMap<WebSocket, IncomingMessage>();
   constructor(
     @Inject(RunSubscriptions) private readonly subscriptions: RunSubscriptions,
     @Inject(TerminalSessions) private readonly terminals: TerminalSessions,
     @Inject(TerminalInput) private readonly terminalInput: TerminalInput,
+    @Inject(SocketAuthorization) private readonly authorization: SocketAuthorization,
   ) {}
+
+  handleConnection(client: WebSocket, request: IncomingMessage): void {
+    this.requests.set(client, request);
+  }
 
   @SubscribeMessage("subscribe")
   async subscribe(client: WebSocket, payload: unknown): Promise<Reply> {
@@ -41,9 +50,20 @@ export class RunEventsGateway implements OnGatewayDisconnect {
     if (!parsed.success) return invalidMessage("subscribe", parsed.error);
 
     const { runId, fromSeq } = parsed.data;
-    const sink = socketSink(client);
-    await this.subscriptions.subscribe(sink, runId, fromSeq);
-    this.terminals.replayTo(sink, runId);
+    const sink = socketSink(
+      client,
+      this.authorization.enabled
+        ? (id, action) => this.authorization.run(this.requests.get(client), id, false, action)
+        : undefined,
+    );
+    try {
+      await this.authorization.run(this.requests.get(client), runId, false, async () => {
+        await this.subscriptions.subscribe(sink, runId, fromSeq);
+        this.terminals.replayTo(sink, runId);
+      });
+    } catch (error) {
+      return socketError(error);
+    }
     return { event: "subscribed", data: { runId } };
   }
 
@@ -62,11 +82,13 @@ export class RunEventsGateway implements OnGatewayDisconnect {
    * `not_a_terminal`, `terminal_not_ready`, `terminal_unavailable`, `input_too_large`, `rate_limited`).
    */
   @SubscribeMessage("terminal.input")
-  terminalInputMessage(client: WebSocket, payload: unknown): Reply | undefined {
+  async terminalInputMessage(client: WebSocket, payload: unknown): Promise<Reply | undefined> {
     const parsed = terminalInputMessageSchema.safeParse(payload);
     if (!parsed.success) return invalidMessage("terminal.input", parsed.error);
     try {
-      this.terminalInput.write(client, parsed.data);
+      await this.authorization.run(this.requests.get(client), parsed.data.runId, true, () =>
+        this.terminalInput.write(client, parsed.data),
+      );
       return undefined;
     } catch (error) {
       if (error instanceof DomainError) {
@@ -84,16 +106,41 @@ export class RunEventsGateway implements OnGatewayDisconnect {
   }
 }
 
+function socketError(error: unknown): Reply {
+  return {
+    event: "error",
+    data:
+      error instanceof DomainError
+        ? { code: error.code, message: error.message }
+        : { code: "unauthorized", message: "Não autorizado." },
+  };
+}
+
 // The same socket must always map to the same sink instance, or unsubscribing would not find it.
 const sinks = new WeakMap<WebSocket, EventSink>();
 
-function socketSink(socket: WebSocket): EventSink {
+function socketSink(
+  socket: WebSocket,
+  authorize?: (runId: string, action: () => void) => Promise<void>,
+): EventSink {
   let sink = sinks.get(socket);
   if (!sink) {
+    let pending = Promise.resolve();
+    const send = (runId: string, event: string, data: unknown) => {
+      const write = () => {
+        if (socket.readyState === 1) socket.send(JSON.stringify({ event, data }));
+      };
+      if (!authorize) return write();
+      // Preserve event order while checking revocation/expiry before delivering any new data.
+      pending = pending
+        .then(() => authorize(runId, write))
+        .catch(() => {
+          socket.close(1008, "Sessão encerrada.");
+        });
+    };
     sink = {
-      send: (event) => socket.send(JSON.stringify({ event: "run.event", data: event })),
-      sendEphemeral: (event) =>
-        socket.send(JSON.stringify({ event: "run.ephemeral", data: event })),
+      send: (event) => send(event.runId, "run.event", event),
+      sendEphemeral: (event) => send(event.runId, "run.ephemeral", event),
     };
     sinks.set(socket, sink);
   }

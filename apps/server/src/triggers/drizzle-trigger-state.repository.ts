@@ -1,7 +1,9 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, lt, inArray } from "drizzle-orm";
 import { DatabaseService } from "../database/database.service.js";
-import { graphTriggers, webhookDeliveries } from "../database/schema/index.js";
+import { graphs, graphTriggers, webhookDeliveries } from "../database/schema/index.js";
+import { resourceScope } from "../accounts/resource-scope.js";
+import { GraphNotFoundError } from "../graphs/graphs.errors.js";
 import type {
   TriggerOutcome,
   TriggerStatePatch,
@@ -11,7 +13,8 @@ import type {
 
 type Row = typeof graphTriggers.$inferSelect;
 
-const toRecord = (row: Row): TriggerStateRecord => ({
+const toRecord = (row: Row, organizationId?: string | null): TriggerStateRecord => ({
+  ...(organizationId && { organizationId }),
   graphId: row.graphId,
   triggerId: row.triggerId,
   hookId: row.hookId,
@@ -29,6 +32,11 @@ export class DrizzleTriggerStateRepository implements TriggerStateRepository {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async ensure(graphId: string, triggerId: string, hookId: string): Promise<TriggerStateRecord> {
+    const [owned] = await this.database.db
+      .select({ id: graphs.id })
+      .from(graphs)
+      .where(and(eq(graphs.id, graphId), resourceScope.matches(graphs.organizationId)));
+    if (!owned) throw new GraphNotFoundError(graphId);
     await this.database.db
       .insert(graphTriggers)
       .values({ graphId, triggerId, hookId })
@@ -40,33 +48,54 @@ export class DrizzleTriggerStateRepository implements TriggerStateRepository {
 
   async find(graphId: string, triggerId: string): Promise<TriggerStateRecord | undefined> {
     const [row] = await this.database.db
-      .select()
+      .select({ state: graphTriggers, organizationId: graphs.organizationId })
       .from(graphTriggers)
-      .where(and(eq(graphTriggers.graphId, graphId), eq(graphTriggers.triggerId, triggerId)));
-    return row && toRecord(row);
+      .innerJoin(graphs, eq(graphs.id, graphTriggers.graphId))
+      .where(
+        and(
+          eq(graphTriggers.graphId, graphId),
+          eq(graphTriggers.triggerId, triggerId),
+          resourceScope.matches(graphs.organizationId),
+        ),
+      );
+    return row && toRecord(row.state, row.organizationId);
   }
 
   async findByHookId(hookId: string): Promise<TriggerStateRecord | undefined> {
     const [row] = await this.database.db
-      .select()
+      .select({ state: graphTriggers, organizationId: graphs.organizationId })
       .from(graphTriggers)
+      .innerJoin(graphs, eq(graphs.id, graphTriggers.graphId))
       .where(eq(graphTriggers.hookId, hookId));
-    return row && toRecord(row);
+    return row && toRecord(row.state, row.organizationId);
   }
 
   async update(graphId: string, triggerId: string, patch: TriggerStatePatch): Promise<void> {
     await this.database.db
       .update(graphTriggers)
       .set(patch)
-      .where(and(eq(graphTriggers.graphId, graphId), eq(graphTriggers.triggerId, triggerId)));
+      .where(
+        and(
+          eq(graphTriggers.graphId, graphId),
+          eq(graphTriggers.triggerId, triggerId),
+          inArray(
+            graphTriggers.graphId,
+            this.database.db
+              .select({ id: graphs.id })
+              .from(graphs)
+              .where(resourceScope.matches(graphs.organizationId)),
+          ),
+        ),
+      );
   }
 
   async listEnabled(): Promise<TriggerStateRecord[]> {
     const rows = await this.database.db
-      .select()
+      .select({ state: graphTriggers, organizationId: graphs.organizationId })
       .from(graphTriggers)
+      .innerJoin(graphs, eq(graphs.id, graphTriggers.graphId))
       .where(eq(graphTriggers.enabled, true));
-    return rows.map(toRecord);
+    return rows.map((row) => toRecord(row.state, row.organizationId));
   }
 
   async recordDelivery(hookId: string, signature: string, receivedAt: Date): Promise<boolean> {

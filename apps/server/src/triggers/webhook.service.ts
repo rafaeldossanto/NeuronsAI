@@ -11,6 +11,7 @@ import {
 } from "./trigger-state.js";
 import { webhookSecretName } from "./triggers.service.js";
 import { SIGNATURE_WINDOW_SEC, verifySignature } from "./webhook-signature.js";
+import { resourceScope } from "../accounts/resource-scope.js";
 
 export const HOOKS_CONFIG = Symbol("HOOKS_CONFIG");
 
@@ -70,6 +71,15 @@ export class WebhookService {
       return this.refuse(request.hookId, state ? "disabled_or_no_secret" : "unknown_hook");
     }
 
+    return resourceScope.run({ organizationId: state.organizationId ?? null }, () =>
+      this.handleScoped(request, state),
+    );
+  }
+
+  private async handleScoped(
+    request: WebhookRequest,
+    state: TriggerStateRecord,
+  ): Promise<WebhookResult> {
     const secret = await this.secretOf(state);
     if (secret === undefined) return this.refuse(request.hookId, "secret_unavailable");
 

@@ -1,5 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { DomainError } from "../shared/errors/domain-error.js";
+import { resourceScope } from "../accounts/resource-scope.js";
 import { SECRET_CIPHER, type SecretCipher } from "./secret-cipher.js";
 import { SECRET_REPOSITORY, type SecretRepository } from "./secret-repository.js";
 import {
@@ -22,7 +23,7 @@ export class SecretsService {
   async set(name: string, value: string): Promise<void> {
     this.assertValidName(name);
     // The name is bound to the ciphertext so a stored value cannot be moved to another name.
-    await this.repository.upsert(name, this.cipher.encrypt(value, name));
+    await this.repository.upsert(name, this.cipher.encrypt(value, this.context(name)));
   }
 
   async get(name: string): Promise<string> {
@@ -30,7 +31,7 @@ export class SecretsService {
     const encrypted = await this.repository.find(name);
     if (!encrypted) throw new SecretNotFoundError(name);
     try {
-      return this.cipher.decrypt(encrypted, name);
+      return this.cipher.decrypt(encrypted, this.context(name));
     } catch (error) {
       if (error instanceof DomainError) throw error;
       throw new SecretDecryptionError(name);
@@ -39,6 +40,11 @@ export class SecretsService {
 
   listNames(): Promise<string[]> {
     return this.repository.listNames();
+  }
+
+  private context(name: string): string {
+    const id = resourceScope.current().organizationId;
+    return id ? `organization:${id}:${name}` : name;
   }
 
   private assertValidName(name: string): void {

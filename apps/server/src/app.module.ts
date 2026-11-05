@@ -11,9 +11,11 @@ import { SecretsModule } from "./secrets/secrets.module.js";
 import { TriggersModule } from "./triggers/triggers.module.js";
 import type { AppConfig, AppMode } from "./shared/config/app-config.js";
 import { ConfigModule } from "./shared/config/config.module.js";
+import { AccountsModule } from "./accounts/accounts.module.js";
 
 /** Needed by every mode. */
 const COMMON_MODULES: Type[] = [
+  AccountsModule,
   DatabaseModule,
   SecretsModule,
   HealthModule,

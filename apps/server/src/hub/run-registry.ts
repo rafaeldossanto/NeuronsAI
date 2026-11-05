@@ -1,8 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import type { GraphDefinition } from "@neurons/graph-schema";
 import { RunNotActiveError } from "./hub.errors.js";
+import { resourceScope } from "../accounts/resource-scope.js";
 
 export interface ActiveRunContext {
+  organizationId: string | null;
   runId: string;
   graph: GraphDefinition;
   /** Spending limit of the whole run; absent means none. */
@@ -20,7 +22,12 @@ export class RunRegistry {
   private readonly closing = new Map<string, ActiveRunContext>();
 
   register(runId: string, graph: GraphDefinition, budgetUsd?: number): void {
-    this.active.set(runId, { runId, graph, ...(budgetUsd !== undefined && { budgetUsd }) });
+    this.active.set(runId, {
+      runId,
+      graph,
+      organizationId: resourceScope.current().organizationId,
+      ...(budgetUsd !== undefined && { budgetUsd }),
+    });
   }
 
   /** The run while it takes messages. */

@@ -5,6 +5,7 @@ import type {
 } from "@neurons/agent-runtimes";
 import { UnsupportedRuntimeError } from "@neurons/agent-runtimes";
 import type { AgentNode } from "@neurons/graph-schema";
+import { resourceScope } from "../accounts/resource-scope.js";
 import {
   RemoteAgentRuntime,
   RemoteTerminalRuntime,
@@ -29,8 +30,15 @@ export class RemoteRuntimeFactory implements AgentRuntimeFactory {
         `O agente "${agent.name}" usa o runtime "${runtime.kind}", que não roda em um runner.`,
       );
     }
+    const options = {
+      ...this.options,
+      ...(this.options.resolveSecret && {
+        resolveSecret: resourceScope.bind((name: string) => this.options.resolveSecret!(name)),
+      }),
+    };
+    const pool: RunnerPool = { acquire: resourceScope.bind(() => this.pool.acquire()) };
     return runtime.mode === "pty"
-      ? new RemoteTerminalRuntime(agent, communication, this.pool, this.options)
-      : new RemoteAgentRuntime(agent, communication, this.pool, this.options);
+      ? new RemoteTerminalRuntime(agent, communication, pool, options)
+      : new RemoteAgentRuntime(agent, communication, pool, options);
   }
 }

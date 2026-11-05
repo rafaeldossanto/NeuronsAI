@@ -1,6 +1,7 @@
 import { createApiClient, type ApiClient } from "@neurons/api-client";
 import { createContext, useContext, type ReactNode } from "react";
 import { apiBaseUrl } from "@/config";
+import { sessionFetch } from "@/auth/session-fetch";
 
 /** An API failure carrying the server's stable `code` (the UI decides by it) and its pt-BR `message`. */
 export class ApiError extends Error {
@@ -15,7 +16,7 @@ export class ApiError extends Error {
 }
 
 export function createApi(fetchImpl?: typeof fetch): ApiClient {
-  return createApiClient(apiBaseUrl, fetchImpl ? { fetch: fetchImpl } : {});
+  return createApiClient(apiBaseUrl, { fetch: sessionFetch(apiBaseUrl, fetchImpl ?? fetch) });
 }
 
 /** Turns an openapi-fetch result into its data, or throws an `ApiError` (also when the server is unreachable). */

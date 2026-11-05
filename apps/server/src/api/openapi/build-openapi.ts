@@ -81,7 +81,7 @@ export function buildOpenApi(controllers: readonly Type[]): OpenApiDocument {
       title: "NeuronsAI API",
       version: API_VERSION,
       description:
-        "API do servidor do NeuronsAI. Ainda não há login: o servidor só escuta em endereços locais.",
+        "API do servidor do NeuronsAI. Perfil local sem conta; servidores com Google configurado exigem sessão por cookie e CSRF nas alterações.",
     },
     paths: sortKeys(paths),
     components: { schemas: sortKeys(collector.schemas) },

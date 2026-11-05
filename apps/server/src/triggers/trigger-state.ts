@@ -2,6 +2,8 @@ export const TRIGGER_OUTCOMES = ["started", "skipped_overlap", "skipped_missed",
 export type TriggerOutcome = (typeof TRIGGER_OUTCOMES)[number];
 
 export interface TriggerStateRecord {
+  /** Populated by the database for trusted background jobs/webhook lookup. */
+  organizationId?: string | null;
   graphId: string;
   triggerId: string;
   /** Opaque id of the public webhook URL. */
