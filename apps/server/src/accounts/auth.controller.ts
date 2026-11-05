@@ -5,6 +5,7 @@ import { Endpoint, ValidBody, ValidParams, ValidQuery } from "../api/endpoint.js
 import { RateLimiter } from "../triggers/rate-limiter.js";
 import { AccountsService } from "./accounts.service.js";
 import { AccountAuth } from "./account-auth.service.js";
+import { SignupClosedError } from "./account.errors.js";
 import { LoginAttemptError } from "./login.errors.js";
 import {
   DesktopLoginService,
@@ -18,6 +19,15 @@ const callbackQuery = z.object({
   code: z.string().max(4096).optional(),
   error: z.string().max(200).optional(),
 });
+const roleSchema = z.enum(["owner", "admin", "member", "viewer"]);
+export const invitationView = z.object({
+  id: z.uuid(),
+  email: z.string(),
+  role: roleSchema,
+  expiresAt: z.string(),
+});
+/** Where the web login lands when the Google account is neither invited nor allow-listed. */
+export const SIGNUP_CLOSED_REDIRECT = "/graphs?login_error=signup_closed";
 export const sessionView = z.object({
   enabled: z.boolean(),
   authenticated: z.boolean(),
@@ -103,11 +113,17 @@ export class AuthController {
       );
     }
     if (query.error || !query.code || !query.state) throw new LoginAttemptError();
-    const credentials = await login.complete({
-      code: query.code,
-      state: query.state,
-      binding: browser.loginBinding(request),
-    });
+    let credentials;
+    try {
+      credentials = await login.complete({
+        code: query.code,
+        state: query.state,
+        binding: browser.loginBinding(request),
+      });
+    } catch (error) {
+      if (error instanceof SignupClosedError) return reply.redirect(SIGNUP_CLOSED_REDIRECT, 302);
+      throw error;
+    }
     reply.header("Set-Cookie", [
       browser.clearLoginCookie(),
       ...browser.setCredentials(credentials),
@@ -299,5 +315,58 @@ export class AuthController {
     browser.requireMutation(request);
     const actor = await browser.authenticate(request);
     await this.accounts.setMember(actor.userId, params.id, params.userId, body.role);
+  }
+
+  @Endpoint({
+    method: "get",
+    path: "organizations/:id/invitations",
+    summary: "Lista os convites pendentes de uma organização (owner/admin).",
+    params: z.object({ id: z.uuid() }),
+    response: z.object({ items: z.array(invitationView) }),
+    errors: [403, 503],
+  })
+  async invitations(@ValidParams() params: { id: string }, @Req() request: FastifyRequest) {
+    const actor = await this.auth.require().browser.authenticate(request);
+    return { items: await this.accounts.listInvitations(actor.userId, params.id) };
+  }
+
+  @Endpoint({
+    method: "post",
+    path: "organizations/:id/invitations",
+    summary:
+      "Convida um e-mail com um papel. A pessoa entra no primeiro login com esse e-mail verificado.",
+    params: z.object({ id: z.uuid() }),
+    body: z.object({ email: z.email().max(320), role: roleSchema }),
+    response: invitationView,
+    status: 201,
+    errors: [403, 503],
+  })
+  async invite(
+    @ValidParams() params: { id: string },
+    @ValidBody() body: { email: string; role: "owner" | "admin" | "member" | "viewer" },
+    @Req() request: FastifyRequest,
+  ) {
+    const { browser } = this.auth.require();
+    browser.requireMutation(request);
+    const actor = await browser.authenticate(request);
+    return this.accounts.invite(actor.userId, params.id, body.email, body.role);
+  }
+
+  @Endpoint({
+    method: "delete",
+    path: "organizations/:id/invitations/:invitationId",
+    summary: "Cancela um convite pendente.",
+    params: z.object({ id: z.uuid(), invitationId: z.uuid() }),
+    status: 204,
+    errors: [403, 404, 503],
+  })
+  async revokeInvitation(
+    @ValidParams() params: { id: string; invitationId: string },
+    @Req() request: FastifyRequest,
+  ) {
+    const { browser } = this.auth.require();
+    browser.requireMutation(request);
+    const actor = await browser.authenticate(request);
+    await this.accounts.revokeInvitation(actor.userId, params.id, params.invitationId);
   }
 }

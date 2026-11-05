@@ -7,6 +7,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 import { createdAtColumn, idColumn } from "./columns.js";
@@ -61,6 +62,34 @@ export const memberships = pgTable(
     index("organization_memberships_user_idx").on(table.userId),
     check(
       "organization_memberships_role_check",
+      sql`${table.role} in ('owner', 'admin', 'member', 'viewer')`,
+    ),
+  ],
+);
+
+/**
+ * An owner/admin's invitation of an e-mail address. It is redeemed (and deleted) at the first login
+ * whose identity provider verified that e-mail, which is what lets the person in on a closed server.
+ */
+export const organizationInvitations = pgTable(
+  "organization_invitations",
+  {
+    id: idColumn(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    // Stored lower-cased: matching is case-insensitive.
+    email: text("email").notNull(),
+    role: text("role").$type<OrganizationRole>().notNull(),
+    invitedBy: uuid("invited_by").references(() => users.id, { onDelete: "set null" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: createdAtColumn(),
+  },
+  (table) => [
+    unique("organization_invitations_org_email_key").on(table.organizationId, table.email),
+    index("organization_invitations_email_idx").on(table.email),
+    check(
+      "organization_invitations_role_check",
       sql`${table.role} in ('owner', 'admin', 'member', 'viewer')`,
     ),
   ],

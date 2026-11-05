@@ -2,9 +2,12 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { eq, isNull, type SQL } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { z } from "zod";
+import type { OrganizationRole } from "../database/schema/accounts.js";
 
 export interface ResourceScope {
   organizationId: string | null;
+  /** The caller's role in `organizationId`, set only for requests of a signed-in session. */
+  role?: OrganizationRole;
 }
 const context = new AsyncLocalStorage<Readonly<ResourceScope>>();
 const localScope: Readonly<ResourceScope> = Object.freeze({ organizationId: null });
@@ -16,7 +19,13 @@ export const resourceScope = {
   },
   run<T>(scope: ResourceScope, action: () => T): T {
     if (scope.organizationId !== null) z.uuid().parse(scope.organizationId);
-    return context.run(Object.freeze({ organizationId: scope.organizationId }), action);
+    return context.run(
+      Object.freeze({
+        organizationId: scope.organizationId,
+        ...(scope.role && { role: scope.role }),
+      }),
+      action,
+    );
   },
   matches(column: PgColumn): SQL {
     const id = this.current().organizationId;

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { DatabaseService } from "../database/database.service.js";
 import { desktopLoginAttempts, desktopLoginGrants } from "../database/schema/desktop-login.js";
 import { AccountAuth } from "./account-auth.service.js";
+import { SignupClosedError } from "./account.errors.js";
 import { LoginAttemptError } from "./login.errors.js";
 
 const opaque = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
@@ -71,7 +72,13 @@ export class DesktopLoginService {
   }
 
   async complete(input: { state: string; binding: string; code: string }): Promise<string> {
-    const account = await this.auth.require().login.verify(input);
+    let account;
+    try {
+      account = await this.auth.require().login.verify(input);
+    } catch (error) {
+      if (error instanceof SignupClosedError) return this.refuse(input.state, "signup_closed");
+      throw error;
+    }
     const code = randomBytes(32).toString("base64url");
     const attempt = await this.database.db.transaction(async (tx) => {
       const [pending] = await tx
@@ -101,6 +108,11 @@ export class DesktopLoginService {
 
   async cancel(state: string, binding: string): Promise<string> {
     await this.auth.require().login.cancel(state, binding);
+    return this.refuse(state, "access_denied");
+  }
+
+  /** Ends the native attempt and sends the browser back to the app saying why it did not get in. */
+  private async refuse(state: string, reason: "access_denied" | "signup_closed"): Promise<string> {
     const [attempt] = await this.database.db
       .delete(desktopLoginAttempts)
       .where(eq(desktopLoginAttempts.stateHash, digest(state)))
@@ -108,7 +120,7 @@ export class DesktopLoginService {
     if (!attempt) throw new LoginAttemptError();
     const url = new URL(attempt.redirectUri);
     url.searchParams.set("state", attempt.clientState);
-    url.searchParams.set("error", "access_denied");
+    url.searchParams.set("error", reason);
     return url.href;
   }
 

@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import mixed from "@neurons/graph-schema/examples/mixed.json" with { type: "json" };
 import salesFollowup from "@neurons/graph-schema/examples/sales-followup.json" with { type: "json" };
 import twoAgents from "@neurons/graph-schema/examples/two-agents.json" with { type: "json" };
-import { GraphVersionService } from "./graph-version.service.js";
-import { GraphNotFoundError } from "./graphs.errors.js";
+import { GraphVersionService, usesSecrets } from "./graph-version.service.js";
+import { resourceScope } from "../accounts/resource-scope.js";
+import { GraphNotFoundError, SecretPublishForbiddenError } from "./graphs.errors.js";
 import {
   InMemoryGraphRepository,
   InMemoryGraphVersionRepository,
@@ -98,5 +99,73 @@ describe("GraphVersionService.publish", () => {
     await expect(service.publish(twoAgents.id, twoAgents)).rejects.toBeInstanceOf(
       GraphNotFoundError,
     );
+  });
+});
+
+describe("GraphVersionService.publish com segredos", () => {
+  const ORGANIZATION = "6f1c8a52-3a52-4b3c-9d43-0f0f5d6f0a11";
+  let graphs: InMemoryGraphRepository;
+  let versions: InMemoryGraphVersionRepository;
+  let service: GraphVersionService;
+
+  beforeEach(() => {
+    graphs = new InMemoryGraphRepository();
+    versions = new InMemoryGraphVersionRepository();
+    service = new GraphVersionService(graphs, versions);
+  });
+
+  async function withSecret() {
+    const graph = await graphs.create({ name: "Grafo com segredo" });
+    const text = JSON.stringify({ ...salesFollowup, id: graph.id }).replace(
+      '"Accept":"application/json"',
+      '"Authorization":"Bearer {{secret:CHAVE_DA_API}}"',
+    );
+    const definition = JSON.parse(text) as typeof salesFollowup;
+    return { graph, definition };
+  }
+
+  function as(role: "owner" | "admin" | "member" | "viewer" | undefined, action: () => unknown) {
+    return resourceScope.run(
+      { organizationId: ORGANIZATION, ...(role && { role }) },
+      action as () => Promise<unknown>,
+    );
+  }
+
+  it("reconhece o marcador de segredo em qualquer string da definição", async () => {
+    const { definition } = await withSecret();
+    expect(usesSecrets(definition)).toBe(true);
+    expect(usesSecrets(salesFollowup)).toBe(false);
+    expect(usesSecrets({ url: "https://x.example/{{ secret:NOME }}" })).toBe(false);
+  });
+
+  it.each(["member", "viewer", undefined] as const)(
+    "recusa publicar com segredo quando o papel é %s",
+    async (role) => {
+      const { graph, definition } = await withSecret();
+      await expect(as(role, () => service.publish(graph.id, definition))).rejects.toBeInstanceOf(
+        SecretPublishForbiddenError,
+      );
+      expect(await versions.listByGraph(graph.id)).toEqual([]);
+    },
+  );
+
+  it.each(["admin", "owner"] as const)("deixa %s publicar com segredo", async (role) => {
+    const { graph, definition } = await withSecret();
+    expect(await as(role, () => service.publish(graph.id, definition))).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it("deixa o member publicar um grafo que não usa segredos", async () => {
+    const graph = await graphs.create({ name: "Sem segredo" });
+    const result = await as("member", () =>
+      service.publish(graph.id, { ...salesFollowup, id: graph.id }),
+    );
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it("no workspace local (sem organização) publica com segredo normalmente", async () => {
+    const { graph, definition } = await withSecret();
+    expect(await service.publish(graph.id, definition)).toMatchObject({ ok: true });
   });
 });

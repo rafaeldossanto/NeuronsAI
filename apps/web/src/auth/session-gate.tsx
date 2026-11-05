@@ -7,6 +7,29 @@ import { ApiError, expectNoContent, unwrap } from "@/lib/api";
 import { SessionContext, type AccountSession } from "./session-context";
 import { invalidateWorkspaceRequests } from "./session-fetch";
 
+const SIGNUP_CLOSED_MESSAGE =
+  "Acesso só por convite. Peça a um administrador da sua organização para convidar o seu e-mail e entre de novo.";
+
+/** The server sends a Google account that is not invited back with `?login_error=signup_closed`. */
+function takeLoginError(): string {
+  try {
+    const url = new URL(window.location.href);
+    const reason = url.searchParams.get("login_error");
+    if (reason === null) return "";
+    url.searchParams.delete("login_error");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+    return reason === "signup_closed"
+      ? SIGNUP_CLOSED_MESSAGE
+      : "Não foi possível concluir o login.";
+  } catch {
+    return "";
+  }
+}
+
 type Status = "checking" | "local" | "authenticated" | "login" | "failed";
 /** Production shell. The local app discovers that accounts are off and renders the same workspace. */
 export function SessionGate({
@@ -19,7 +42,7 @@ export function SessionGate({
   navigate?: (url: string) => void;
 }) {
   const [status, setStatus] = useState<Status>("checking");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(takeLoginError);
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [account, setAccount] = useState<AccountSession | null>(null);

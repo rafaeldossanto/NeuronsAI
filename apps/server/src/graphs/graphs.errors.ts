@@ -33,6 +33,21 @@ export class GraphHasVersionsError extends DomainError {
   }
 }
 
+/**
+ * `{{secret:NAME}}` makes the server send a stored value to wherever the tool points, so on a
+ * shared server only owners and admins may publish a version that uses one.
+ */
+export class SecretPublishForbiddenError extends DomainError {
+  readonly kind: DomainErrorKind = "forbidden";
+
+  constructor() {
+    super(
+      "secret_publish_forbidden",
+      "Só administradores e proprietários podem publicar um grafo que usa segredos ({{secret:...}}).",
+    );
+  }
+}
+
 /** The definition does not pass `validateGraph`: `details` says what to fix. */
 export class InvalidGraphError extends DomainError {
   readonly kind: DomainErrorKind = "invalid";

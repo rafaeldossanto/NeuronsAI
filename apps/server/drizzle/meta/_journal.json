@@ -85,6 +85,13 @@
       "when": 1793897072073,
       "tag": "0011_desktop_login",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793913916604,
+      "tag": "0012_organization_invitations",
+      "breakpoints": true
     }
   ]
 }

@@ -42,9 +42,13 @@ export class RequestScopeInterceptor implements NestInterceptor {
         ? "manage_credentials"
         : "write"
       : "read";
-    await this.accounts.requireAccess(scope.userId, scope.organizationId, permission);
+    const access = await this.accounts.requireAccess(
+      scope.userId,
+      scope.organizationId,
+      permission,
+    );
     return new Observable((subscriber) =>
-      resourceScope.run({ organizationId: scope.organizationId }, () =>
+      resourceScope.run({ organizationId: scope.organizationId, role: access.role }, () =>
         next.handle().subscribe(subscriber),
       ),
     );

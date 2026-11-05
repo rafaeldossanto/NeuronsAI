@@ -4,6 +4,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ToolSetupError } from "../core/errors.js";
 import type { ToolNodeOf } from "../core/registry.js";
 import { type SecretResolver, SecretNotFoundError, substituteSecrets } from "../core/secrets.js";
+import { createGuardedFetch, type OutboundPolicy } from "../net/guarded-fetch.js";
 import { ensureGone } from "./process-tree.js";
 
 type McpConfig = ToolNodeOf<"mcp">["tool"];
@@ -81,16 +82,22 @@ async function stdioTransport(
   };
 }
 
-function httpTransport(config: Extract<McpConfig, { transport: "http" }>): McpConnectionTransport {
-  const transport = new StreamableHTTPClientTransport(new URL(config.url));
+function httpTransport(
+  config: Extract<McpConfig, { transport: "http" }>,
+  network: OutboundPolicy | undefined,
+): McpConnectionTransport {
+  const transport = new StreamableHTTPClientTransport(new URL(config.url), {
+    ...(network && { fetch: createGuardedFetch(network) }),
+  });
   return { transport, stderrTail: () => "", shutdown: () => transport.close() };
 }
 
 export function createTransport(
   config: McpConfig,
   secrets: SecretResolver,
+  network?: OutboundPolicy,
 ): Promise<McpConnectionTransport> {
   return config.transport === "stdio"
     ? stdioTransport(config, secrets)
-    : Promise.resolve(httpTransport(config));
+    : Promise.resolve(httpTransport(config, network));
 }

@@ -9,6 +9,7 @@ export type ToolErrorCode =
   | "ABORTED"
   | "TIMEOUT"
   | "NETWORK_ERROR"
+  | "DESTINATION_BLOCKED"
   | "HTTP_ERROR"
   | "MCP_ERROR"
   | "NOT_FOUND"

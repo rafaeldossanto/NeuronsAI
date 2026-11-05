@@ -3,6 +3,7 @@ import { and, count, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   accountSessions,
+  organizationInvitations,
   identities,
   memberships,
   organizations,
@@ -12,7 +13,14 @@ import {
 import { startTestDatabase, type TestDatabase } from "../database/testing/test-database.js";
 import { AccountSessionsService } from "./account-sessions.service.js";
 import { AccountsService, type AccountUser } from "./accounts.service.js";
-import { InvalidSessionError, LastOwnerError, OrganizationAccessError } from "./account.errors.js";
+import { SignupPolicy } from "./signup-policy.js";
+import {
+  InvalidSessionError,
+  InvitationNotFoundError,
+  LastOwnerError,
+  OrganizationAccessError,
+  SignupClosedError,
+} from "./account.errors.js";
 import type { VerifiedIdentity } from "./identity-provider.js";
 
 let testDb: TestDatabase;
@@ -34,7 +42,7 @@ const identity = (subject = `subject-${++sequence}`): VerifiedIdentity => ({
 
 beforeAll(async () => {
   testDb = await startTestDatabase();
-  accounts = new AccountsService(testDb.database);
+  accounts = new AccountsService(testDb.database, SignupPolicy.open());
 });
 afterAll(async () => {
   await testDb?.stop();
@@ -58,7 +66,7 @@ describe("T25a — contas persistentes e organizações", () => {
     expect(await accounts.listOrganizations(user.id)).toEqual([
       expect.objectContaining({ name: "Espaço de Pessoa de teste", role: "owner" }),
     ]);
-    const anotherService = new AccountsService(testDb.database);
+    const anotherService = new AccountsService(testDb.database, SignupPolicy.open());
     expect(await anotherService.provisionIdentity(verified)).toEqual(user);
   });
 
@@ -347,5 +355,154 @@ describe("T25a — sessões e renovação", () => {
     await expect(testDb.migrate()).resolves.toBeUndefined();
     const [user] = await db().select().from(users).where(eq(users.id, alice.id));
     expect(user!.id).toBe(alice.id);
+  });
+});
+
+describe("cadastro fechado e convites", () => {
+  const closed = () =>
+    new AccountsService(
+      testDb.database,
+      new SignupPolicy({
+        open: false,
+        allowedDomains: ["liberado.example"],
+        allowedEmails: ["dona@fora.example"],
+      }),
+    );
+  const verified = (email: string, subject = `fechado-${++sequence}`): VerifiedIdentity => ({
+    ...identity(subject),
+    email,
+  });
+  const withoutEmail = (): VerifiedIdentity => {
+    const value = identity(`sem-email-${++sequence}`);
+    delete value.email;
+    return value;
+  };
+  const countUsers = async () => (await db().select({ total: count() }).from(users))[0]!.total;
+
+  it("recusa uma identidade desconhecida sem criar nada", async () => {
+    const before = await countUsers();
+    await expect(closed().provisionIdentity(withoutEmail())).rejects.toThrow(SignupClosedError);
+    await expect(closed().provisionIdentity(verified("qualquer@outro.example"))).rejects.toThrow(
+      SignupClosedError,
+    );
+    expect(await countUsers()).toBe(before);
+  });
+
+  it("admite o domínio e o e-mail da lista de permissão, com organização própria", async () => {
+    const byDomain = await closed().provisionIdentity(verified("Gente@Liberado.example"));
+    const byEmail = await closed().provisionIdentity(verified("dona@fora.example"));
+    for (const user of [byDomain, byEmail]) {
+      expect(await accounts.listOrganizations(user.id)).toEqual([
+        expect.objectContaining({ role: "owner" }),
+      ]);
+    }
+  });
+
+  it("não admite subdomínio nem domínio parecido com o da lista", async () => {
+    await expect(closed().provisionIdentity(verified("a@sub.liberado.example"))).rejects.toThrow(
+      SignupClosedError,
+    );
+    await expect(closed().provisionIdentity(verified("a@xliberado.example"))).rejects.toThrow(
+      SignupClosedError,
+    );
+  });
+
+  it("admite quem foi convidado, só na organização que convidou e com o papel do convite", async () => {
+    const invitation = await accounts.invite(
+      alice.id,
+      organizationId,
+      "Nova.Pessoa@Fora.example",
+      "member",
+    );
+    expect(invitation).toMatchObject({ email: "nova.pessoa@fora.example", role: "member" });
+    const user = await closed().provisionIdentity(verified("NOVA.PESSOA@fora.example"));
+    expect(
+      (await accounts.listOrganizations(user.id)).map(({ id, role }) => ({ id, role })),
+    ).toEqual([{ id: organizationId, role: "member" }]);
+    expect(await accounts.listInvitations(alice.id, organizationId)).toEqual([]);
+    // O convite é de uso único: outra identidade com o mesmo e-mail não entra.
+    await expect(closed().provisionIdentity(verified("nova.pessoa@fora.example"))).rejects.toThrow(
+      SignupClosedError,
+    );
+  });
+
+  it("só vale com e-mail verificado: sem e-mail o convite não é resgatado", async () => {
+    await accounts.invite(alice.id, organizationId, "sem.verificacao@fora.example", "viewer");
+    await expect(closed().provisionIdentity(withoutEmail())).rejects.toThrow(SignupClosedError);
+    expect(await accounts.listInvitations(alice.id, organizationId)).toHaveLength(1);
+  });
+
+  it("não resgata convite vencido", async () => {
+    await accounts.invite(alice.id, organizationId, "vencido@fora.example", "member");
+    await db()
+      .update(organizationInvitations)
+      .set({ expiresAt: new Date(Date.now() - 1000) });
+    await expect(closed().provisionIdentity(verified("vencido@fora.example"))).rejects.toThrow(
+      SignupClosedError,
+    );
+    expect(await accounts.listInvitations(alice.id, organizationId)).toEqual([]);
+  });
+
+  it("resgata o convite de quem já tem conta, sem rebaixar o papel que já tem", async () => {
+    const existing = await closed().provisionIdentity(verified("dona@fora.example", "ja-existe"));
+    const ownOrganization = (await accounts.listOrganizations(existing.id))[0]!.id;
+    await accounts.invite(alice.id, organizationId, "dona@fora.example", "viewer");
+    await accounts.invite(existing.id, ownOrganization, "dona@fora.example", "viewer");
+    await closed().provisionIdentity(verified("dona@fora.example", "ja-existe"));
+    const roles = await accounts.listOrganizations(existing.id);
+    expect(roles.find((entry) => entry.id === organizationId)?.role).toBe("viewer");
+    expect(roles.find((entry) => entry.id === ownOrganization)?.role).toBe("owner");
+  });
+
+  it("um admin não convida nem cancela convites de admin/owner, só um owner", async () => {
+    await accounts.setMember(alice.id, organizationId, bob.id, "admin");
+    await expect(
+      accounts.invite(bob.id, organizationId, "x@fora.example", "admin"),
+    ).rejects.toThrow(OrganizationAccessError);
+    await expect(
+      accounts.invite(bob.id, organizationId, "x@fora.example", "owner"),
+    ).rejects.toThrow(OrganizationAccessError);
+    expect(await accounts.invite(bob.id, organizationId, "x@fora.example", "member")).toMatchObject(
+      { role: "member" },
+    );
+    const privileged = await accounts.invite(alice.id, organizationId, "y@fora.example", "admin");
+    await expect(accounts.revokeInvitation(bob.id, organizationId, privileged.id)).rejects.toThrow(
+      OrganizationAccessError,
+    );
+    await accounts.revokeInvitation(alice.id, organizationId, privileged.id);
+    await expect(
+      accounts.revokeInvitation(alice.id, organizationId, privileged.id),
+    ).rejects.toThrow(InvitationNotFoundError);
+  });
+
+  it("member não convida nem lista convites, e ninguém mexe nos convites de outra organização", async () => {
+    await accounts.setMember(alice.id, organizationId, bob.id, "member");
+    await expect(
+      accounts.invite(bob.id, organizationId, "z@fora.example", "viewer"),
+    ).rejects.toThrow(OrganizationAccessError);
+    await expect(accounts.listInvitations(bob.id, organizationId)).rejects.toThrow(
+      OrganizationAccessError,
+    );
+    await expect(accounts.listInvitations(alice.id, bobOrganizationId)).rejects.toThrow(
+      OrganizationAccessError,
+    );
+    const own = await accounts.invite(bob.id, bobOrganizationId, "w@fora.example", "viewer");
+    await expect(accounts.revokeInvitation(alice.id, organizationId, own.id)).rejects.toThrow(
+      InvitationNotFoundError,
+    );
+  });
+
+  it("convidar o mesmo e-mail de novo atualiza o papel em vez de duplicar", async () => {
+    await accounts.invite(alice.id, organizationId, "repete@fora.example", "viewer");
+    await accounts.invite(alice.id, organizationId, "REPETE@fora.example", "member");
+    expect(await accounts.listInvitations(alice.id, organizationId)).toEqual([
+      expect.objectContaining({ email: "repete@fora.example", role: "member" }),
+    ]);
+  });
+
+  it("recusa e-mail inválido no convite", async () => {
+    await expect(
+      accounts.invite(alice.id, organizationId, "isso nao e email", "member"),
+    ).rejects.toThrow();
   });
 });

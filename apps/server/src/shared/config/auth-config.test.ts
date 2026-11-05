@@ -28,4 +28,30 @@ describe("configuração de contas", () => {
   ])("recusa origem/retorno inseguros: %o", (change) => {
     expect(() => loadConfig({ ...env, ...change })).toThrow(ConfigError);
   });
+
+  it("fecha o cadastro por padrão e lê as listas de permissão", () => {
+    expect(loadConfig(env).auth?.signup).toEqual({
+      open: false,
+      allowedDomains: [],
+      allowedEmails: [],
+    });
+    const signup = loadConfig({
+      ...env,
+      NEURONS_SIGNUP_ALLOWED_DOMAINS: "Exemplo.com, @time.example.com",
+      NEURONS_SIGNUP_ALLOWED_EMAILS: "Dono@Outro.com",
+    }).auth?.signup;
+    expect(signup).toEqual({
+      open: false,
+      allowedDomains: ["exemplo.com", "time.example.com"],
+      allowedEmails: ["dono@outro.com"],
+    });
+    expect(loadConfig({ ...env, NEURONS_SIGNUP_OPEN: "true" }).auth?.signup.open).toBe(true);
+  });
+  it.each([
+    { NEURONS_SIGNUP_ALLOWED_DOMAINS: "nao-e-dominio" },
+    { NEURONS_SIGNUP_ALLOWED_EMAILS: "sem-arroba" },
+    { NEURONS_SIGNUP_OPEN: "talvez" },
+  ])("recusa lista de cadastro inválida: %o", (change) => {
+    expect(() => loadConfig({ ...env, ...change })).toThrow(ConfigError);
+  });
 });
