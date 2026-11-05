@@ -1,8 +1,9 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { resourceScope } from "../accounts/resource-scope.js";
 import { DatabaseService } from "../database/database.service.js";
-import { graphs } from "../database/schema/index.js";
+import { graphs, graphTriggers, secrets } from "../database/schema/index.js";
+import { webhookSecretName } from "../triggers/webhook-secret-name.js";
 import type { GraphChanges, GraphRepository } from "./graph-repository.js";
 import type { GraphRecord } from "./graph.records.js";
 
@@ -42,6 +43,10 @@ export class DrizzleGraphRepository implements GraphRepository {
     const [row] = await this.database.db
       .update(graphs)
       .set({
+        // The creation time comes from the database clock (default now()); stamping the update
+        // with the same clock keeps `updatedAt >= createdAt` whatever the host clock says (a
+        // container's clock can differ from the host's by milliseconds).
+        updatedAt: sql`now()`,
         ...(changes.name !== undefined && { name: changes.name }),
         ...(changes.draft !== undefined && { draft: changes.draft }),
       })
@@ -50,11 +55,34 @@ export class DrizzleGraphRepository implements GraphRepository {
     return row;
   }
 
-  async delete(id: string): Promise<boolean> {
-    const deleted = await this.database.db
-      .delete(graphs)
-      .where(and(eq(graphs.id, id), resourceScope.matches(graphs.organizationId)))
-      .returning({ id: graphs.id });
-    return deleted.length > 0;
+  /**
+   * Deleting a graph takes its triggers with it (cascade), and with them the reason for their
+   * webhook secrets to exist: those go in the same transaction, so none is left orphaned.
+   */
+  delete(id: string): Promise<boolean> {
+    return this.database.db.transaction(async (tx) => {
+      const [owned] = await tx
+        .select({ id: graphs.id })
+        .from(graphs)
+        .where(and(eq(graphs.id, id), resourceScope.matches(graphs.organizationId)));
+      if (!owned) return false;
+      const hooks = await tx
+        .select({ hookId: graphTriggers.hookId })
+        .from(graphTriggers)
+        .where(eq(graphTriggers.graphId, id));
+      if (hooks.length > 0) {
+        await tx.delete(secrets).where(
+          and(
+            inArray(
+              secrets.name,
+              hooks.map((hook) => webhookSecretName(hook.hookId)),
+            ),
+            resourceScope.matches(secrets.organizationId),
+          ),
+        );
+      }
+      await tx.delete(graphs).where(eq(graphs.id, id));
+      return true;
+    });
   }
 }

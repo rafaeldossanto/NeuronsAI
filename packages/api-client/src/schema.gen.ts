@@ -136,6 +136,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/organizations/{id}/adopt-local-data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move os dados locais (grafos, versões, execuções, segredos, gatilhos e memórias) para a organização. Só o proprietário, uma ação confirmada; repetir não faz nada. */
+        post: operations["auth_adoptLocalData"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/organizations/{id}/invitations": {
         parameters: {
             query?: never;
@@ -166,6 +183,23 @@ export interface paths {
         post?: never;
         /** Cancela um convite pendente. */
         delete: operations["auth_revokeInvitation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/organizations/{id}/local-data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** O que há nos dados locais (sem organização) que o proprietário pode mover para esta organização. */
+        get: operations["auth_localData"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -508,7 +542,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Lista os eventos da execução, em ordem (o mesmo log que o WebSocket transmite). */
+        /** Lista os eventos da execução, em ordem (o mesmo log que o WebSocket transmite), com o total. */
         get: operations["runs_events"];
         put?: never;
         post?: never;
@@ -1325,6 +1359,87 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description Erro. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Indisponível no momento. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    auth_adoptLocalData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    confirm: true;
+                };
+            };
+        };
+        responses: {
+            /** @description Sucesso. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        graphs: number;
+                        versions: number;
+                        runs: number;
+                        secrets: number;
+                        triggers: number;
+                        memories: number;
+                    };
+                };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não permitido. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflito com o estado atual. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description Indisponível no momento. */
             503: {
                 headers: {
@@ -1498,6 +1613,62 @@ export interface operations {
             };
             /** @description Não encontrado. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Indisponível no momento. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    auth_localData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        graphs: number;
+                        versions: number;
+                        runs: number;
+                        secrets: number;
+                        triggers: number;
+                        memories: number;
+                    };
+                };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não permitido. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2488,6 +2659,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description Erro. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
         };
     };
     memories_get: {
@@ -2714,7 +2894,7 @@ export interface operations {
                 maxCostUsd?: number;
                 from?: string;
                 to?: string;
-                sort?: "startedAt" | "costUsd";
+                sort?: "startedAt" | "costUsd" | "durationMs";
                 order?: "asc" | "desc";
                 limit?: number;
                 offset?: number;
@@ -2796,6 +2976,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description Erro. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
         };
     };
     runs_get: {
@@ -2860,6 +3049,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         items: components["schemas"]["RunEvent"][];
+                        total: number;
                     };
                 };
             };

@@ -1,4 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { QuotaExceededError } from "../shared/errors/quota-exceeded.error.js";
+import { DEFAULT_QUOTAS, type QuotaLimits } from "../shared/config/quota-config.js";
 import { resourceScope } from "../accounts/resource-scope.js";
 import type { GraphDefinition, TriggerNode } from "@neurons/graph-schema";
 import {
@@ -39,7 +41,11 @@ const STATUS_BY_REASON: Record<RunFinishReason, FinalRunStatus> = {
 export interface RunServiceOptions {
   /** Spending limit of a run that does not set its own. */
   defaultBudgetUsd?: number;
+  /** Per-organization limits on runs; absent means the defaults. They never apply to the local workspace. */
+  quotas?: Pick<QuotaLimits, "concurrentRunsPerOrganization" | "runsPerDayPerOrganization">;
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const RUN_SERVICE_OPTIONS = Symbol("RUN_SERVICE_OPTIONS");
 
@@ -83,6 +89,7 @@ export class RunService {
   ): Promise<RunRecord> {
     const version = await this.versions.findById(graphVersionId);
     if (!version) throw new GraphVersionNotFoundError(graphVersionId);
+    await this.assertWithinQuotas();
 
     const graph = version.definition;
     const trigger = pickTrigger(graph, options.triggerId);
@@ -114,6 +121,33 @@ export class RunService {
       throw error;
     }
     return run;
+  }
+
+  /**
+   * The organization's limits on runs. A soft check (read, then insert): two starts at the very
+   * same moment can both pass, by one. The local workspace has no organization and no limits.
+   * @throws QuotaExceededError
+   */
+  private async assertWithinQuotas(): Promise<void> {
+    if (resourceScope.current().organizationId === null) return;
+    const limits = this.options.quotas ?? DEFAULT_QUOTAS;
+    const concurrent = limits.concurrentRunsPerOrganization;
+    if (concurrent > 0 && (await this.runs.countActive()) >= concurrent) {
+      throw new QuotaExceededError(
+        "quota_concurrent_runs",
+        `Sua organização já tem ${concurrent} ${concurrent === 1 ? "execução" : "execuções"} em andamento, o limite. Espere alguma terminar ou pare uma.`,
+      );
+    }
+    const perDay = limits.runsPerDayPerOrganization;
+    if (
+      perDay > 0 &&
+      (await this.runs.countStartedSince(new Date(Date.now() - DAY_MS))) >= perDay
+    ) {
+      throw new QuotaExceededError(
+        "quota_runs_per_day",
+        `Sua organização atingiu o limite de ${perDay} execuções nas últimas 24 horas. Tente de novo mais tarde.`,
+      );
+    }
   }
 
   /** Stops the run by hand. Does nothing if it already ended. */

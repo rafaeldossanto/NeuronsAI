@@ -6,6 +6,8 @@ import { deferred, eventually } from "../hub/testing/async-helpers.js";
 import { createHubHarness, inMemoryPersistence } from "../hub/testing/hub-harness.js";
 import { buildTestGraph } from "../hub/testing/test-graph.js";
 import type { FakeScript } from "../agents/testing/fake-agent-runtime.js";
+import { resourceScope } from "../accounts/resource-scope.js";
+import { QuotaExceededError } from "../shared/errors/quota-exceeded.error.js";
 import { GraphVersionNotFoundError, TriggerSelectionError } from "./runs.errors.js";
 
 describe("RunService", () => {
@@ -25,6 +27,57 @@ describe("RunService", () => {
 
   const finishedEvent = (runId: string) => persistence.runLog.eventsOf(runId, "RunFinished")[0];
   const statusOf = async (runId: string) => (await persistence.runLog.findById(runId))?.status;
+
+  describe("quotas", () => {
+    const ORG = "0b000000-0000-4000-8000-000000000001";
+    const inOrganization = <T>(action: () => T): T =>
+      resourceScope.run({ organizationId: ORG }, action);
+
+    it("refuses a run beyond the concurrent limit, with a message in Portuguese (HTTP 429)", async () => {
+      const { runService, runtimes } = createHubHarness(persistence, {
+        runQuotas: { concurrentRunsPerOrganization: 1, runsPerDayPerOrganization: 0 },
+      });
+      runtimes.setScript("Alfa", () => new Promise<void>(() => {}));
+      const first = await inOrganization(() => runService.start(versionId, "um"));
+
+      const refused = await inOrganization(() => runService.start(versionId, "dois")).catch(
+        (error: unknown) => error,
+      );
+
+      expect(refused).toBeInstanceOf(QuotaExceededError);
+      expect(refused).toMatchObject({
+        kind: "quota_exceeded",
+        code: "quota_concurrent_runs",
+        message: expect.stringContaining("em andamento") as string,
+      });
+      await runService.stop(first.id);
+      await expect(
+        inOrganization(() => runService.start(versionId, "três")),
+      ).resolves.toBeDefined();
+    });
+
+    it("refuses a run beyond the daily limit, counting the last 24 hours", async () => {
+      const { runService } = createHubHarness(persistence, {
+        runQuotas: { concurrentRunsPerOrganization: 0, runsPerDayPerOrganization: 2 },
+      });
+      for (const input of ["a", "b"]) {
+        await inOrganization(() => runService.start(versionId, input));
+      }
+
+      await expect(inOrganization(() => runService.start(versionId, "c"))).rejects.toMatchObject({
+        code: "quota_runs_per_day",
+      });
+    });
+
+    it("does not limit the local workspace, which has no organization", async () => {
+      const { runService } = createHubHarness(persistence, {
+        runQuotas: { concurrentRunsPerOrganization: 1, runsPerDayPerOrganization: 1 },
+      });
+
+      await runService.start(versionId, "a");
+      await expect(runService.start(versionId, "b")).resolves.toBeDefined();
+    });
+  });
 
   describe("start", () => {
     it("creates a running run, logs RunStarted first and sends the trigger's message to its target", async () => {

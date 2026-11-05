@@ -38,6 +38,12 @@ export class SecretsService {
     }
   }
 
+  /** Removes the secret; returns whether it existed. Nothing here needs the master key. */
+  async delete(name: string): Promise<boolean> {
+    this.assertValidName(name);
+    return this.repository.delete(name);
+  }
+
   listNames(): Promise<string[]> {
     return this.repository.listNames();
   }

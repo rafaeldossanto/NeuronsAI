@@ -4,6 +4,7 @@ import { GRAPH_REPOSITORY, type GraphRepository } from "../graphs/graph-reposito
 import { GraphNotFoundError } from "../graphs/graphs.errors.js";
 import { SecretsService } from "../secrets/secrets.service.js";
 import { TriggerLauncher } from "./trigger-launcher.js";
+import { webhookSecretName } from "./webhook-secret-name.js";
 import {
   TRIGGER_STATE_REPOSITORY,
   type TriggerStateRecord,
@@ -16,7 +17,7 @@ export type TriggerChangeListener = (change: {
   triggerId: string;
 }) => Promise<void>;
 
-export const webhookSecretName = (hookId: string) => `webhook.${hookId}`;
+export { webhookSecretName };
 
 /** A trigger's state as the API shows it; a trigger nobody touched yet is all defaults. */
 export type TriggerView = Pick<

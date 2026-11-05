@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, desc, eq, gte, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
 import { DatabaseService } from "../database/database.service.js";
 import { graphVersions, graphs, runEvents, runs } from "../database/schema/index.js";
 import { appendEvents } from "./drizzle-event-writer.js";
@@ -126,10 +126,16 @@ export class DrizzleRunRepository implements RunRepository {
       filter.order === "asc"
         ? sql`${runs.startedAt} asc nulls first`
         : sql`${runs.startedAt} desc nulls last`;
+    // A run with no end (or no start) has no duration: it goes last in both directions.
+    const duration = sql`extract(epoch from (${runs.finishedAt} - ${runs.startedAt}))`;
+    const durationOrder =
+      filter.order === "asc" ? sql`${duration} asc nulls last` : sql`${duration} desc nulls last`;
     const orderBy =
       filter.sort === "costUsd"
         ? [direction(cost), startedAt, direction(runs.id)]
-        : [startedAt, direction(runs.id)];
+        : filter.sort === "durationMs"
+          ? [durationOrder, startedAt, direction(runs.id)]
+          : [startedAt, direction(runs.id)];
 
     const [rows, [counted]] = await Promise.all([
       db
@@ -168,6 +174,32 @@ export class DrizzleRunRepository implements RunRepository {
       unknownCostTurns: Number(row.unknown ?? 0),
     }));
     return { items, total: Number(counted?.total ?? 0) };
+  }
+
+  async countEvents(runId: string): Promise<number> {
+    const [row] = await this.database.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(runEvents)
+      .where(eq(runEvents.runId, runId));
+    return Number(row?.total ?? 0);
+  }
+
+  countActive(): Promise<number> {
+    return this.countRuns(inArray(runs.status, ["pending", "running"]));
+  }
+
+  countStartedSince(since: Date): Promise<number> {
+    return this.countRuns(gte(runs.startedAt, since));
+  }
+
+  private async countRuns(condition: SQL): Promise<number> {
+    const [row] = await this.database.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(runs)
+      .innerJoin(graphVersions, eq(graphVersions.id, runs.graphVersionId))
+      .innerJoin(graphs, eq(graphs.id, graphVersions.graphId))
+      .where(and(condition, resourceScope.matches(graphs.organizationId)));
+    return Number(row?.total ?? 0);
   }
 
   async listRunning(): Promise<ActiveRun[]> {

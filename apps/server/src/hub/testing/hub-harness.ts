@@ -13,7 +13,7 @@ import type { RunEventPublisher } from "../../run-log/run-event-publisher.js";
 import { RunEventRecorder } from "../../run-log/run-event-recorder.js";
 import type { RunRepository } from "../../run-log/run-repository.js";
 import { InMemoryRunLog } from "../../run-log/testing/in-memory-run-log.js";
-import { RunService } from "../../runs/run.service.js";
+import { RunService, type RunServiceOptions } from "../../runs/run.service.js";
 import { Hub, type HubOptions } from "../hub.js";
 import type { MessageStore } from "../message-store.js";
 import { BudgetGuard } from "../../guards/budget-guard.js";
@@ -67,6 +67,8 @@ export interface HubWiringOptions {
   extraPolicies?: MessagePolicy[];
   /** Overrides the guard limits (the defaults are the server's). */
   limits?: Partial<GuardLimits>;
+  /** Per-organization run quotas for the run service (they apply only inside an organization scope). */
+  runQuotas?: NonNullable<RunServiceOptions["quotas"]>;
 }
 
 export interface HubHarnessOptions extends HubWiringOptions {
@@ -142,6 +144,7 @@ export function createHubWiring(
         recorder,
         enforcer,
         {
+          ...(options.runQuotas && { quotas: options.runQuotas }),
           ...(options.limits?.runBudgetUsd !== undefined && {
             defaultBudgetUsd: options.limits.runBudgetUsd,
           }),
