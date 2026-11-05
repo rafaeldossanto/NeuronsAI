@@ -32,7 +32,8 @@ export function NewProjectPage() {
 
   function choose(template: GraphTemplate) {
     if (busy.current) return;
-    createdId.current = null;
+    // createdId survives a change of template: the blank project a failed save left behind is
+    // reused (the PATCH overwrites name and draft) instead of piling up another one.
     setSelected(template);
     setName(template.name);
     setCwd("");
