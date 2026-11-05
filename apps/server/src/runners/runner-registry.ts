@@ -14,6 +14,7 @@ import type { RunnerEndpoint, RunnerPool } from "./remote-agent-runtime.js";
 import { RunnerLink, type LinkLogger } from "./runner-link.js";
 import type { RunnerIdentity } from "./runner-tokens.service.js";
 import { NoRunnerAvailableError } from "./runners.errors.js";
+import { resourceScope } from "../accounts/resource-scope.js";
 
 /** How long a connection may take to send its `register`. */
 const REGISTER_TIMEOUT_MS = 10_000;
@@ -90,7 +91,8 @@ export class RunnerRegistry implements RunnerPool, OnApplicationShutdown {
 
   /** The runner with the fewest agents among the connected ones; waits for one when none is. */
   acquire(): Promise<RunnerEndpoint> {
-    const ready = this.pick();
+    const organizationId = resourceScope.current().organizationId;
+    const ready = this.pick(organizationId);
     if (ready) return Promise.resolve(ready);
 
     const waitMs = this.config.runners.waitMs;
@@ -100,6 +102,7 @@ export class RunnerRegistry implements RunnerPool, OnApplicationShutdown {
         reject(new NoRunnerAvailableError(waitMs));
       }, waitMs);
       const stop = this.linkConnected.subscribe((link) => {
+        if ((link.identity.organizationId ?? null) !== organizationId) return;
         clearTimeout(timer);
         stop();
         resolve(link);
@@ -122,8 +125,10 @@ export class RunnerRegistry implements RunnerPool, OnApplicationShutdown {
     this.links.clear();
   }
 
-  private pick(): RunnerLink | undefined {
-    return this.connected().sort((a, b) => a.load - b.load)[0];
+  private pick(organizationId: string | null): RunnerLink | undefined {
+    return this.connected()
+      .filter((link) => (link.identity.organizationId ?? null) === organizationId)
+      .sort((a, b) => a.load - b.load)[0];
   }
 
   private linkFor(identity: RunnerIdentity): RunnerLink {

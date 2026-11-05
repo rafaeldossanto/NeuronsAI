@@ -163,4 +163,24 @@ describe("novo projeto e templates", () => {
     expect(calls.filter((call) => call.path === "POST /graphs")).toHaveLength(1);
     expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(2);
   });
+  it("reaproveita o projeto em branco ao trocar de template depois de uma falha", async () => {
+    const first = listTemplates()[0]!;
+    const draft = instantiateTemplate(first.id, { projectId: graphId });
+    let saves = 0;
+    const { calls } = renderApp("/new", {
+      ...routes(first.name, draft),
+      [`PATCH /graphs/${graphId}`]: () =>
+        ++saves === 1
+          ? { status: 500, body: { code: "test_error", message: "Falha ao salvar o rascunho." } }
+          : { body: { ...graphSummary, name: first.name } },
+    });
+    await userEvent.click(screen.getByRole("button", { name: `Usar template ${first.name}` }));
+    await userEvent.click(screen.getByRole("button", { name: "Criar projeto com template" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Falha ao salvar o rascunho.");
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(screen.getByRole("button", { name: `Usar template ${first.name}` }));
+    await userEvent.click(screen.getByRole("button", { name: "Criar projeto com template" }));
+    expect(await screen.findByRole("heading", { level: 1, name: first.name })).toBeInTheDocument();
+    expect(calls.filter((call) => call.path === "POST /graphs")).toHaveLength(1);
+  });
 });

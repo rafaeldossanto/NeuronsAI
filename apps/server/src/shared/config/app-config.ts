@@ -7,6 +7,7 @@ import { type GuardLimits, guardEnvShape, resolveGuardLimits } from "./guard-con
 import { port, unlessEmpty } from "./env-schema.js";
 import { type HooksConfig, hooksEnvShape, resolveHooks } from "./hooks-config.js";
 import { listenEnvShape, resolveListenHost } from "./listen-config.js";
+import { authEnvShape, resolveAuth, type AuthConfig } from "./auth-config.js";
 import {
   type TerminalInputLimits,
   resolveTerminalInputLimits,
@@ -32,6 +33,8 @@ export const APP_MODES = ["api", "worker", "all"] as const;
 export type AppMode = (typeof APP_MODES)[number];
 
 export interface AppConfig {
+  /** Optional OIDC settings for hybrid/hosted. Absent: account-free local workspace. */
+  auth?: AuthConfig;
   uiRoot?: string;
   landingRoot?: string;
   mode: AppMode;
@@ -75,6 +78,7 @@ export interface AppConfig {
 const BASE64_32_BYTES = /^[A-Za-z0-9+/]{43}=$/;
 
 const envSchema = z.object({
+  ...authEnvShape,
   NEURONS_UI_DIR: unlessEmpty(z.string().min(1).optional()),
   NEURONS_LANDING_DIR: unlessEmpty(z.string().min(1).optional()),
   NEURONS_MODE: unlessEmpty(z.enum(APP_MODES).default("all")),
@@ -115,6 +119,16 @@ export function loadConfig(
   }
   const values = parsed.data;
   const masterKey = values.NEURONS_MASTER_KEY;
+  const auth = resolveAuth({
+    NEURONS_PUBLIC_ORIGIN: values.NEURONS_PUBLIC_ORIGIN,
+    NEURONS_GOOGLE_CLIENT_ID: values.NEURONS_GOOGLE_CLIENT_ID,
+    NEURONS_GOOGLE_CLIENT_SECRET: values.NEURONS_GOOGLE_CLIENT_SECRET,
+    NEURONS_GOOGLE_REDIRECT_URI: values.NEURONS_GOOGLE_REDIRECT_URI,
+  });
+  if (auth && (!masterKey || values.NEURONS_PROFILE === "local"))
+    throw new ConfigError([
+      "Contas exigem NEURONS_MASTER_KEY e perfil hybrid ou hosted. O perfil local continua sem conta.",
+    ]);
 
   const hooks = resolveHooks(values, {
     allowRemote: values.NEURONS_ALLOW_REMOTE,
@@ -122,6 +136,7 @@ export function loadConfig(
   });
 
   return {
+    ...(auth && { auth }),
     ...(values.NEURONS_UI_DIR && { uiRoot: values.NEURONS_UI_DIR }),
     ...(values.NEURONS_LANDING_DIR && { landingRoot: values.NEURONS_LANDING_DIR }),
     mode: values.NEURONS_MODE,

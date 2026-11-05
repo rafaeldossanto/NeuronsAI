@@ -4,8 +4,10 @@ import { DatabaseService } from "../database/database.service.js";
 import { runners } from "../database/schema/index.js";
 import type { RunnerRecord, RunnerRepository } from "./runner-repository.js";
 import { RunnerNameTakenError } from "./runners.errors.js";
+import { resourceScope } from "../accounts/resource-scope.js";
 
 const columns = {
+  organizationId: runners.organizationId,
   id: runners.id,
   name: runners.name,
   createdAt: runners.createdAt,
@@ -21,10 +23,13 @@ export class DrizzleRunnerRepository implements RunnerRepository {
     const existing = await this.database.db
       .select({ id: runners.id })
       .from(runners)
-      .where(eq(runners.name, input.name));
+      .where(and(eq(runners.name, input.name), resourceScope.matches(runners.organizationId)));
     if (existing.length > 0) throw new RunnerNameTakenError(input.name);
 
-    const [row] = await this.database.db.insert(runners).values(input).returning(columns);
+    const [row] = await this.database.db
+      .insert(runners)
+      .values({ ...input, organizationId: resourceScope.current().organizationId })
+      .returning(columns);
     return row!;
   }
 
@@ -45,7 +50,13 @@ export class DrizzleRunnerRepository implements RunnerRepository {
     const revoked = await this.database.db
       .update(runners)
       .set({ revokedAt: new Date() })
-      .where(and(eq(runners.name, name), isNull(runners.revokedAt)))
+      .where(
+        and(
+          eq(runners.name, name),
+          isNull(runners.revokedAt),
+          resourceScope.matches(runners.organizationId),
+        ),
+      )
       .returning({ id: runners.id });
     return revoked.length > 0;
   }
@@ -55,6 +66,10 @@ export class DrizzleRunnerRepository implements RunnerRepository {
   }
 
   list(): Promise<RunnerRecord[]> {
-    return this.database.db.select(columns).from(runners).orderBy(asc(runners.createdAt));
+    return this.database.db
+      .select(columns)
+      .from(runners)
+      .where(resourceScope.matches(runners.organizationId))
+      .orderBy(asc(runners.createdAt));
   }
 }

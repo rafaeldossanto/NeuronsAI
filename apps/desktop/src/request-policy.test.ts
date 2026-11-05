@@ -4,6 +4,23 @@ import { isAllowedRequest, isExternalLink } from "./request-policy.js";
 const origin = "http://127.0.0.1:41234";
 
 describe("isAllowedRequest", () => {
+  it("preserva TLS e rejeita credenciais embutidas ao carregar um servidor remoto", () => {
+    expect(
+      isAllowedRequest("wss://neurons.example.invalid/ws", "https://neurons.example.invalid"),
+    ).toBe(true);
+    expect(
+      isAllowedRequest("http://neurons.example.invalid/api", "https://neurons.example.invalid"),
+    ).toBe(false);
+    expect(
+      isAllowedRequest("ws://neurons.example.invalid/ws", "https://neurons.example.invalid"),
+    ).toBe(false);
+    expect(
+      isAllowedRequest(
+        "https://user:password@neurons.example.invalid/api",
+        "https://neurons.example.invalid",
+      ),
+    ).toBe(false);
+  });
   it.each([
     "http://127.0.0.1:41234/",
     "http://127.0.0.1:41234/api/graphs?limit=2",

@@ -1,6 +1,6 @@
 # @neurons/server
 
-Servidor do NeuronsAI: NestJS 12 com adaptador Fastify, Drizzle ORM sobre um banco embutido (PGlite) ou Postgres, e um gateway WebSocket para eventos de execução. Escuta **somente em endereços locais** (`127.0.0.1` por padrão) porque ainda não há login.
+Servidor do NeuronsAI: NestJS 12 com adaptador Fastify, Drizzle ORM sobre PGlite ou Postgres e WebSocket. Escuta em endereços locais por padrão; sair do loopback continua exigindo `NEURONS_ALLOW_REMOTE=true`. O workspace local funciona sem conta. Contas Google opcionais nos perfis hybrid/hosted autenticam os recursos por organização; configuração e limites em [T25 — Google e recursos por organização](../../Docs/Plano/T25%20-%20Google%20e%20recursos%20por%20organizacao.md).
 
 O Hub de mensagens (T06), os runtimes de terminal do Claude Code (T08, pacote `@neurons/agent-runtimes`), as guardas e a API REST (T10) e o protocolo de runner (T24, os agentes rodam num runner embutido ou separado) estão prontos; o runtime de API chega na T07.
 

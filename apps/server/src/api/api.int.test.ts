@@ -659,6 +659,18 @@ describe("OpenAPI document", () => {
     expect(reply.status).toBe(200);
     expect(reply.body.openapi).toBe("3.1.0");
     expect(Object.keys(reply.body.paths).sort()).toEqual([
+      "/auth/desktop",
+      "/auth/desktop/config",
+      "/auth/desktop/exchange",
+      "/auth/google",
+      "/auth/google/callback",
+      "/auth/logout",
+      "/auth/organization",
+      "/auth/organizations",
+      "/auth/organizations/{id}/members",
+      "/auth/organizations/{id}/members/{userId}",
+      "/auth/refresh",
+      "/auth/session",
       "/connections",
       "/connections/claude/login",
       "/graphs",
@@ -670,6 +682,8 @@ describe("OpenAPI document", () => {
       "/graphs/{id}/versions/{version}",
       "/memories",
       "/memories/{id}",
+      "/runners",
+      "/runners/{name}",
       "/runs",
       "/runs/{id}",
       "/runs/{id}/events",

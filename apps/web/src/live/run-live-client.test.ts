@@ -221,4 +221,29 @@ describe("RunLiveClient: digitar no terminal", () => {
     FakeSocket.last.push("error", { code: "rate_limited", message: "devagar" });
     expect(codes).toEqual(["rate_limited"]);
   });
+  it("renova a sessão e reabre o socket quando o servidor recusa por sessão inválida", async () => {
+    const renewSession = vi.fn(() => Promise.resolve());
+    const client = new RunLiveClient({
+      runId,
+      url: "ws://localhost/ws",
+      onEvent: () => undefined,
+      onConnection: () => undefined,
+      renewSession,
+      createSocket: (url) => new FakeSocket(url),
+      baseDelayMs: 100,
+    });
+    client.start();
+    const first = FakeSocket.last;
+    first.open();
+    first.push("error", { code: "invalid_session", message: "Sessão inválida ou expirada." });
+    expect(renewSession).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(FakeSocket.last).not.toBe(first);
+    FakeSocket.last.open();
+    expect(FakeSocket.last.sent).toEqual([{ event: "subscribe", data: { runId, fromSeq: 1 } }]);
+    FakeSocket.last.push("error", { code: "invalid_session", message: "x" });
+    FakeSocket.last.push("error", { code: "invalid_session", message: "x" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(renewSession.mock.calls.length).toBeLessThanOrEqual(2);
+  });
 });

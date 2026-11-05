@@ -31,8 +31,20 @@ afterAll(async () => {
 
 afterEach(async () => {
   vi.useRealTimers();
-  await app?.close();
-  app = undefined;
+  try {
+    if (app) {
+      // A 202 acknowledges the webhook, not the agents' completion. Drain their replies before
+      // shutting down the app/database, including in tests that only inspect the HTTP response.
+      await eventually(async () => {
+        for (const status of ["pending", "running"] as const) {
+          expect((await api("GET", `/runs?status=${status}`)).body.total).toBe(0);
+        }
+      });
+    }
+  } finally {
+    await app?.close();
+    app = undefined;
+  }
 });
 
 const HOOKS: HooksConfig = {
@@ -53,7 +65,9 @@ function fakeAgents() {
         const verdict = await turn.ask("Revisor", "está certo?");
         await turn.finish(`ok: ${verdict}`);
       },
-      Revisor: (turn) => void turn.reply("certo"),
+      Revisor: async (turn) => {
+        await turn.reply("certo");
+      },
     },
     { Pesquisador: { terminal: true }, Revisor: {} },
   );

@@ -1,4 +1,5 @@
 export interface RunnerRecord {
+  organizationId?: string | null;
   id: string;
   name: string;
   createdAt: Date;

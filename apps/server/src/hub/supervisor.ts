@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { GraphToolsService } from "../memories/graph-tools.service.js";
+import { resourceScope } from "../accounts/resource-scope.js";
 import {
   isTerminalRuntime,
   type AgentRuntime,
@@ -120,15 +121,17 @@ export class Supervisor {
    * (the process died in between), starting the agents that need it.
    */
   async recover(): Promise<void> {
-    for (const { run, graph } of await this.runs.listRunning()) {
-      this.registry.register(run.id, graph, run.budgetUsd ?? undefined);
-      const recipients = new Set((await this.hub.unacked(run.id)).map((message) => message.to));
-      for (const name of recipients) {
-        const slot = this.ensureSlot(run.id, name);
-        if (slot) this.schedulePump(slot);
-      }
-      // Nothing left to deliver means the run is already quiet; let it be closed.
-      this.settled.emit(run.id);
+    for (const { run, graph, organizationId } of await this.runs.listRunning()) {
+      await resourceScope.run({ organizationId: organizationId ?? null }, async () => {
+        this.registry.register(run.id, graph, run.budgetUsd ?? undefined);
+        const recipients = new Set((await this.hub.unacked(run.id)).map((message) => message.to));
+        for (const name of recipients) {
+          const slot = this.ensureSlot(run.id, name);
+          if (slot) this.schedulePump(slot);
+        }
+        // Nothing left to deliver means the run is already quiet; let it be closed.
+        this.settled.emit(run.id);
+      });
     }
   }
 
@@ -233,7 +236,10 @@ export class Supervisor {
         slot.agent.name,
         this.tools,
       );
-      const runtime = this.factory.create(slot.agent, communication);
+      const owner = this.registry.requireOpen(slot.runId);
+      const runtime = resourceScope.run({ organizationId: owner.organizationId }, () =>
+        this.factory.create(slot.agent, communication),
+      );
       slot.runtime = runtime;
       slot.unsubscribe = runtime.onStateChange((state) => this.onStateChange(slot, state));
       // Before `start`, so what the CLI prints while booting (dialogs, login) is watchable too.

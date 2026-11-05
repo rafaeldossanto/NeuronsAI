@@ -11,6 +11,7 @@ import {
 } from "@neurons/agent-runtimes";
 import type { AgentNode } from "@neurons/graph-schema";
 import { z } from "zod";
+import { resourceScope } from "../accounts/resource-scope.js";
 
 interface FunctionTool {
   name: string;
@@ -186,7 +187,10 @@ export interface ApiRuntimeDeps {
 export class ApiRuntimeFactory implements AgentRuntimeFactory {
   constructor(private readonly deps: ApiRuntimeDeps) {}
   create(agent: AgentNode, communication: AgentCommunication) {
-    return new ApiRuntime(agent, communication, this.deps);
+    return new ApiRuntime(agent, communication, {
+      ...this.deps,
+      resolveSecret: resourceScope.bind((name: string) => this.deps.resolveSecret(name)),
+    });
   }
 }
 

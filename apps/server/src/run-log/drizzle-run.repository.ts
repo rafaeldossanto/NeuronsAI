@@ -3,6 +3,8 @@ import { and, asc, desc, eq, gte, lte, sql, type SQL } from "drizzle-orm";
 import { DatabaseService } from "../database/database.service.js";
 import { graphVersions, graphs, runEvents, runs } from "../database/schema/index.js";
 import { appendEvents } from "./drizzle-event-writer.js";
+import { resourceScope } from "../accounts/resource-scope.js";
+import { requireOwnedVersion } from "../accounts/resource-ownership.js";
 import type { Recorded, RunEventDraft } from "./run-event-draft.js";
 import type {
   ActiveRun,
@@ -34,6 +36,7 @@ export class DrizzleRunRepository implements RunRepository {
     options: { budgetUsd?: number } = {},
   ): Promise<Recorded<RunRecord>> {
     return this.database.db.transaction(async (tx) => {
+      await requireOwnedVersion(tx, graphVersionId);
       const [row] = await tx
         .insert(runs)
         .values({
@@ -48,11 +51,12 @@ export class DrizzleRunRepository implements RunRepository {
     });
   }
 
-  finish(
+  async finish(
     runId: string,
     status: FinalRunStatus,
     events: RunEventDraft[],
   ): Promise<Recorded<RunRecord> | undefined> {
+    if (!(await this.findById(runId))) return undefined;
     return this.database.db.transaction(async (tx) => {
       const [row] = await tx
         .update(runs)
@@ -65,8 +69,13 @@ export class DrizzleRunRepository implements RunRepository {
   }
 
   async findById(runId: string): Promise<RunRecord | undefined> {
-    const [row] = await this.database.db.select().from(runs).where(eq(runs.id, runId));
-    return row && toRunRecord(row);
+    const [row] = await this.database.db
+      .select({ run: runs })
+      .from(runs)
+      .innerJoin(graphVersions, eq(graphVersions.id, runs.graphVersionId))
+      .innerJoin(graphs, eq(graphs.id, graphVersions.graphId))
+      .where(and(eq(runs.id, runId), resourceScope.matches(graphs.organizationId)));
+    return row && toRunRecord(row.run);
   }
 
   async findSummary(runId: string): Promise<RunSummaryRecord | undefined> {
@@ -74,7 +83,8 @@ export class DrizzleRunRepository implements RunRepository {
       .select({ run: runs, graphId: graphVersions.graphId })
       .from(runs)
       .innerJoin(graphVersions, eq(graphVersions.id, runs.graphVersionId))
-      .where(eq(runs.id, runId));
+      .innerJoin(graphs, eq(graphs.id, graphVersions.graphId))
+      .where(and(eq(runs.id, runId), resourceScope.matches(graphs.organizationId)));
     return row && { ...toRunRecord(row.run), graphId: row.graphId };
   }
 
@@ -99,7 +109,7 @@ export class DrizzleRunRepository implements RunRepository {
       .as("usage");
     const cost = sql<string>`coalesce(${usage.known}, 0)`;
 
-    const conditions: SQL[] = [];
+    const conditions: SQL[] = [resourceScope.matches(graphs.organizationId)];
     if (filter.status) conditions.push(eq(runs.status, filter.status));
     if (filter.graphId) conditions.push(eq(graphVersions.graphId, filter.graphId));
     if (filter.graphVersionId) conditions.push(eq(runs.graphVersionId, filter.graphVersionId));
@@ -144,6 +154,7 @@ export class DrizzleRunRepository implements RunRepository {
         .select({ total: sql<number>`count(*)::int` })
         .from(runs)
         .innerJoin(graphVersions, eq(graphVersions.id, runs.graphVersionId))
+        .innerJoin(graphs, eq(graphs.id, graphVersions.graphId))
         .leftJoin(usage, eq(usage.runId, runs.id))
         .where(where),
     ]);
@@ -161,11 +172,20 @@ export class DrizzleRunRepository implements RunRepository {
 
   async listRunning(): Promise<ActiveRun[]> {
     const rows = await this.database.db
-      .select({ run: runs, definition: graphVersions.definition })
+      .select({
+        run: runs,
+        definition: graphVersions.definition,
+        organizationId: graphs.organizationId,
+      })
       .from(runs)
       .innerJoin(graphVersions, eq(graphVersions.id, runs.graphVersionId))
+      .innerJoin(graphs, eq(graphs.id, graphVersions.graphId))
       .where(eq(runs.status, "running"))
       .orderBy(runs.id);
-    return rows.map(({ run, definition }) => ({ run: toRunRecord(run), graph: definition }));
+    return rows.map(({ run, definition, organizationId }) => ({
+      run: toRunRecord(run),
+      graph: definition,
+      ...(organizationId && { organizationId }),
+    }));
   }
 }
