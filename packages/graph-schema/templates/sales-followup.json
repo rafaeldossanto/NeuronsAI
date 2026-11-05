@@ -1,0 +1,120 @@
+{
+  "id": "sales-followup",
+  "name": "Venda → pós-venda",
+  "description": "Receba um pedido por webhook, confirme a venda e encaminhe o acompanhamento ao pós-venda.",
+  "category": "sales",
+  "requiredSecrets": ["ANTHROPIC_API_KEY", "ORDERS_API_TOKEN"],
+  "graph": {
+    "schemaVersion": 1,
+    "id": "75eddd96-bfe2-449f-9a23-e64eb38c85ed",
+    "name": "Venda → pós-venda",
+    "nodes": [
+      {
+        "id": "sales-webhook",
+        "type": "trigger",
+        "position": {
+          "x": 0,
+          "y": 80
+        },
+        "kind": "webhook",
+        "target": "seller"
+      },
+      {
+        "id": "seller",
+        "type": "agent",
+        "name": "Vendedor",
+        "position": {
+          "x": 260,
+          "y": 80
+        },
+        "role": "Confirma a venda com o cliente",
+        "instructions": "Atenda com cordialidade. Confirme os itens e o pagamento antes de acionar PosVenda com send_message ou ask. Não invente pagamento nem prazo de entrega. Aguarde a confirmação do PosVenda antes de concluir a tarefa.",
+        "effort": "medium",
+        "budgetUsd": 0.5,
+        "idleTimeoutSec": 120,
+        "runtime": {
+          "kind": "api",
+          "provider": "anthropic",
+          "model": "claude-sonnet-5-5",
+          "access": "api-key",
+          "secretName": "ANTHROPIC_API_KEY"
+        }
+      },
+      {
+        "id": "after-sales",
+        "type": "agent",
+        "name": "PosVenda",
+        "position": {
+          "x": 560,
+          "y": 80
+        },
+        "role": "Consulta o pedido e prepara a confirmação",
+        "instructions": "Ao receber o pedido do Vendedor, use list_tools e a ferramenta HTTP conectada para consultar os dados. Não invente resultados quando o serviço não estiver configurado. Responda ao Vendedor usando reply quando houver pergunta. Só chame finish após confirmar que o acompanhamento está concluído.",
+        "effort": "low",
+        "budgetUsd": 0.3,
+        "idleTimeoutSec": 120,
+        "runtime": {
+          "kind": "api",
+          "provider": "anthropic",
+          "model": "claude-haiku-5-5",
+          "access": "api-key",
+          "secretName": "ANTHROPIC_API_KEY"
+        }
+      },
+      {
+        "id": "orders",
+        "type": "tool",
+        "name": "Consultar pedido",
+        "position": {
+          "x": 860,
+          "y": 80
+        },
+        "tool": {
+          "kind": "http",
+          "method": "GET",
+          "url": "https://orders.example.invalid/orders",
+          "headers": {
+            "Accept": "application/json",
+            "Authorization": "Bearer {{secret:ORDERS_API_TOKEN}}"
+          }
+        }
+      }
+    ],
+    "links": [
+      {
+        "id": "sales-handoff",
+        "from": "seller",
+        "to": "after-sales",
+        "kind": "talk",
+        "bidirectional": true,
+        "maxMessages": 12
+      },
+      {
+        "id": "read-order",
+        "from": "after-sales",
+        "to": "orders",
+        "kind": "uses",
+        "bidirectional": false,
+        "maxMessages": 6
+      }
+    ],
+    "annotations": [
+      {
+        "id": "sales-setup",
+        "kind": "note",
+        "position": {
+          "x": 260,
+          "y": 260
+        },
+        "size": {
+          "width": 780,
+          "height": 144
+        },
+        "text": "Antes de publicar: crie os segredos ANTHROPIC_API_KEY e ORDERS_API_TOKEN em Conexões de IA. O template contém apenas referências, nunca credenciais. Substitua o endereço HTTP de exemplo pela API de pedidos. Gere e ative o webhook no editor após publicar.",
+        "style": {
+          "fontSize": 14
+        }
+      }
+    ]
+  }
+}
