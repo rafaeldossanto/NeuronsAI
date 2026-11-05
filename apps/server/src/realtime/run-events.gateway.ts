@@ -44,18 +44,26 @@ export class RunEventsGateway implements OnGatewayDisconnect, OnGatewayConnectio
     this.requests.set(client, request);
   }
 
+  /**
+   * The sink of a socket is cached, so EVERY path that can create it must carry the authorization
+   * policy: a sink born without it (an `unsubscribe` sent first) would deliver without rechecking.
+   */
+  private sinkOf(client: WebSocket): EventSink {
+    return socketSink(
+      client,
+      this.authorization.enabled
+        ? (id, action) => this.authorization.run(this.requests.get(client), id, false, action)
+        : undefined,
+    );
+  }
+
   @SubscribeMessage("subscribe")
   async subscribe(client: WebSocket, payload: unknown): Promise<Reply> {
     const parsed = subscribeMessageSchema.safeParse(payload);
     if (!parsed.success) return invalidMessage("subscribe", parsed.error);
 
     const { runId, fromSeq } = parsed.data;
-    const sink = socketSink(
-      client,
-      this.authorization.enabled
-        ? (id, action) => this.authorization.run(this.requests.get(client), id, false, action)
-        : undefined,
-    );
+    const sink = this.sinkOf(client);
     try {
       await this.authorization.run(this.requests.get(client), runId, false, async () => {
         await this.subscriptions.subscribe(sink, runId, fromSeq);
@@ -72,7 +80,7 @@ export class RunEventsGateway implements OnGatewayDisconnect, OnGatewayConnectio
     const parsed = unsubscribeMessageSchema.safeParse(payload);
     if (!parsed.success) return invalidMessage("unsubscribe", parsed.error);
 
-    this.subscriptions.unsubscribe(socketSink(client), parsed.data.runId);
+    this.subscriptions.unsubscribe(this.sinkOf(client), parsed.data.runId);
     return { event: "unsubscribed", data: { runId: parsed.data.runId } };
   }
 
@@ -102,7 +110,7 @@ export class RunEventsGateway implements OnGatewayDisconnect, OnGatewayConnectio
   }
 
   handleDisconnect(client: WebSocket): void {
-    this.subscriptions.unsubscribeAll(socketSink(client));
+    this.subscriptions.unsubscribeAll(this.sinkOf(client));
   }
 }
 

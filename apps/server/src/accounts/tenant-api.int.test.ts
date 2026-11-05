@@ -590,4 +590,59 @@ describe("T25 — API entre organizações", () => {
         .some((frame) => JSON.stringify(frame).includes("PrivateAfterRevoke")),
     ).toBe(false);
   });
+  it("WebSocket: unsubscribe antes de subscribe não desliga a revalidação; origem errada e terminal.input alheio são recusados", async () => {
+    const runId = await run(alice, await publish(alice, await graph(alice)));
+    await app.listen(0, "127.0.0.1");
+    const port = (app.getHttpServer().address() as AddressInfo).port;
+    const connect = async (headers: Record<string, string>) => {
+      const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers });
+      sockets.push(socket);
+      const frames: { event: string; data: unknown }[] = [];
+      socket.on("message", (value) =>
+        frames.push(JSON.parse((value as Buffer).toString()) as { event: string; data: unknown }),
+      );
+      await new Promise<void>((resolve) => socket.once("open", resolve));
+      return { socket, frames };
+    };
+    const subscribe = { event: "subscribe", data: { runId, fromSeq: 1 } };
+    const wrongOrigin = await connect({ ...alice.headers, origin: "https://evil.example.invalid" });
+    wrongOrigin.socket.send(JSON.stringify(subscribe));
+    await eventually(() =>
+      expect(wrongOrigin.frames.some((frame) => frame.event === "error")).toBe(true),
+    );
+    expect(wrongOrigin.frames.some((frame) => frame.event === "run.event")).toBe(false);
+
+    const foreign = await connect(bob.headers);
+    foreign.socket.send(
+      JSON.stringify({ event: "terminal.input", data: { runId, agent: "a", data: "x" } }),
+    );
+    await eventually(() =>
+      expect(foreign.frames.some((frame) => frame.event === "error")).toBe(true),
+    );
+    expect(foreign.frames.some((frame) => frame.event === "run.event")).toBe(false);
+
+    const own = await connect(alice.headers);
+    own.socket.send(JSON.stringify({ event: "unsubscribe", data: { runId } }));
+    own.socket.send(JSON.stringify(subscribe));
+    await eventually(() =>
+      expect(own.frames.some((frame) => frame.event === "run.event")).toBe(true),
+    );
+    await sessions.revoke(alice.credentials.refreshToken);
+    const { RunSubscriptions } = await import("../realtime/run-subscriptions.js");
+    const before = own.frames.length;
+    app.get(RunSubscriptions).publish({
+      runId,
+      seq: 999,
+      type: "PrivateAfterRevoke",
+      agent: null,
+      payload: {},
+      at: new Date(),
+    });
+    await eventually(() => expect(own.socket.readyState).toBe(WebSocket.CLOSED));
+    expect(
+      own.frames
+        .slice(before)
+        .some((frame) => JSON.stringify(frame).includes("PrivateAfterRevoke")),
+    ).toBe(false);
+  });
 });
