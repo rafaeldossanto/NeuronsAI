@@ -484,10 +484,23 @@ Dividida em duas:
 
 ### T17 — Templates
 
-- "Novo grafo a partir de template": Venda → pós-venda, Pesquisa com revisor, Agente principal +
-  CLIs no terminal. Cada template é uma fixture validada da T02 com textos de exemplo.
+Implementada em `codex/t17-templates`, a partir de `a2ce21e`. Catálogo portátil em `packages/graph-schema/templates`, com nome, descrição, categoria, grafo, instruções e anotações em pt-BR:
 
-**Pronto quando:** os três templates abrem, rodam e terminam com modelos reais.
+- **Venda → pós-venda:** webhook → Vendedor → PosVenda, com ferramenta HTTP de pedido, modelos Sonnet/Haiku 5.5 e referências de segredo. O endpoint `example.invalid` deve ser substituído; criar os segredos e configurar/ativar o webhook continua sendo decisão explícita do usuário.
+- **Pesquisa com revisor:** gatilho manual, Pesquisador e Revisor em Claude Code (Haiku 5.5, sessões estruturadas), conversa bidirecional com limite de mensagens. Usa a assinatura da CLI; sem agente de API.
+- **Agente principal + CLIs no terminal:** Principal por API (Sonnet 5.5) delega a Executor (Sonnet 5.5) e Revisor (Haiku 5.5) em terminais Claude Code. Cada ligação tem limite próprio.
+
+**Portabilidade aprovada por Rafael:** o contrato atual exige `cwd` absoluto. As receitas guardam apenas `cwd: "."`; a tela pede a pasta do computador do runner **antes de criar**. `instantiateTemplate` injeta essa pasta na cópia e o grafo configurado passa em `validateGraph` sem alteração por `migrateGraph`. Nenhum caminho da máquina fica no catálogo e o contrato não foi alterado.
+
+A tela `/new` oferece projeto em branco e os três templates, com prévia por `GraphViewer` só leitura e selo de necessidade de chave nos que usam API. Cria um id novo pela API existente, salva o rascunho e abre o editor. **Não publica, ativa webhook ou inicia execução automaticamente.** Falha no salvamento pode ser repetida sem criar outro projeto.
+
+**Verificação:** testes de catálogo cobrem validação/migração das instâncias, portabilidade, referências de segredo, modelos, orçamentos e limites. Testes da tela cobrem prévias, escolha, id novo, conteúdo salvo, projeto vazio e erros. O teste de aceitação `node packages/graph-schema/templates/verify-fake-cli.mjs` valida criação, reabertura, publicação explícita e a conversa Pesquisador ↔ Revisor pelo servidor e runner usando apenas o CLI de mentira.
+
+**Resultado da validação local (2026-11-04):** 48 tarefas de lint/tipagem/testes/build passaram no monorepo, com 127 testes do esquema e 159 da interface; contrato OpenAPI em dia. Aceitação gratuita concluída: três templates criados com ids próprios, reabertos e publicados no banco de teste; Pesquisa com revisor terminou com pergunta, resposta e resultado. No navegador, o fluxo de criação confirmou rascunho sem versão publicada, pasta aplicada e ausência de exceções JavaScript.
+
+**Guardas:** todos os agentes possuem `budgetUsd` e `idleTimeoutSec`; todas as ligações têm `maxMessages`. Orçamento configurado não resolve custo desconhecido: nos runtimes de API, a limitação real em USD continua dependente de relatório de custo/preços. Limites de mensagens e tempo ocioso seguem ativos.
+
+**Pendente da T07:** executar e encerrar os dois templates com agentes de API usando chaves e modelos reais. Nenhuma chamada paga ou rodada real com Claude Code faz parte desta validação. As chaves devem ser criadas pelo usuário em Conexões de IA; `secretName` é somente o nome de referência, e o cabeçalho HTTP usa `{{secret:ORDERS_API_TOKEN}}`.
 
 ### T18 — Landing
 

@@ -95,3 +95,17 @@ src/
 ```
 
 Fundo `#F7F7F4`, grafite, âmbar `#E9A15C` (foco e pulso de "em execução"), fonte Manrope, nada de azul. Para mudar uma cor, edite só `src/styles.css`.
+
+## T17 — Novo projeto a partir de template
+
+A rota `/new` agora oferece **Projeto em branco** e três modelos: **Venda → pós-venda**, **Pesquisa com revisor** e **Agente principal + CLIs no terminal**. Cada card usa o `GraphViewer` existente em modo só leitura e indica quando precisa de chave de API. O editor e o visualizador não foram alterados.
+
+Ao escolher um template, revise o nome. Nos modelos com Claude Code, informe a pasta absoluta no computador do runner; no desktop há seleção nativa de pasta. Essa escolha foi aprovada pelo Rafael para manter caminhos privados fora das receitas, sem alterar o contrato que exige `cwd` absoluto.
+
+A criação valida a cópia configurada, faz `POST /graphs` para obter um id novo, grava o conteúdo com `PATCH /graphs/:id` e abre o editor. O projeto fica como **rascunho**: não publica versão, não ativa webhook e não inicia execução. Uma falha de PATCH pode ser repetida sem criar outro projeto. Projeto em branco mantém o canvas vazio.
+
+As receitas estão em [packages/graph-schema/templates](../../packages/graph-schema/templates/README.md), exportadas como `listTemplates`, `getTemplate` e `instantiateTemplate`. O template nunca traz credenciais: configure os segredos nomeados em Conexões de IA. O fluxo de vendas também precisa do endpoint real da API de pedidos e da configuração do webhook no editor.
+
+Testes novos: catálogo validado após informar a pasta, migração sem alteração, caminhos/segredos, orçamentos e limites; na tela, prévias, criação dos três modelos com id novo, ausência de publicação automática, erro e repetição de salvamento. Para o teste real com servidor local, PGlite e CLI de mentira, após build, use `node packages/graph-schema/templates/verify-fake-cli.mjs`.
+
+**Pendente da T07:** rodar os dois modelos com agente de API usando chaves e modelos reais, com validação de consumo. Pesquisa com revisor foi preparado para CLI oficial pela assinatura; nesta entrega, a execução é validada somente com a CLI de mentira, sem chamada paga.
