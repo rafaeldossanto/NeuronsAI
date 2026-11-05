@@ -21,6 +21,12 @@ export interface RunLiveClientOptions {
   onConnection: (state: ConnectionState) => void;
   /** An `error` frame from the server (with its `code`), or `null` when the subscription cleared it. */
   onError?: (message: string | null, code?: string) => void;
+  /**
+   * Refreshes the HttpOnly session cookies (the server checks the cookies of the upgrade request, so
+   * an old socket or one opened with an expired cookie is refused with `invalid_session`). Called at
+   * most twice in a row; the socket is reopened with the new cookies afterwards.
+   */
+  renewSession?: () => Promise<void>;
   createSocket?: (url: string) => SocketLike;
   /** First reconnection delay; doubles on every failed attempt up to `maxDelayMs`. */
   baseDelayMs?: number;
@@ -48,6 +54,7 @@ export class RunLiveClient {
   private closed = false;
   private lastSeq = 0;
   private subscribed = false;
+  private renewals = 0;
 
   private readonly createSocket: (url: string) => SocketLike;
   private readonly baseDelayMs: number;
@@ -130,10 +137,20 @@ export class RunLiveClient {
     if (event === "subscribed") {
       this.subscribed = true;
       this.attempt = 0;
+      this.renewals = 0;
       this.options.onError?.(null);
       this.options.onConnection("live");
     } else if (event === "error") {
       const { message, code } = (data ?? {}) as { message?: unknown; code?: unknown };
+      if (code === "invalid_session" && this.options.renewSession && this.renewals < 2) {
+        this.renewals += 1;
+        this.detach(true);
+        const renew = this.options.renewSession;
+        void renew()
+          .catch(() => undefined)
+          .then(() => this.scheduleReconnect(true));
+        return;
+      }
       this.options.onError?.(
         typeof message === "string" ? message : "Erro do servidor.",
         typeof code === "string" ? code : undefined,
