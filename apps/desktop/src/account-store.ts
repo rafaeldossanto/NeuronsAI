@@ -11,12 +11,15 @@ const storedSession = z.object({
 });
 export type DesktopAccountSession = z.infer<typeof storedSession>;
 
-/** Main-process storage for the future remote desktop login. Never exposed through the preload. */
+/** OS-backed refresh credential, isolated by server origin and never exposed through the preload. */
 export class DesktopAccountStore {
   constructor(
     private readonly dataDir: string,
     private readonly platform: NodeJS.Platform = process.platform,
   ) {}
+  ensureAvailable(): void {
+    this.available();
+  }
   private available(): void {
     if (
       !safeStorage.isEncryptionAvailable() ||

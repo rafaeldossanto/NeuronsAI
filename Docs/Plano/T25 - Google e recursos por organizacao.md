@@ -19,7 +19,7 @@ Continuação autorizada por Rafael em 2026-11-05: avançar nas partes que não 
 - **Interface web:** tela de entrada Google, estado de carregamento, falhas com nova tentativa, sessão expirada e sair. Cliente envia CSRF apenas à mesma origem e compartilha uma renovação entre chamadas concorrentes. Sem conta configurada, abre o workspace local normalmente.
 - **Painéis administrativos:** `/organizations` permite criar e trocar espaços, copiar o ID da conta, adicionar contas existentes, alterar papéis e remover membros com confirmação. Proprietários gerenciam todos os papéis; administradores apenas membros/leitores; o último proprietário fica protegido. `/runners` lista conexão real e agentes vinculados, cadastra token mostrado uma única vez e revoga com confirmação. Token fica apenas no estado efêmero do painel, fora do cache de consultas e armazenamento do navegador. Membros/leitores consultam sem controles administrativos. Não há convite por email nesta etapa.
 - **Troca de espaço:** remonta o workspace por usuário/organização/papel, descartando caches e assinaturas anteriores. Respostas de requisições antigas são ignoradas e não podem ser repetidas sob a nova organização. Aguarda renovação em curso antes de mudar cookies; BroadcastChannel sincroniza outras abas, com revalidação ao focar a janela.
-- **Desktop:** continua com servidor embutido local e sem conta. Preparado `DesktopAccountStore`, exclusivo do processo principal, com safeStorage, isolamento por origem, gravação atômica e recusa de basic_text. O fluxo remoto do Electron ainda não está ligado; nenhum token novo foi exposto ao renderer.
+- **Desktop:** espaço local sem conta preservado. Continuação na branch `codex/t25-desktop-remote`: seleção do servidor, login pelo navegador do sistema com retorno em loopback/PKCE, cookies HttpOnly em partição de memória e renovação no safeStorage, sem tokens no renderer. Ver [[T25 - Desktop remoto]] para protocolo, testes e limites; revisão e aceitação real continuam pendentes.
 
 MCP por stdio em contexto de organização é recusado no servidor compartilhado; use MCP por HTTP. Processos locais pertencem ao computador do runner. O modo local existente preserva MCP stdio.
 
@@ -56,7 +56,7 @@ Rotas: `/auth/session`, `/auth/google`, `/auth/google/callback`, `/auth/refresh`
 
 1. Revisão e integração da branch na dev, com CI multiplataforma.
 2. OAuth client Google e domínio/retorno reais para aceitação do login e renovação no navegador.
-3. Fluxo remoto do Electron: servidor de destino, abertura do navegador do sistema, retorno por deep link/loopback e uso do cofre preparado, sem levar tokens ao renderer. O desktop atual continua local.
+3. Revisar a continuação do desktop remoto e aceitar o fluxo completo no Electron com OAuth real, reinício/cofre e os três sistemas. Implementação e limites em [[T25 - Desktop remoto]].
 
 T25 permanece em andamento até a aceitação integrada. Não marcar a tarefa completa apenas porque os testes simulados passaram.
 

@@ -1,10 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { UpdateNotice, type DesktopUpdates } from "@/components/update-notice";
+import { DesktopAccount, type DesktopAccountBridge } from "./desktop-account";
 
 declare global {
   interface Window {
     neuronsDesktop?: DesktopUpdates & {
       platform: string;
+      localResources?: boolean;
+      account?: DesktopAccountBridge;
       minimize(): Promise<void>;
       maximize(): Promise<void>;
       close(): Promise<void>;
@@ -59,7 +62,8 @@ export function DesktopFrame({ children }: { children: ReactNode }) {
         </div>
         <span>NeuronsAI</span>
       </div>
-      <UpdateNotice updates={desktop} />
+      {desktop.localResources !== false && <UpdateNotice updates={desktop} />}
+      {desktop.account && <DesktopAccount account={desktop.account} />}
       <div className="desktop-content">{children}</div>
     </div>
   );

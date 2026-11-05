@@ -6,6 +6,12 @@ import { RateLimiter } from "../triggers/rate-limiter.js";
 import { AccountsService } from "./accounts.service.js";
 import { AccountAuth } from "./account-auth.service.js";
 import { LoginAttemptError } from "./login.errors.js";
+import {
+  DesktopLoginService,
+  desktopBegin,
+  desktopCredentials,
+  desktopExchange,
+} from "./desktop-login.service.js";
 
 const callbackQuery = z.object({
   state: z.string().max(100).optional(),
@@ -27,6 +33,7 @@ export class AuthController {
   constructor(
     @Inject(AccountAuth) private readonly auth: AccountAuth,
     @Inject(AccountsService) private readonly accounts: AccountsService,
+    @Inject(DesktopLoginService) private readonly desktop: DesktopLoginService,
   ) {}
 
   @Endpoint({
@@ -86,6 +93,15 @@ export class AuthController {
     const { browser, login } = this.auth.require();
     reply.header("Cache-Control", "no-store").header("Referrer-Policy", "no-referrer");
     reply.header("Set-Cookie", browser.clearLoginCookie());
+    if (query.state && (await this.desktop.find(query.state))) {
+      const binding = browser.loginBinding(request);
+      if (query.error) return reply.redirect(await this.desktop.cancel(query.state, binding), 302);
+      if (!query.code) throw new LoginAttemptError();
+      return reply.redirect(
+        await this.desktop.complete({ state: query.state, code: query.code, binding }),
+        302,
+      );
+    }
     if (query.error || !query.code || !query.state) throw new LoginAttemptError();
     const credentials = await login.complete({
       code: query.code,
@@ -97,6 +113,63 @@ export class AuthController {
       ...browser.setCredentials(credentials),
     ]);
     return reply.redirect("/graphs", 302);
+  }
+
+  @Endpoint({
+    method: "get",
+    path: "desktop/config",
+    summary: "Disponibilidade do login nativo pelo navegador do sistema.",
+    response: z.object({ enabled: z.boolean(), protocolVersion: z.literal(1) }),
+  })
+  desktopConfig(@Res({ passthrough: true }) reply: FastifyReply) {
+    reply.header("Cache-Control", "no-store");
+    return { enabled: Boolean(this.auth.browser), protocolVersion: 1 as const };
+  }
+
+  @Endpoint({
+    method: "get",
+    path: "desktop",
+    summary: "Inicia login do aplicativo nativo, com retorno em loopback e PKCE.",
+    query: desktopBegin,
+    status: 302,
+    errors: [403, 429, 503],
+  })
+  async beginDesktop(
+    @ValidQuery() query: z.infer<typeof desktopBegin>,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const { browser } = this.auth.require();
+    if (!this.limiter.tryTake(request.ip))
+      throw new HttpException("Aguarde um minuto antes de iniciar outro login.", 429);
+    const attempt = await this.desktop.begin(query);
+    reply
+      .header("Cache-Control", "no-store")
+      .header("Referrer-Policy", "no-referrer")
+      .header("Set-Cookie", browser.loginCookie(attempt.binding, attempt.expiresAt));
+    return reply.redirect(attempt.authorizationUrl, 302);
+  }
+
+  @Endpoint({
+    method: "post",
+    path: "desktop/exchange",
+    summary:
+      "Troca código nativo de uso único e PKCE por sessão, exclusivamente no processo principal.",
+    body: desktopExchange,
+    response: desktopCredentials,
+    errors: [403, 429, 503],
+  })
+  async exchangeDesktop(
+    @ValidBody() body: z.infer<typeof desktopExchange>,
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    // The exchange belongs to the native main process, not browser JavaScript.
+    if (request.headers.origin || request.headers["sec-fetch-site"]) throw new LoginAttemptError();
+    if (!this.limiter.tryTake(request.ip))
+      throw new HttpException("Aguarde um minuto antes de tentar novamente.", 429);
+    reply.header("Cache-Control", "no-store").header("Referrer-Policy", "no-referrer");
+    return this.desktop.exchange(body);
   }
 
   @Endpoint({

@@ -25,7 +25,12 @@ export class OidcLoginService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async begin(): Promise<{ authorizationUrl: string; binding: string; expiresAt: Date }> {
+  async begin(): Promise<{
+    authorizationUrl: string;
+    binding: string;
+    expiresAt: Date;
+    state: string;
+  }> {
     const state = opaque(),
       binding = opaque(),
       codeVerifier = opaque(),
@@ -49,7 +54,7 @@ export class OidcLoginService {
       ...encrypted,
       expiresAt,
     });
-    return { authorizationUrl, binding, expiresAt };
+    return { authorizationUrl, binding, expiresAt, state };
   }
 
   async complete(input: {
@@ -57,6 +62,16 @@ export class OidcLoginService {
     binding: string;
     code: string;
   }): Promise<SessionCredentials> {
+    const account = await this.verify(input);
+    return this.sessions.issue(account.userId, account.organizationId);
+  }
+
+  /** Verification shared by web cookies and the PKCE-bound native handoff. */
+  async verify(input: {
+    state: string;
+    binding: string;
+    code: string;
+  }): Promise<{ userId: string; organizationId: string }> {
     if (
       !isOpaque(input.state) ||
       !isOpaque(input.binding) ||
@@ -87,6 +102,21 @@ export class OidcLoginService {
     const organization = (await this.accounts.listOrganizations(user.id))[0];
     // An account whose membership was removed must not receive a session to an arbitrary org.
     if (!organization) throw new LoginAttemptError();
-    return this.sessions.issue(user.id, organization.id);
+    return { userId: user.id, organizationId: organization.id };
+  }
+
+  async cancel(state: string, binding: string): Promise<void> {
+    if (!isOpaque(state) || !isOpaque(binding)) throw new LoginAttemptError();
+    const rows = await this.database.db
+      .delete(loginAttempts)
+      .where(
+        and(
+          eq(loginAttempts.stateHash, digest(state)),
+          eq(loginAttempts.bindingHash, digest(binding)),
+          gt(loginAttempts.expiresAt, this.now()),
+        ),
+      )
+      .returning({ stateHash: loginAttempts.stateHash });
+    if (!rows.length) throw new LoginAttemptError();
   }
 }

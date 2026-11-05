@@ -3,7 +3,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import { Layout } from "@/components/layout";
-import { DesktopFrame } from "@/components/desktop-frame";
 import { WorkspaceProvider } from "@/workspace/resources";
 import { NewProjectPage } from "@/routes/new-project-page";
 import { EmptyState } from "@/components/states";
@@ -28,21 +27,19 @@ export function App({ api, queryClient }: { api: ApiClient; queryClient?: QueryC
     <ApiProvider api={api}>
       <QueryClientProvider client={client}>
         <WorkspaceProvider>
-          <DesktopFrame>
-            <Routes>
-              <Route element={<Layout />}>
-                <Route index element={<Navigate to="/graphs" replace />} />
-                <Route path="new" element={<NewProjectPage />} />
-                <Route path="graphs" element={<GraphsPage />} />
-                <Route path="graphs/:id" element={<GraphEditorPage />} />
-                <Route path="runs" element={<RunsPage />} />
-                <Route path="runs/:id" element={<RunDetailPage />} />
-                <Route path="organizations" element={<OrganizationsPage />} />
-                <Route path="runners" element={<RunnersPage />} />
-                <Route path="*" element={<EmptyState title="Página não encontrada" />} />
-              </Route>
-            </Routes>
-          </DesktopFrame>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route index element={<Navigate to="/graphs" replace />} />
+              <Route path="new" element={<NewProjectPage />} />
+              <Route path="graphs" element={<GraphsPage />} />
+              <Route path="graphs/:id" element={<GraphEditorPage />} />
+              <Route path="runs" element={<RunsPage />} />
+              <Route path="runs/:id" element={<RunDetailPage />} />
+              <Route path="organizations" element={<OrganizationsPage />} />
+              <Route path="runners" element={<RunnersPage />} />
+              <Route path="*" element={<EmptyState title="Página não encontrada" />} />
+            </Route>
+          </Routes>
         </WorkspaceProvider>
       </QueryClientProvider>
     </ApiProvider>

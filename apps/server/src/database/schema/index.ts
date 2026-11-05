@@ -7,3 +7,4 @@ export * from "./runners.js";
 export * from "./triggers.js";
 export * from "./accounts.js";
 export * from "./login-attempts.js";
+export * from "./desktop-login.js";
