@@ -53,6 +53,9 @@ export function importPath(value: string): string[] {
 /** One manifest per memory, published last: a failed import never appears in the catalog. */
 @Injectable()
 export class MemoriesService {
+  /** The last queued creation of each organization (`""` is the local workspace). */
+  private readonly queues = new Map<string, Promise<void>>();
+
   private readonly baseRoot: string;
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {
     this.baseRoot = path.join(config.dataDir, "memories");
@@ -67,7 +70,8 @@ export class MemoriesService {
 
   /**
    * An organization's limits on memories (how many, and the size of all their files together).
-   * A soft check: two imports at the same moment can both pass. The local workspace has no limits.
+   * Called inside `exclusively`, so imports of one organization are checked one at a time. The local
+   * workspace has no limits.
    * @throws QuotaExceededError
    */
   private async assertWithinQuotas(incomingBytes: number): Promise<void> {
@@ -204,7 +208,34 @@ export class MemoriesService {
         );
       return { segments, content };
     });
-    await this.assertWithinQuotas(bytes);
+    // Check and write as one step per organization, or two imports at once both pass the limit.
+    return this.exclusively(async () => {
+      await this.assertWithinQuotas(bytes);
+      return this.write(body, files, vaultPath);
+    });
+  }
+
+  /** Runs `action` after the ones already queued for the same organization (this server process). */
+  private exclusively<T>(action: () => Promise<T>): Promise<T> {
+    const key = resourceScope.current().organizationId ?? "";
+    const previous = this.queues.get(key) ?? Promise.resolve();
+    const run = previous.then(action, action);
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.queues.set(key, tail);
+    void tail.then(() => {
+      if (this.queues.get(key) === tail) this.queues.delete(key);
+    });
+    return run;
+  }
+
+  private async write(
+    body: CreateMemory,
+    files: { segments: string[]; content: Buffer }[],
+    vaultPath: string | undefined,
+  ): Promise<MemoryRecord> {
     const id = randomUUID();
     const directory = path.join(this.root, id);
     const vault = path.join(directory, "vault");

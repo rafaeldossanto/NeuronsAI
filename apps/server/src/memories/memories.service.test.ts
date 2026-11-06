@@ -243,6 +243,17 @@ describe("cotas de memórias", () => {
     expect(await inOrganization(() => service.list())).toHaveLength(2);
   });
 
+  it("segura o limite quando várias criações chegam ao mesmo tempo", async () => {
+    const service = withQuotas({ memoriesPerOrganization: 2 });
+
+    const results = await Promise.allSettled(
+      ["A", "B", "C", "D", "E"].map((name) => create(service, name)),
+    );
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(2);
+    expect(await inOrganization(() => service.list())).toHaveLength(2);
+  });
+
   it("zero desliga o limite", async () => {
     const service = withQuotas({ memoriesPerOrganization: 0, memoryBytesPerOrganization: 0 });
     for (const name of ["A", "B", "C"]) await create(service, name);
