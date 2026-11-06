@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { UpdateNotice, type DesktopUpdates } from "@/components/update-notice";
 import { DesktopAccount, type DesktopAccountBridge } from "./desktop-account";
+import type { DesktopSettingsBridge } from "./desktop-settings";
 
 declare global {
   interface Window {
@@ -8,6 +9,7 @@ declare global {
       platform: string;
       localResources?: boolean;
       account?: DesktopAccountBridge;
+      settings?: DesktopSettingsBridge;
       minimize(): Promise<void>;
       maximize(): Promise<void>;
       close(): Promise<void>;

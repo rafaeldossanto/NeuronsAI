@@ -6,6 +6,7 @@ import { useWorkspace } from "@/workspace/resources";
 import { useQuery } from "@tanstack/react-query";
 import { useSession } from "@/auth/session-context";
 import { unwrap, useApi } from "@/lib/api";
+import { desktopSettings } from "./desktop-settings";
 
 const links = [
   { to: "/graphs", label: "Meus projetos" },
@@ -24,13 +25,17 @@ export function Layout() {
   const organization = organizations.data?.items.find(
     (item) => item.id === account?.organizationId,
   );
-  const navigation = account
+  const accountLinks = account
     ? [
         ...links,
         { to: "/organizations", label: "Organizações" },
         { to: "/runners", label: "Runners" },
       ]
     : links;
+  // The app's own settings (external triggers' port) exist only in the desktop app.
+  const navigation = desktopSettings()
+    ? [...accountLinks, { to: "/settings", label: "Configurações" }]
+    : accountLinks;
   // The editor needs room for the canvas and the inspector.
   const wide = useMatch("/graphs/:id") !== null;
   return (

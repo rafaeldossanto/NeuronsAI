@@ -15,6 +15,18 @@ async function accountCommand(action: string, value?: string): Promise<unknown> 
   }
 }
 
+async function settingsCommand(action: string, value?: unknown): Promise<unknown> {
+  try {
+    return await ipcRenderer.invoke("neurons:settings", action, value);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "")
+        : "Não foi possível alterar as configurações.";
+    throw new Error(message, { cause: error });
+  }
+}
+
 // This is the entire renderer bridge: no raw IPC, shell, file read or credential access.
 contextBridge.exposeInMainWorld("neuronsDesktop", {
   platform: process.platform,
@@ -26,6 +38,13 @@ contextBridge.exposeInMainWorld("neuronsDesktop", {
     cancelLogin: () => accountCommand("cancel"),
     openLocal: () => accountCommand("local"),
     forget: () => accountCommand("forget"),
+  },
+  settings: {
+    getTriggers: () => settingsCommand("triggers:get"),
+    // Only these two fields go out, whatever the page passes.
+    setTriggers: (value: { enabled: boolean; port: number }) =>
+      settingsCommand("triggers:set", { enabled: value.enabled, port: value.port }),
+    restart: () => settingsCommand("restart"),
   },
   minimize: () => ipcRenderer.invoke("neurons:window", "minimize"),
   maximize: () => ipcRenderer.invoke("neurons:window", "maximize"),
