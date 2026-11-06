@@ -570,6 +570,11 @@ A tela `/new` oferece projeto em branco e os três templates, com prévia por `G
 - **Empacotamento:** `asar: false` por ora (o CLI e o node-pty leem arquivos do disco); o `--dir` não gera instalador. `scripts/smoke.mjs` abre o app (do código-fonte ou empacotado) com o CLI de mentira e roda o `two-terminals.json`; roda no CI do Windows.
 - **Ícone provisório** (neurônio âmbar sobre grafite) gerado por `scripts/make-icon.mjs`; o definitivo substitui `build/icon.png`.
 
+**Pendências resolvidas (2026-11-06).**
+
+- **Porta dos webhooks no app:** item **Configurações** (só no app para computador) com **Gatilhos externos**: liga/desliga e porta (1024–65535, padrão 3101, **desligado por padrão**). A escolha fica em `<pasta de dados>/desktop-settings.json` e vai ao servidor embutido quando ele inicia (`NEURONS_HOOKS_PORT` no ambiente, se existir, manda); mudar pede reiniciar, e a tela avisa e oferece o botão. Mostra o endereço local e o link do túnel da Cloudflare. Porta ocupada: o app abre com os gatilhos desligados e diz o porquê. IPC com três ações validadas (`settings-controls.ts`).
+- **Encerramento:** o `before-quit` agora fecha contas e servidor com limite de tempo por etapa (3 s e 12 s) e **sai sempre** (`shutdown.ts`, testado com tempo falso: etapa que falha ou trava não segura a saída; `process.exit` de reserva em 4 s). Uma etapa lenta é registrada com os tipos de recurso ainda abertos. Revisados e descartados como causa: o agendador (só `setTimeout`, limpo em `onModuleDestroy`), a porta dos webhooks (fechada em `onModuleDestroy`), o timer do `electron-updater` (`unref`) e o node-pty (terminal fechado com a execução). Medição: com 4 apps em paralelo a saída leva de 1 s a ~15 s (sem carga, ~2 s) e **ainda falha 1 em ~12** quando o `app.close()` do servidor passa do limite; a causa dentro do fechamento do servidor sob carga **não foi achada**, e o smoke agora imprime o tempo de saída e o que estava aberto para a próxima rodada no CI.
+
 ### T22 — Release multiplataforma
 
 - `release.yml` disparado por tag `v*`: matriz macOS (dmg arm64 e x64), Windows (instalador NSIS) e Linux (AppImage e deb) com `electron-builder`.
