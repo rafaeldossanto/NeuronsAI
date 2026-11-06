@@ -91,8 +91,15 @@ function LiveRunView({
   onReplay,
   replayBlocked,
 }: ViewProps & { onReplay: (() => void) | undefined; replayBlocked: boolean }) {
-  const { state, connection, error, inputError, sendTerminalInput, clearInputError } =
-    useRunLive(id);
+  const {
+    state,
+    connection,
+    error,
+    inputError,
+    sendTerminalInput,
+    sendTerminalResize,
+    clearInputError,
+  } = useRunLive(id);
   const queryClient = useQueryClient();
   const moving = useActivePulses(state.pulses, (pulse) => isRecent(state, pulse));
 
@@ -114,7 +121,7 @@ function LiveRunView({
       status={status}
       finish={state.finish ?? data.finish}
       movingPulses={moving}
-      terminal={{ inputError, sendTerminalInput, clearInputError }}
+      terminal={{ inputError, sendTerminalInput, sendTerminalResize, clearInputError }}
       headerExtra={
         <>
           <ConnectionIndicator connection={connection} />
@@ -203,6 +210,7 @@ interface ScreenProps extends ViewProps {
   terminal?: {
     inputError: TerminalInputError | null;
     sendTerminalInput: (agent: string, data: string) => boolean;
+    sendTerminalResize: (agent: string, cols: number, rows: number) => boolean;
     clearInputError: () => void;
   };
 }
@@ -288,6 +296,7 @@ function RunScreen({
             runActive={active}
             inputError={terminal?.inputError ?? null}
             onSendInput={terminal?.sendTerminalInput ?? (() => false)}
+            onResize={terminal?.sendTerminalResize ?? (() => false)}
             onClearInputError={terminal?.clearInputError ?? (() => undefined)}
             replay={replay}
             onClose={() => setSelectedId(null)}

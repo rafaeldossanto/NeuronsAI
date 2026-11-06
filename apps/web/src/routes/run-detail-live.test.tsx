@@ -11,9 +11,18 @@ const fake = vi.hoisted(() => {
     resets = 0;
     options: Record<string, unknown> = {};
     handler: ((data: string) => void) | null = null;
+    cols: number;
+    rows: number;
     constructor(options: Record<string, unknown>) {
       this.options = { ...options };
+      this.cols = options["cols"] as number;
+      this.rows = options["rows"] as number;
       FakeTerminal.instances.push(this);
+    }
+    loadAddon() {}
+    resize(cols: number, rows: number) {
+      this.cols = cols;
+      this.rows = rows;
     }
     open() {}
     write(data: string) {
@@ -32,9 +41,27 @@ const fake = vi.hoisted(() => {
       this.handler?.(data);
     }
   }
-  return { FakeTerminal };
+  /** What the box can show of the terminal: measured by the fit addon, which needs a layout engine. */
+  const box = { dimensions: { cols: 90, rows: 30 } as { cols: number; rows: number } | undefined };
+  class FakeFitAddon {
+    proposeDimensions() {
+      return box.dimensions;
+    }
+  }
+  /** The browser tells the panel its box changed through this. */
+  const observers: ((entries: unknown[]) => void)[] = [];
+  class FakeResizeObserver {
+    constructor(callback: (entries: unknown[]) => void) {
+      observers.push(callback);
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  return { FakeTerminal, FakeFitAddon, FakeResizeObserver, box, observers };
 });
 vi.mock("@xterm/xterm", () => ({ Terminal: fake.FakeTerminal }));
+vi.mock("@xterm/addon-fit", () => ({ FitAddon: fake.FakeFitAddon }));
 
 const versionId = runDetail.graphVersionId;
 const agentNode = (id: string, name: string, x: number, mode: "pty" | "stream-json") => ({
@@ -103,7 +130,10 @@ async function openSocket() {
 beforeEach(() => {
   FakeSocket.reset();
   fake.FakeTerminal.instances = [];
+  fake.observers.length = 0;
+  fake.box.dimensions = { cols: 90, rows: 30 };
   vi.stubGlobal("WebSocket", FakeSocket);
+  vi.stubGlobal("ResizeObserver", fake.FakeResizeObserver);
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -199,6 +229,141 @@ describe("painel do agente", () => {
     );
     await waitFor(() => expect(term.options["disableStdin"]).toBe(true));
     expect(screen.getByText(/terminou: o terminal fica só para leitura/)).toBeInTheDocument();
+  });
+
+  describe("tamanho do terminal", () => {
+    const resizes = (socket: FakeSocket) =>
+      socket.sent.filter((message) => message.event === "terminal.resize");
+
+    it("manda o tamanho da caixa por terminal.resize, uma vez só, depois que ela para de mudar", async () => {
+      const { socket } = await openPanel();
+
+      await waitFor(() => expect(resizes(socket)).toHaveLength(1));
+      expect(resizes(socket)[0]).toEqual({
+        event: "terminal.resize",
+        data: { runId, agent: "Pesquisador", cols: 90, rows: 30 },
+      });
+
+      // The browser reports the same box again: nothing new to say.
+      act(() => fake.observers.forEach((notify) => notify([])));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(resizes(socket)).toHaveLength(1);
+    });
+
+    it("junta uma rajada de mudanças numa mensagem só, com o tamanho final", async () => {
+      const { socket } = await openPanel();
+      await waitFor(() => expect(resizes(socket)).toHaveLength(1));
+
+      act(() => {
+        for (const cols of [100, 110, 120, 130]) {
+          fake.box.dimensions = { cols, rows: 35 };
+          fake.observers.forEach((notify) => notify([]));
+        }
+      });
+
+      await waitFor(() => expect(resizes(socket)).toHaveLength(2));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(resizes(socket)).toHaveLength(2);
+      expect(resizes(socket)[1]?.data).toEqual({
+        runId,
+        agent: "Pesquisador",
+        cols: 130,
+        rows: 35,
+      });
+    });
+
+    it("não manda nada quando a caixa ainda não tem medida", async () => {
+      fake.box.dimensions = undefined;
+      const { socket } = await openPanel();
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(resizes(socket)).toHaveLength(0);
+    });
+
+    it("manda o tamanho de novo depois de reconectar, porque o servidor esquece quem saiu", async () => {
+      const { socket } = await openPanel();
+      await waitFor(() => expect(resizes(socket)).toHaveLength(1));
+
+      act(() => socket.drop());
+      await waitFor(() => expect(FakeSocket.instances).toHaveLength(2), { timeout: 5000 });
+      const second = FakeSocket.last;
+      act(() => {
+        second.open();
+        second.push("subscribed", { runId });
+      });
+
+      expect(resizes(second)).toEqual([
+        {
+          event: "terminal.resize",
+          data: { runId, agent: "Pesquisador", cols: 90, rows: 30 },
+        },
+      ]);
+    });
+
+    it("segue o tamanho que o servidor deu ao terminal, sem apagar a tela", async () => {
+      const { socket, term } = await openPanel();
+      act(() => socket.push("run.ephemeral", terminal("tela")));
+      await waitFor(() => expect(term.writes).toEqual(["tela"]));
+      expect(term.cols).toBe(120);
+
+      act(() =>
+        socket.push("run.ephemeral", {
+          runId,
+          type: "TerminalResized",
+          agent: "Pesquisador",
+          cols: 80,
+          rows: 24,
+        }),
+      );
+
+      await waitFor(() => expect([term.cols, term.rows]).toEqual([80, 24]));
+      expect(term.resets).toBe(1);
+      expect(term.writes).toEqual(["tela"]);
+    });
+
+    it("desenha o resumo do servidor no tamanho em que ele foi impresso", async () => {
+      const { socket, term } = await openPanel();
+      const order: string[] = [];
+      const resize = term.resize.bind(term);
+      term.resize = (cols, rows) => {
+        order.push(`resize ${cols}x${rows}`);
+        resize(cols, rows);
+      };
+      const write = term.write.bind(term);
+      term.write = (data) => {
+        order.push(`write ${data}`);
+        write(data);
+      };
+
+      act(() =>
+        socket.push("run.ephemeral", {
+          ...terminal("tela nova", true),
+          cols: 100,
+          rows: 30,
+        }),
+      );
+
+      await waitFor(() => expect(order).toEqual(["resize 100x30", "write tela nova"]));
+    });
+
+    it("não manda o tamanho quando a execução já terminou", async () => {
+      const { socket } = await openPanel();
+      await waitFor(() => expect(resizes(socket)).toHaveLength(1));
+      act(() =>
+        socket.push("run.event", frame(3, "RunFinished", "Pesquisador", { reason: "finished" })),
+      );
+
+      fake.box.dimensions = { cols: 70, rows: 20 };
+      act(() => fake.observers.forEach((notify) => notify([])));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      expect(resizes(socket)).toHaveLength(1);
+    });
+
+    it("mostra em pt-BR quando o servidor recusa o tamanho", async () => {
+      const { socket } = await openPanel();
+      act(() => socket.push("error", { code: "invalid_size", message: "x" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("não aceitou esse tamanho");
+    });
   });
 
   it("um agente em stream-json mostra só a conversa", async () => {

@@ -273,4 +273,42 @@ describe("linha do tempo única e terminal", () => {
     expect(result.terminals["A"]).toBe("tela");
     expect(result.terminalMeta["A"]).toEqual({ resets: 1, total: 4 });
   });
+
+  it("guarda o tamanho do terminal que o servidor informa, sem mexer na tela nem nas contas", () => {
+    const chunk = (data: string, replay = false, size = {}) =>
+      ({ type: "TerminalOutput", agent: "A", data, replay, ...size }) as const;
+    let result = reduceRunEvent(initialRunLiveState, chunk("abc"));
+
+    result = reduceRunEvent(result, { type: "TerminalResized", agent: "A", cols: 90, rows: 30 });
+
+    expect(result.terminals["A"]).toBe("abc");
+    expect(result.terminalMeta["A"]).toEqual({ resets: 0, total: 3, cols: 90, rows: 30 });
+    // The characters that follow are still counted, and the size stays.
+    result = reduceRunEvent(result, chunk("de"));
+    expect(result.terminalMeta["A"]).toEqual({ resets: 0, total: 5, cols: 90, rows: 30 });
+  });
+
+  it("um resumo traz o tamanho em que foi impresso; sem tamanho, vale o que já se sabia", () => {
+    const chunk = (data: string, size = {}) =>
+      ({ type: "TerminalOutput", agent: "A", data, replay: true, ...size }) as const;
+    let result = reduceRunEvent(initialRunLiveState, chunk("um", { cols: 100, rows: 30 }));
+    expect(result.terminalMeta["A"]).toEqual({ resets: 1, total: 2, cols: 100, rows: 30 });
+
+    result = reduceRunEvent(result, chunk("dois", { cols: 80, rows: 24 }));
+    expect(result.terminalMeta["A"]).toEqual({ resets: 2, total: 4, cols: 80, rows: 24 });
+
+    result = reduceRunEvent(result, chunk("três")); // an older server
+    expect(result.terminalMeta["A"]).toEqual({ resets: 3, total: 4, cols: 80, rows: 24 });
+  });
+
+  it("aceita o tamanho de um terminal que ainda não imprimiu nada", () => {
+    const result = reduceRunEvent(initialRunLiveState, {
+      type: "TerminalResized",
+      agent: "A",
+      cols: 90,
+      rows: 30,
+    });
+    expect(result.terminalMeta["A"]).toEqual({ resets: 0, total: 0, cols: 90, rows: 30 });
+    expect(result.terminals["A"]).toBeUndefined();
+  });
 });
