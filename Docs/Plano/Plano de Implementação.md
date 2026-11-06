@@ -432,15 +432,19 @@ Decisões:
   anima cada mensagem uma vez, só se for recente (o histórico ao abrir a tela não vira rajada) e
   com teto de 12 simultâneos. A seta fica âmbar enquanto o pulso passa; `prefers-reduced-motion`
   mostra só um ponto.
-- **Terminal:** xterm.js 6.0.0 (mesma versão do `@xterm/headless` do servidor), no tamanho do PTY
-  (120×40). **Sem `@xterm/addon-fit`**: o protocolo não tem `terminal.resize`, e ajustar à caixa
-  desalinharia a TUI. O que se digita vai por `terminal.input` (colagens longas partidas em 4000
+- **Terminal:** xterm.js 6.0.0 (mesma versão do `@xterm/headless` do servidor). O tamanho era o do PTY (120×40) sem `@xterm/addon-fit`; o `terminal.resize` veio depois (ver "Redimensionamento do terminal" abaixo). O que se digita vai por `terminal.input` (colagens longas partidas em 4000
   caracteres), nunca é logado, e as recusas do servidor aparecem no painel em pt-BR. CSP: só
   estilos inline (já liberados); `script-src 'self'` intacto, conferido no build servido pelo
   servidor com o CLI de mentira.
-- **Falta:** uma rodada com o Claude Code real (cota Pro) para confirmar a digitação no terminal
-  real; `terminal.resize` no `/ws` e no protocolo do runner, se o terminal do navegador precisar
-  mudar de tamanho.
+- **Falta:** uma rodada com o Claude Code real (cota Pro) para confirmar a digitação e o redimensionamento no terminal real.
+
+**Redimensionamento do terminal (feito, 2026-11-05).** `@xterm/addon-fit` 0.11.0 (a versão publicada junto com o xterm 6.0.0) **só mede** a caixa; a tela segue o tamanho do terminal do servidor.
+
+- **Mensagem:** `terminal.resize { runId, agent, cols, rows }` no `/ws`, sem resposta quando aceita (a resposta é o evento efêmero `TerminalResized { cols, rows }` para todos que acompanham a execução). Mesmas checagens do `terminal.input` (execução em andamento e da organização de quem pede, agente de terminal `pty`) mais faixa de 20–400 colunas e 5–200 linhas (`invalid_size`) e no máximo 5 mensagens por segundo por conexão (`resize_rate_limited`). Erros em pt-BR. O painel manda o tamanho da caixa com 200 ms de debounce, uma vez ao abrir, e de novo depois de reconectar.
+- **Vários clientes:** vale o **menor tamanho entre os conectados** (colunas e linhas separadas), como o tmux: todos veem a tela inteira como o programa a desenhou, e um cliente maior que chega não mexe no que os outros veem. Quando o menor sai o terminal volta a crescer. Decisão registrada em `apps/server/README.md` ("Tamanho do terminal").
+- **Runtime:** `TerminalAgentRuntime` ganhou `size`, `resize()` e `onResize()`. O `ClaudeTerminalRuntime` redimensiona o PTY e a tela headless que ele lê. **O resumo `replay` recomeça no redimensionamento** e traz `cols`/`rows` (o que foi impresso para o tamanho antigo sairia embaralhado no novo; a TUI repinta sozinha com o `SIGWINCH`). No Windows o ConPTY repinta a própria tela uma vez depois do corte.
+- **Perfil `hybrid`:** protocolo do runner **revisão 4**, ainda na versão 1: `agent.resize` (servidor → runner) e `agent.resized` (runner → servidor, na ordem da saída). Compatível nos dois sentidos: o servidor só manda `agent.resize` a um runner que anunciou a revisão 4; um runner antigo continua funcionando, só não redimensiona.
+- **Testes:** validação, recusas e taxa (unitários e `live-events.int.test.ts` pelo `/ws`), regra de vários clientes, runtime com a CLI de mentira num PTY de verdade (`--show-size`), protocolo e `RunnerHost` (inclusive servidor sem a revisão 4), servidor + runner de ponta a ponta e o painel (`run-detail-live.test.tsx`).
 
 ### T15 — Histórico e replay
 
