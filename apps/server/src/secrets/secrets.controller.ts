@@ -7,7 +7,9 @@ import {
   secretParams,
   writeSecretBody,
 } from "./secrets.contract.js";
+import { ReservedSecretNameError } from "./secrets.errors.js";
 import { SecretsService } from "./secrets.service.js";
+import { webhookSecretName } from "../triggers/webhook-secret-name.js";
 
 /** Secrets can be written and listed by name. Reading a value is for the server's own tools only. */
 @Controller("secrets")
@@ -34,6 +36,9 @@ export class SecretsController {
     errors: [503],
   })
   async write(@ValidParams() { name }: SecretParams, @ValidBody() { value }: WriteSecretBody) {
+    // `webhook.<id>` is where the server keeps a trigger's signing key (and what the startup cleanup
+    // treats as its own): a person's secret never lives there.
+    if (name.startsWith(webhookSecretName(""))) throw new ReservedSecretNameError();
     await this.secrets.set(name, value);
   }
 }
