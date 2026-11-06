@@ -51,18 +51,28 @@ function TriggersSection({ bridge }: { bridge: DesktopSettingsBridge }) {
     setPort(String(next.port));
   }
 
-  function load() {
-    setLoadError(null);
-    bridge
-      .getTriggers()
-      .then(show, (failure: unknown) =>
-        setLoadError(new Error(message(failure, "Não foi possível ler as configurações."))),
-      );
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(load, [bridge]);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    bridge.getTriggers().then(
+      (next) => {
+        if (!active) return;
+        setLoadError(null);
+        setView(next);
+        setEnabled(next.enabled);
+        setPort(String(next.port));
+      },
+      (failure: unknown) => {
+        if (active)
+          setLoadError(new Error(message(failure, "Não foi possível ler as configurações.")));
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [bridge, attempt]);
 
-  if (loadError) return <ErrorState error={loadError} onRetry={load} />;
+  if (loadError) return <ErrorState error={loadError} onRetry={() => setAttempt((n) => n + 1)} />;
   if (!view) return <LoadingRows rows={2} label="Carregando as configurações…" />;
 
   const number = Number(port);
