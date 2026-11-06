@@ -42,6 +42,7 @@ export class MemoriesController {
     body: createMemoryBody,
     response: memorySchema,
     status: 201,
+    errors: [429],
   })
   create(@ValidBody() body: CreateMemory) {
     return this.memories.create(body);

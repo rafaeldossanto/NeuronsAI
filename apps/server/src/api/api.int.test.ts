@@ -323,6 +323,12 @@ describe("runs", () => {
 
     const firstEvent = await call("GET", `/runs/${runId}/events?limit=1`);
     expect(firstEvent.body.items).toHaveLength(1);
+    // The total is the whole log, whatever the page asks for.
+    const everything = (await call("GET", `/runs/${runId}/events`)).body;
+    expect(firstEvent.body.total).toBe(everything.items.length);
+    expect((await call("GET", `/runs/${runId}/events?fromSeq=2`)).body.total).toBe(
+      everything.items.length,
+    );
     const rest = await call("GET", `/runs/${runId}/events?fromSeq=2`);
     expect(rest.body.items[0].seq).toBe(2);
     const second = await call("GET", `/runs/${runId}/messages?afterSeq=${1}&limit=5`);
@@ -416,6 +422,8 @@ describe("runs", () => {
     );
     expect(await idsOf(`graphId=${first.id}&sort=costUsd`)).toEqual([dear, cheap]);
     expect(await idsOf(`graphId=${first.id}&sort=costUsd&order=asc`)).toEqual([cheap, dear]);
+    // Both finished, so both have a duration; the order itself is covered by the repository suite.
+    expect(await idsOf(`graphId=${first.id}&sort=durationMs`)).toHaveLength(2);
     expect(await idsOf("from=2999-01-01T00:00:00.000Z")).toEqual([]);
     expect(
       await idsOf(`graphId=${first.id}&from=2000-01-01T00:00:00Z&to=2999-01-01T00:00:00Z`),
@@ -667,8 +675,10 @@ describe("OpenAPI document", () => {
       "/auth/logout",
       "/auth/organization",
       "/auth/organizations",
+      "/auth/organizations/{id}/adopt-local-data",
       "/auth/organizations/{id}/invitations",
       "/auth/organizations/{id}/invitations/{invitationId}",
+      "/auth/organizations/{id}/local-data",
       "/auth/organizations/{id}/members",
       "/auth/organizations/{id}/members/{userId}",
       "/auth/refresh",

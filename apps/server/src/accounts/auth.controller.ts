@@ -6,6 +6,7 @@ import { RateLimiter } from "../triggers/rate-limiter.js";
 import { AccountsService } from "./accounts.service.js";
 import { AccountAuth } from "./account-auth.service.js";
 import { SignupClosedError } from "./account.errors.js";
+import { LocalDataAdoption } from "./local-data-adoption.service.js";
 import { LoginAttemptError } from "./login.errors.js";
 import {
   DesktopLoginService,
@@ -20,6 +21,14 @@ const callbackQuery = z.object({
   error: z.string().max(200).optional(),
 });
 const roleSchema = z.enum(["owner", "admin", "member", "viewer"]);
+export const localDataView = z.object({
+  graphs: z.number().int(),
+  versions: z.number().int(),
+  runs: z.number().int(),
+  secrets: z.number().int(),
+  triggers: z.number().int(),
+  memories: z.number().int(),
+});
 export const invitationView = z.object({
   id: z.uuid(),
   email: z.string(),
@@ -44,6 +53,7 @@ export class AuthController {
     @Inject(AccountAuth) private readonly auth: AccountAuth,
     @Inject(AccountsService) private readonly accounts: AccountsService,
     @Inject(DesktopLoginService) private readonly desktop: DesktopLoginService,
+    @Inject(LocalDataAdoption) private readonly adoption: LocalDataAdoption,
   ) {}
 
   @Endpoint({
@@ -243,7 +253,7 @@ export class AuthController {
     body: z.object({ name: z.string().trim().min(1).max(200) }),
     response: z.object({ id: z.uuid(), name: z.string() }),
     status: 201,
-    errors: [403, 503],
+    errors: [403, 429, 503],
   })
   async createOrganization(@ValidBody() body: { name: string }, @Req() request: FastifyRequest) {
     const { browser } = this.auth.require();
@@ -368,5 +378,40 @@ export class AuthController {
     browser.requireMutation(request);
     const actor = await browser.authenticate(request);
     await this.accounts.revokeInvitation(actor.userId, params.id, params.invitationId);
+  }
+
+  @Endpoint({
+    method: "get",
+    path: "organizations/:id/local-data",
+    summary:
+      "O que há nos dados locais (sem organização) que o proprietário pode mover para esta organização.",
+    params: z.object({ id: z.uuid() }),
+    response: localDataView,
+    errors: [403, 503],
+  })
+  async localData(@ValidParams() params: { id: string }, @Req() request: FastifyRequest) {
+    const actor = await this.auth.require().browser.authenticate(request);
+    return this.adoption.summary(actor.userId, params.id);
+  }
+
+  @Endpoint({
+    method: "post",
+    path: "organizations/:id/adopt-local-data",
+    summary:
+      "Move os dados locais (grafos, versões, execuções, segredos, gatilhos e memórias) para a organização. Só o proprietário, uma ação confirmada; repetir não faz nada.",
+    params: z.object({ id: z.uuid() }),
+    body: z.object({ confirm: z.literal(true) }),
+    response: localDataView,
+    errors: [403, 409, 503],
+  })
+  async adoptLocalData(
+    @ValidParams() params: { id: string },
+    @ValidBody() _body: { confirm: true },
+    @Req() request: FastifyRequest,
+  ) {
+    const { browser } = this.auth.require();
+    browser.requireMutation(request);
+    const actor = await browser.authenticate(request);
+    return this.adoption.adopt(actor.userId, params.id);
   }
 }

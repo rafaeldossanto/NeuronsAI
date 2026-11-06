@@ -1,6 +1,12 @@
 /** Transport-agnostic category; the HTTP layer decides which status each kind becomes. */
 export type DomainErrorKind =
-  "not_found" | "invalid" | "forbidden" | "conflict" | "unavailable" | "internal";
+  | "not_found"
+  | "invalid"
+  | "forbidden"
+  | "conflict"
+  | "quota_exceeded"
+  | "unavailable"
+  | "internal";
 
 /** One thing wrong, for the errors that have several (a request body, a graph). */
 export interface DomainErrorDetail {

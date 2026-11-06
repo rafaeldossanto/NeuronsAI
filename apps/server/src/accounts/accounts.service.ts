@@ -1,6 +1,10 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { and, asc, count, eq, gt } from "drizzle-orm";
 import { z } from "zod";
+import type { AppConfig } from "../shared/config/app-config.js";
+import { DEFAULT_QUOTAS } from "../shared/config/quota-config.js";
+import { APP_CONFIG } from "../shared/config/tokens.js";
+import { QuotaExceededError } from "../shared/errors/quota-exceeded.error.js";
 import { DatabaseService, type DatabaseTransaction } from "../database/database.service.js";
 import {
   identities,
@@ -39,6 +43,7 @@ export class AccountsService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(SIGNUP_POLICY) private readonly signup: SignupPolicy,
+    @Optional() @Inject(APP_CONFIG) private readonly config?: AppConfig,
   ) {}
 
   /**
@@ -119,6 +124,22 @@ export class AccountsService {
   async createOrganization(userId: string, name: string) {
     const parsedName = organizationName.parse(name);
     return this.database.db.transaction(async (tx) => {
+      // The account's row is locked so two creations at once cannot both slip under the limit.
+      await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("update");
+      const limit = (this.config?.quotas ?? DEFAULT_QUOTAS).organizationsPerUser;
+      if (limit > 0) {
+        const [owned] = await tx
+          .select({ total: count() })
+          .from(memberships)
+          .where(and(eq(memberships.userId, userId), eq(memberships.role, "owner")));
+        // The personal space made at signup is one of them: the limit is on what an account owns.
+        if ((owned?.total ?? 0) >= limit) {
+          throw new QuotaExceededError(
+            "quota_organizations",
+            `Você já é proprietário de ${limit} ${limit === 1 ? "organização" : "organizações"}, o limite. Saia de alguma ou peça um limite maior ao administrador do servidor.`,
+          );
+        }
+      }
       const [organization] = await tx
         .insert(organizations)
         .values({ name: parsedName })

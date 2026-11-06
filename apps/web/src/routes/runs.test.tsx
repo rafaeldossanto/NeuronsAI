@@ -147,6 +147,17 @@ describe("execuções", () => {
     await waitFor(() => expect(screen.getByLabelText("Versão")).toHaveValue(versionId));
   });
 
+  it("ordena por duração, das mais demoradas às mais rápidas", async () => {
+    const { route, queries } = runsRoute(() => page([item]));
+    renderApp(`/runs?sort=shortest`, { ...graphRoutes, "GET /runs": route });
+
+    await screen.findByRole("link", { name: "Revisão de código" });
+    expect(queries[0]!.get("sort")).toBe("durationMs");
+    expect(queries[0]!.get("order")).toBe("asc");
+    expect(screen.getByLabelText("Ordenar por")).toHaveValue("shortest");
+    expect(screen.getByRole("option", { name: "Mais demoradas" })).toBeInTheDocument();
+  });
+
   it("ignora no endereço o que não vale", async () => {
     const { route, queries } = runsRoute(() => page([item]));
     renderApp(

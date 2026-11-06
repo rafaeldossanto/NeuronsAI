@@ -207,6 +207,12 @@ function Organizations({ account }: { account: AccountSession }) {
               })}
             </ul>
           )}
+          {role === "owner" && (
+            <LocalDataAdoption
+              organizationId={account.organizationId}
+              organizationName={current?.name ?? "esta organização"}
+            />
+          )}
           <section
             className="flex flex-col gap-4 rounded-lg bg-muted p-6"
             aria-label="Permissões dos papéis"
@@ -464,5 +470,120 @@ function CreateOrganization({
         <Button disabled={busy || !name.trim()}>{busy ? "Criando…" : "Criar espaço"}</Button>
       </form>
     </Modal>
+  );
+}
+
+interface LocalData {
+  graphs: number;
+  versions: number;
+  runs: number;
+  secrets: number;
+  triggers: number;
+  memories: number;
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * For owners only: the data made before the server had accounts (the "local" workspace) can be
+ * moved into this organization, once and after a confirmation. It is never done by itself.
+ */
+function LocalDataAdoption({
+  organizationId,
+  organizationName,
+}: {
+  organizationId: string;
+  organizationName: string;
+}) {
+  const api = useApi();
+  const client = useQueryClient();
+  const found = useQuery({
+    queryKey: ["local-data", organizationId],
+    queryFn: () =>
+      unwrap(
+        api.GET("/auth/organizations/{id}/local-data", {
+          params: { path: { id: organizationId } },
+        }),
+      ),
+    retry: false,
+  });
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState<LocalData | null>(null);
+  const data = found.data;
+  const hasData = data && Object.values(data).some((n) => n > 0);
+
+  async function adopt() {
+    setBusy(true);
+    setError("");
+    try {
+      const moved = await unwrap(
+        api.POST("/auth/organizations/{id}/adopt-local-data", {
+          params: { path: { id: organizationId } },
+          body: { confirm: true },
+        }),
+      );
+      setDone(moved);
+      setConfirming(false);
+      await client.invalidateQueries();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Não foi possível mover os dados.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (done)
+    return (
+      <p role="status" className="body-6 rounded-lg bg-muted p-4">
+        Dados locais movidos para {organizationName}: {plural(done.graphs, "grafo", "grafos")},{" "}
+        {plural(done.runs, "execução", "execuções")}, {plural(done.secrets, "segredo", "segredos")}{" "}
+        e {plural(done.memories, "memória", "memórias")}. Gatilhos com agenda ficam desligados:
+        ligue-os de novo.
+      </p>
+    );
+  if (!hasData) return null;
+  return (
+    <section
+      className="flex flex-col gap-4 rounded-lg border bg-card p-6"
+      aria-label="Dados locais"
+    >
+      <h3 className="title-3">Dados locais deste servidor</h3>
+      <p className="body-6 text-muted-foreground">
+        Este servidor tem dados criados antes das contas: {plural(data.graphs, "grafo", "grafos")},{" "}
+        {plural(data.runs, "execução", "execuções")}, {plural(data.secrets, "segredo", "segredos")}{" "}
+        e {plural(data.memories, "memória", "memórias")}. Eles não aparecem em nenhuma organização
+        até você movê-los.
+      </p>
+      <Button variant="outline" className="self-start" onClick={() => setConfirming(true)}>
+        Mover dados locais para esta organização
+      </Button>
+      {confirming && (
+        <Modal
+          title="Mover dados locais"
+          onClose={() => {
+            if (!busy) setConfirming(false);
+          }}
+        >
+          <div className="flex flex-col gap-6">
+            <p className="body-6">
+              Tudo isso passará a pertencer a <strong>{organizationName}</strong> e será visível
+              para todos os membros. Não dá para desfazer. Os segredos serão recriptografados.
+              Gatilhos com agenda ficam desligados até você ligá-los de novo. A ação é recusada se
+              houver execuções locais em andamento.
+            </p>
+            {error && (
+              <p role="alert" className="body-6 text-destructive">
+                {error}
+              </p>
+            )}
+            <Button disabled={busy} onClick={() => void adopt()}>
+              {busy ? "Movendo…" : "Confirmar e mover"}
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </section>
   );
 }

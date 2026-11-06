@@ -151,6 +151,26 @@ describe("DrizzleRunRepository.list", () => {
     ]);
   });
 
+  it("sorts by duration with the runs that have none always last", async () => {
+    expect((await keys({ sort: "durationMs" })).keys).toEqual(["a3", "a1", "a2", "b1", "a4", "b2"]);
+    expect((await keys({ sort: "durationMs", order: "asc" })).keys).toEqual([
+      "b1",
+      "a2",
+      "a1",
+      "a3",
+      "b2",
+      "a4",
+    ]);
+    const { items } = await repository.list({ limit: 50, sort: "durationMs" });
+    expect(items[0]?.finishedAt).not.toBeNull();
+  });
+
+  it("counts the events of a run", async () => {
+    expect(await repository.countEvents(id["a1"]!)).toBe(2);
+    expect(await repository.countEvents(id["a4"]!)).toBe(0);
+    expect(await repository.countEvents("00000000-0000-4000-8000-000000000000")).toBe(0);
+  });
+
   it("pages with limit and offset and reports the total of the filter", async () => {
     expect(await keys({ limit: 2 })).toEqual({ keys: ["a4", "a3"], total: 6 });
     expect(await keys({ limit: 2, offset: 2 })).toEqual({ keys: ["b1", "a2"], total: 6 });

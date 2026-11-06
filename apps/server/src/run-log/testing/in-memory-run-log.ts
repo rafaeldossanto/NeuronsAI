@@ -139,13 +139,43 @@ export class InMemoryRunLog implements RunEventLog, RunRepository, RunEventHisto
       });
     }
     const sign = filter.order === "asc" ? 1 : -1;
+    const duration = (item: RunListItem) =>
+      item.startedAt && item.finishedAt
+        ? item.finishedAt.getTime() - item.startedAt.getTime()
+        : undefined;
     const key = (item: RunListItem) =>
       filter.sort === "costUsd" ? item.costUsd : (item.startedAt?.getTime() ?? 0);
-    matching.reverse().sort((a, b) => sign * (key(a) - key(b)) || 0);
+    matching.reverse().sort((a, b) => {
+      if (filter.sort === "durationMs") {
+        const [x, y] = [duration(a), duration(b)];
+        // No duration: last, whichever the direction.
+        if (x === undefined || y === undefined)
+          return (x === undefined ? 1 : 0) - (y === undefined ? 1 : 0);
+        return sign * (x - y) || 0;
+      }
+      return sign * (key(a) - key(b)) || 0;
+    });
     return {
       items: matching.slice(filter.offset ?? 0, (filter.offset ?? 0) + filter.limit),
       total: matching.length,
     };
+  }
+
+  countEvents(runId: string): Promise<number> {
+    return Promise.resolve(this.events.filter((event) => event.runId === runId).length);
+  }
+
+  countActive(): Promise<number> {
+    return Promise.resolve(
+      [...this.runs.values()].filter((run) => run.status === "pending" || run.status === "running")
+        .length,
+    );
+  }
+
+  countStartedSince(since: Date): Promise<number> {
+    return Promise.resolve(
+      [...this.runs.values()].filter((run) => run.startedAt && run.startedAt >= since).length,
+    );
   }
 
   async listRunning(): Promise<ActiveRun[]> {

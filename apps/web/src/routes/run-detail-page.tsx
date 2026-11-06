@@ -29,7 +29,7 @@ import { buildReplay, type Replay } from "@/live/replay";
 import { ReplayControls } from "@/live/replay-controls";
 import type { TerminalInputError } from "@/live/terminal-errors";
 import { useReplayPlayer } from "@/live/use-replay-player";
-import { useRunEvents } from "@/live/use-run-events";
+import { describeEventsProgress, useRunEvents } from "@/live/use-run-events";
 import { pulsesByEdge, useActivePulses } from "@/live/pulse-edges";
 import { useRunDetail, useRunGraph, useSendHumanMessage, useStopRun } from "@/live/run-queries";
 
@@ -159,7 +159,7 @@ function ReplayRunView({ id, data, graph, onLeave }: ViewProps & { onLeave: () =
   if (!replay)
     return (
       <p role="status" className="text-sm text-muted-foreground">
-        Carregando os eventos da execução… {events.loaded} carregados
+        Carregando os eventos da execução… {describeEventsProgress(events.loaded, events.total)}
       </p>
     );
   return <ReplayLoaded id={id} data={data} graph={graph} replay={replay} onLeave={onLeave} />;
