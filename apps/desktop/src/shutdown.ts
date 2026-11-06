@@ -5,7 +5,7 @@ const SLOW_STEP_MS = 1_000;
 export interface ShutdownStep {
   /** Said in the log when the step fails or runs out of time (never the error's own details). */
   name: string;
-  run: () => Promise<unknown> | unknown;
+  run: () => unknown;
   /** How long the step may take. A step that does not finish in time is left behind. */
   timeoutMs: number;
 }
