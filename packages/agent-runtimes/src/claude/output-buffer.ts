@@ -23,4 +23,10 @@ export class OutputBuffer {
   snapshot(): string {
     return this.chunks.join("");
   }
+
+  /** Forgets everything (the terminal changed size: what was kept was laid out for the old one). */
+  clear(): void {
+    this.chunks = [];
+    this.size = 0;
+  }
 }

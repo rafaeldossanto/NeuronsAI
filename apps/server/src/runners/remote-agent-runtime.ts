@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import {
+  DEFAULT_TERMINAL_SIZE,
   OutputBuffer,
   type AgentCommunication,
   type AgentRuntime,
   type AgentRuntimeState,
   type InboundMessage,
   type TerminalAgentRuntime,
+  type TerminalSize,
 } from "@neurons/agent-runtimes";
 import type { AgentNode } from "@neurons/graph-schema";
 import {
@@ -29,6 +31,11 @@ export interface RunnerEndpoint {
   request(build: (requestId: string) => RequestFrame, instanceId: string): Promise<void>;
   /** Whether the input was handed to a live connection (it is not queued: a keystroke has no later). */
   sendInput(instanceId: string, data: string): boolean;
+  /**
+   * Asks the runner to resize the terminal. False when it cannot be asked (no live connection, or a
+   * runner of an older revision that does not know the frame): the terminal keeps its size.
+   */
+  sendResize(instanceId: string, cols: number, rows: number): boolean;
 }
 
 /** Where the runtimes find the runner that will host them. */
@@ -162,6 +169,12 @@ export class RemoteAgentRuntime implements AgentRuntime {
     void data;
   }
 
+  /** The runner resized the terminal; only terminal runtimes keep a size. */
+  applyResized(cols: number, rows: number): void {
+    void cols;
+    void rows;
+  }
+
   /** Runs an agent's call on the Hub's side. */
   async execute(call: Call): Promise<unknown> {
     const hub = this.communication;
@@ -239,9 +252,38 @@ export class RemoteTerminalRuntime extends RemoteAgentRuntime implements Termina
   /** The latest output, for whoever opens the terminal after the session started (or reconnects). */
   private readonly tail = new OutputBuffer();
 
+  private currentSize: TerminalSize = { ...DEFAULT_TERMINAL_SIZE };
+  private readonly resizes = new Signal<TerminalSize>();
+
   override applyOutput(data: string): void {
     this.tail.push(data);
     this.outputs.emit(data);
+  }
+
+  get size(): TerminalSize {
+    return { ...this.currentSize };
+  }
+
+  onResize(listener: (size: TerminalSize) => void): Unsubscribe {
+    return this.resizes.subscribe(listener);
+  }
+
+  /** Asks the runner; the size changes here when the runner confirms it (`agent.resized`). */
+  resize(cols: number, rows: number): void {
+    if (cols === this.currentSize.cols && rows === this.currentSize.rows) return;
+    this.endpoint?.sendResize(this.instanceId, cols, rows);
+  }
+
+  /**
+   * The runner applied a new size. What was kept so far was laid out for the old one, and the
+   * runner's confirmation comes before any output laid out for the new one, so the replay restarts
+   * here.
+   */
+  override applyResized(cols: number, rows: number): void {
+    if (cols === this.currentSize.cols && rows === this.currentSize.rows) return;
+    this.currentSize = { cols, rows };
+    this.tail.clear();
+    this.resizes.emit({ cols, rows });
   }
 
   onOutput(listener: (chunk: string) => void): Unsubscribe {

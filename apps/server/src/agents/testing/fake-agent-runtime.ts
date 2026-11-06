@@ -6,6 +6,7 @@ import type {
   AgentRuntimeState,
   InboundMessage,
   TerminalAgentRuntime,
+  TerminalSize,
   ToolCallReport,
 } from "@neurons/agent-runtimes";
 import type { AgentNode, AgentPeers } from "@neurons/graph-schema";
@@ -156,8 +157,12 @@ export class FakeAgentRuntime implements AgentRuntime {
 export class FakeTerminalRuntime extends FakeAgentRuntime implements TerminalAgentRuntime {
   /** Everything typed into the terminal, in order. */
   readonly typed: string[] = [];
+  /** Every size it was asked to take, in order (the same size twice is not a change). */
+  readonly resized: TerminalSize[] = [];
   private readonly output = new Signal<string>();
+  private readonly resizes = new Signal<TerminalSize>();
   private screen = "";
+  private currentSize: TerminalSize = { cols: 120, rows: 40 };
 
   /** The terminal prints something. */
   print(chunk: string): void {
@@ -175,6 +180,22 @@ export class FakeTerminalRuntime extends FakeAgentRuntime implements TerminalAge
 
   writeInput(data: string): void {
     this.typed.push(data);
+  }
+
+  get size(): TerminalSize {
+    return { ...this.currentSize };
+  }
+
+  onResize(listener: (size: TerminalSize) => void): Unsubscribe {
+    return this.resizes.subscribe(listener);
+  }
+
+  resize(cols: number, rows: number): void {
+    if (cols === this.currentSize.cols && rows === this.currentSize.rows) return;
+    this.currentSize = { cols, rows };
+    this.resized.push({ cols, rows });
+    this.screen = ""; // the replay restarts at the resize, as in the real runtimes
+    this.resizes.emit({ cols, rows });
   }
 }
 
