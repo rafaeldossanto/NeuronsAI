@@ -3,7 +3,11 @@ import type { BridgeHooks } from "../bridge/local-bridge.js";
 import type { AgentCommunication } from "../contract/agent-communication.js";
 import type { InboundMessage } from "../contract/agent-runtime.js";
 import { Signal, type Unsubscribe } from "../contract/signal.js";
-import type { TerminalAgentRuntime } from "../contract/terminal-runtime.js";
+import {
+  DEFAULT_TERMINAL_SIZE,
+  type TerminalAgentRuntime,
+  type TerminalSize,
+} from "../contract/terminal-runtime.js";
 import { killProcessTree } from "../platform/process-tree.js";
 import { releasePtyHandles } from "../platform/pty-handles.js";
 import { Gate, settlesWithin, sleep, waitUntil } from "./async.js";
@@ -57,11 +61,6 @@ export const DEFAULT_TERMINAL_TIMINGS: TerminalTimings = {
   silenceMs: 1_500,
   pollMs: 50,
 };
-
-export interface TerminalSize {
-  cols: number;
-  rows: number;
-}
 
 export interface ClaudeTerminalOptions {
   /**
@@ -120,7 +119,8 @@ export class ClaudeTerminalRuntime extends ClaudeRuntimeBase implements Terminal
   readonly reportsCost = false;
 
   private readonly timings: TerminalTimings;
-  private readonly size: TerminalSize;
+  private currentSize: TerminalSize;
+  private readonly resizes = new Signal<TerminalSize>();
   private readonly output: OutputBuffer;
   private readonly outputChunks = new Signal<string>();
   private readonly promptSubmitted = new Gate();
@@ -140,7 +140,7 @@ export class ClaudeTerminalRuntime extends ClaudeRuntimeBase implements Terminal
   ) {
     super(agent, communication, deps);
     this.timings = { ...DEFAULT_TERMINAL_TIMINGS, ...this.options.timings };
-    this.size = { cols: 120, rows: 40, ...this.options.size };
+    this.currentSize = { ...DEFAULT_TERMINAL_SIZE, ...this.options.size };
     this.output = new OutputBuffer(this.options.outputBufferChars ?? DEFAULT_OUTPUT_BUFFER_CHARS);
   }
 
@@ -157,6 +157,30 @@ export class ClaudeTerminalRuntime extends ClaudeRuntimeBase implements Terminal
 
   outputSnapshot(): string {
     return this.output.snapshot();
+  }
+
+  get size(): TerminalSize {
+    return { ...this.currentSize };
+  }
+
+  onResize(listener: (size: TerminalSize) => void): Unsubscribe {
+    return this.resizes.subscribe(listener);
+  }
+
+  resize(cols: number, rows: number): void {
+    if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 1 || rows < 1) return;
+    if (cols === this.currentSize.cols && rows === this.currentSize.rows) return;
+    if (this.lifetime.signal.aborted) return;
+    this.currentSize = { cols, rows };
+    // The bytes kept so far were laid out for the old size: a late viewer would see them garbled.
+    this.output.clear();
+    this.screen?.resize(cols, rows);
+    try {
+      this.pty?.resize(cols, rows);
+    } catch {
+      // The process already exited (the exit handler reports it): nothing to resize.
+    }
+    this.resizes.emit({ ...this.currentSize });
   }
 
   writeInput(data: string): void {
@@ -188,11 +212,11 @@ export class ClaudeTerminalRuntime extends ClaudeRuntimeBase implements Terminal
   // ---- process ----
 
   protected async launch({ command, args, env, cwd }: LaunchContext): Promise<void> {
-    const screen = new TerminalScreen(this.size.cols, this.size.rows);
+    const screen = new TerminalScreen(this.currentSize.cols, this.currentSize.rows);
     this.screen = screen;
     const pty = loadPty().spawn(command, args, {
       name: "xterm-256color",
-      ...this.size,
+      ...this.currentSize,
       cwd,
       env: { ...env, TERM: "xterm-256color" },
     });

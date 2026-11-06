@@ -21,6 +21,8 @@ interface Props {
   runActive: boolean;
   inputError: TerminalInputError | null;
   onSendInput: (agent: string, data: string) => boolean;
+  /** Says how big the terminal screen is here, so the agent's CLI lays itself out for it. */
+  onResize: (agent: string, cols: number, rows: number) => boolean;
   onClearInputError: () => void;
   onClose: () => void;
   /** In the replay the log has no terminal output, so the terminal is replaced by a notice. */
@@ -38,6 +40,7 @@ export function AgentPanel({
   runActive,
   inputError,
   onSendInput,
+  onResize,
   onClearInputError,
   onClose,
   replay = false,
@@ -98,6 +101,7 @@ export function AgentPanel({
             output={state.terminals[name] ?? ""}
             meta={state.terminalMeta[name]}
             onInput={send}
+            onResize={(cols, rows) => void onResize(name, cols, rows)}
             readOnly={!runActive}
           />
           <p className="text-xs text-muted-foreground">

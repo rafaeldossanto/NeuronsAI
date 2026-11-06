@@ -4,7 +4,7 @@
 //
 // Fake flags (they stand where the tests cannot use environment variables, since the runtimes
 // start the CLI with a minimal environment): --logged-out, --no-effort, --theme-dialog,
-// --trust-dialog, --ignore-first-enter, --never-stop.
+// --trust-dialog, --ignore-first-enter, --never-stop, --show-size.
 //
 // What it does:
 //  - `auth status` / `--help` answer like the real CLI.
@@ -29,6 +29,7 @@ const FAKE_FLAGS = new Set([
   "--trust-dialog",
   "--ignore-first-enter",
   "--never-stop",
+  "--show-size",
 ]);
 const fake = new Set(argv.filter((arg) => FAKE_FLAGS.has(arg)));
 const args = argv.filter((arg) => !FAKE_FLAGS.has(arg));
@@ -234,7 +235,11 @@ function interactiveMode(work, callHook) {
           ? trustBody()
           : `> ${pasteLines > 0 ? `[Pasted text #1 +${pasteLines} lines]` : typed}`;
     const footer = dialog ? "Enter to confirm" : busy ? "esc to interrupt" : "? for shortcuts";
-    process.stdout.write(`${ESCAPE}[2J${ESCAPE}[H${body}${NEWLINE}${NEWLINE}${footer}`);
+    // `--show-size`: the terminal size the CLI sees, repainted when it changes (SIGWINCH).
+    const size = fake.has("--show-size")
+      ? `  [size ${process.stdout.columns}x${process.stdout.rows}]`
+      : "";
+    process.stdout.write(`${ESCAPE}[2J${ESCAPE}[H${body}${NEWLINE}${NEWLINE}${footer}${size}`);
   };
 
   const submit = async () => {
@@ -253,6 +258,7 @@ function interactiveMode(work, callHook) {
     }
   };
 
+  process.stdout.on("resize", paint);
   process.stdin.setRawMode?.(true);
   process.stdin.setEncoding("utf8");
   // Keystrokes can arrive split anywhere, bracketed-paste markers included.

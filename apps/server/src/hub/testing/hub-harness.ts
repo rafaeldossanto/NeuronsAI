@@ -100,9 +100,8 @@ export function createHubWiring(
     askTimeoutMs: 120_000,
     ...options.hub,
   });
-  const terminals = new TerminalSessions(
-    new RunSubscriptions({ readFrom: () => Promise.resolve([]) }),
-  );
+  const subscriptions = new RunSubscriptions({ readFrom: () => Promise.resolve([]) });
+  const terminals = new TerminalSessions(subscriptions);
   const enforcer = new GuardEnforcer(hub, recorder);
   const supervisor = new Supervisor(
     hub,
@@ -130,6 +129,8 @@ export function createHubWiring(
     registry,
     recorder,
     terminals,
+    /** Who listens to the runs: the terminals publish their live events through it. */
+    subscriptions,
     enforcer,
     budgetGuard,
     idleWatchdog,

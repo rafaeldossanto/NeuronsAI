@@ -187,6 +187,73 @@ describe("ClaudeTerminalRuntime (fake CLI in a PTY)", () => {
     expect(runtime.outputSnapshot()).toBe(chunks.join(""));
   });
 
+  describe("resize", () => {
+    it("opens at 120x40 and the CLI sees that size", async () => {
+      const { runtime } = await started({ fakeFlags: ["--show-size"] });
+      expect(runtime.size).toEqual({ cols: 120, rows: 40 });
+      expect(runtime.outputSnapshot()).toContain("[size 120x40]");
+    });
+
+    it("resizes the PTY (the CLI repaints at the new size) and starts the replay at the resize", async () => {
+      const { runtime } = await started({ fakeFlags: ["--show-size"] });
+      const resized: unknown[] = [];
+      runtime.onResize((size) => resized.push(size));
+      const before = runtime.outputSnapshot();
+      expect(before).toContain("[size 120x40]");
+
+      runtime.resize(90, 30);
+
+      // At once, before anything laid out for the new size arrives, the old bytes are gone.
+      expect(runtime.outputSnapshot()).toBe("");
+      expect(runtime.size).toEqual({ cols: 90, rows: 30 });
+      expect(resized).toEqual([{ cols: 90, rows: 30 }]);
+      await eventually(() => runtime.outputSnapshot().includes("[size 90x30]"));
+      // (The Windows pseudo-console repaints its own screen after a resize, so what comes next may
+      // still mention the old size; what matters is that the replay was restarted.)
+      expect(runtime.outputSnapshot().startsWith(before)).toBe(false);
+    });
+
+    it("keeps the screen the runtime reads in step with the PTY", async () => {
+      const { runtime } = await started({ fakeFlags: ["--show-size"] });
+      runtime.resize(100, 24);
+      await eventually(() => runtime.outputSnapshot().includes("[size 100x24]"));
+      await runtime.deliver(message("!send Revisor depois-do-resize"));
+      await untilState(runtime, "idle");
+      expect(communication.sent).toEqual([{ to: "Revisor", text: "depois-do-resize" }]);
+    });
+
+    it("ignores the same size and sizes that make no sense", async () => {
+      const { runtime } = await started();
+      const resized: unknown[] = [];
+      runtime.onResize((size) => resized.push(size));
+      const snapshot = runtime.outputSnapshot();
+
+      runtime.resize(120, 40);
+      runtime.resize(0, 40);
+      runtime.resize(80.5, 40);
+
+      expect(resized).toEqual([]);
+      expect(runtime.outputSnapshot()).toBe(snapshot);
+    });
+
+    it("remembers a size asked before the session starts", async () => {
+      const { runtime } = create({ fakeFlags: ["--show-size"] });
+      runtime.resize(100, 30);
+      await runtime.start("x");
+      expect(runtime.outputSnapshot()).toContain("[size 100x30]");
+    });
+
+    it("does nothing after the session ended", async () => {
+      const { runtime } = await started();
+      await runtime.stop();
+      const resized: unknown[] = [];
+      runtime.onResize((size) => resized.push(size));
+      runtime.resize(80, 24);
+      expect(resized).toEqual([]);
+      expect(runtime.size).toEqual({ cols: 120, rows: 40 });
+    });
+  });
+
   it("fails when the CLI dies", async () => {
     const { runtime } = await started();
     await runtime.deliver(message("!crash")).catch(() => undefined);

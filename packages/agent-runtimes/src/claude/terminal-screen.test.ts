@@ -15,6 +15,14 @@ describe("TerminalScreen", () => {
     return screen;
   }
 
+  it("resizes: more rows keep what a smaller screen would have scrolled away", async () => {
+    screen = new TerminalScreen(10, 3);
+    screen.resize(20, 5);
+    screen.write("one" + "\r\n".repeat(4) + "five");
+    await sleep(100);
+    expect(screen.text()).toBe("one\n\n\n\nfive");
+  });
+
   it("reads the rendered screen, not the raw escape sequences", async () => {
     const shown = await show("\x1b[2J\x1b[Hfirst\r\nsecond \x1b[1mbold\x1b[0m");
     expect(shown.text()).toBe("first\nsecond bold");

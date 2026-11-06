@@ -54,6 +54,8 @@ export class RunLiveClient {
   private closed = false;
   private lastSeq = 0;
   private subscribed = false;
+  /** The screen size of each terminal as this viewer reported it: sent again on every (re)subscription. */
+  private readonly terminalSizes = new Map<string, { cols: number; rows: number }>();
   private renewals = 0;
 
   private readonly createSocket: (url: string) => SocketLike;
@@ -130,6 +132,21 @@ export class RunLiveClient {
     return true;
   }
 
+  /**
+   * Says how big the screen of `agent`'s terminal is here (`terminal.resize`): the server gives the
+   * terminal the smallest size among its viewers and answers everyone with the size it took. The
+   * size is remembered and sent again after every reconnection, because the server forgets a
+   * viewer when its connection closes. Returns false when there is no open connection (the size
+   * is still kept for the next one).
+   */
+  sendTerminalResize(agent: string, cols: number, rows: number): boolean {
+    this.terminalSizes.set(agent, { cols, rows });
+    const socket = this.socket;
+    if (!socket || !this.subscribed) return false;
+    this.send("terminal.resize", { runId: this.options.runId, agent, cols, rows });
+    return true;
+  }
+
   private handle(raw: unknown): void {
     const frame = parseFrame(raw);
     if (!frame) return;
@@ -140,6 +157,9 @@ export class RunLiveClient {
       this.renewals = 0;
       this.options.onError?.(null);
       this.options.onConnection("live");
+      for (const [agent, { cols, rows }] of this.terminalSizes) {
+        this.send("terminal.resize", { runId: this.options.runId, agent, cols, rows });
+      }
     } else if (event === "error") {
       const { message, code } = (data ?? {}) as { message?: unknown; code?: unknown };
       if (code === "invalid_session" && this.options.renewSession && this.renewals < 2) {
@@ -187,13 +207,20 @@ export class RunLiveClient {
 
   private handleEphemeral(data: unknown): void {
     const e = data as Record<string, unknown> | null;
-    if (!e || e["runId"] !== this.options.runId || e["type"] !== "TerminalOutput") return;
-    if (typeof e["agent"] !== "string" || typeof e["data"] !== "string") return;
+    if (!e || e["runId"] !== this.options.runId || typeof e["agent"] !== "string") return;
+    if (e["type"] === "TerminalResized") {
+      const { cols, rows } = e;
+      if (isCells(cols) && isCells(rows))
+        this.options.onEvent({ type: "TerminalResized", agent: e["agent"], cols, rows });
+      return;
+    }
+    if (e["type"] !== "TerminalOutput" || typeof e["data"] !== "string") return;
     this.options.onEvent({
       type: "TerminalOutput",
       agent: e["agent"],
       data: e["data"],
       replay: e["replay"] === true,
+      ...(isCells(e["cols"]) && isCells(e["rows"]) && { cols: e["cols"], rows: e["rows"] }),
     });
   }
 
@@ -240,6 +267,9 @@ export class RunLiveClient {
     this.timer = null;
   }
 }
+
+const isCells = (value: unknown): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value > 0;
 
 function parseFrame(raw: unknown): { event: string; data: unknown } | null {
   if (typeof raw !== "string") return null;

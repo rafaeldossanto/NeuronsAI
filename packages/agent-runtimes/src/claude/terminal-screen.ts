@@ -21,6 +21,10 @@ export class TerminalScreen {
     this.terminal = new (loadXterm().Terminal)({ cols, rows, allowProposedApi: true });
   }
 
+  resize(cols: number, rows: number): void {
+    this.terminal.resize(cols, rows);
+  }
+
   write(data: string): void {
     this.terminal.write(data);
   }

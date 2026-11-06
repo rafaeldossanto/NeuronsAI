@@ -120,6 +120,12 @@ export interface RunLiveState {
 export interface TerminalMeta {
   resets: number;
   total: number;
+  /**
+   * The size the server's terminal has now (the smallest among the viewers). Absent until the
+   * server says (an older server never does: the terminal is then the 120x40 it opens with).
+   */
+  cols?: number;
+  rows?: number;
 }
 
 /** An entry of the run log, as `GET /runs/{id}/events` and the WebSocket deliver it. */
@@ -138,6 +144,17 @@ export interface TerminalChunk {
   data: string;
   /** True for the snapshot sent after (re)subscribing: it replaces what was kept. */
   replay: boolean;
+  /** On a snapshot: the size of the terminal it was printed at. */
+  cols?: number;
+  rows?: number;
 }
 
-export type RunLiveEvent = RunLogEvent | TerminalChunk;
+/** The terminal of an agent has a new size, pushed over `/ws` (`run.ephemeral`). */
+export interface TerminalSize {
+  type: "TerminalResized";
+  agent: string;
+  cols: number;
+  rows: number;
+}
+
+export type RunLiveEvent = RunLogEvent | TerminalChunk | TerminalSize;

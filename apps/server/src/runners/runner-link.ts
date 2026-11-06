@@ -5,6 +5,7 @@ import {
   CLOSE_REPLACED,
   PROTOCOL_REVISION,
   PROTOCOL_VERSION,
+  REVISION_TERMINAL_RESIZE,
   type CallFrame,
   type InstanceSnapshot,
   type RegisterFrame,
@@ -227,6 +228,13 @@ export class RunnerLink implements RunnerEndpoint {
     return true;
   }
 
+  sendResize(instanceId: string, cols: number, rows: number): boolean {
+    // A runner of an older revision would refuse the frame and the connection with it.
+    if (!this.channel?.isOpen || this.peerRevision < REVISION_TERMINAL_RESIZE) return false;
+    this.channel.send({ v: PROTOCOL_VERSION, type: "agent.resize", instanceId, cols, rows });
+    return true;
+  }
+
   // ---- frames from the runner ----
 
   private onFrame(frame: RunnerFrame): void {
@@ -240,6 +248,8 @@ export class RunnerLink implements RunnerEndpoint {
           ?.applyRemoteState(frame.state, frame.failureReason);
       case "agent.output":
         return this.runtimes.get(frame.instanceId)?.applyOutput(frame.data);
+      case "agent.resized":
+        return this.runtimes.get(frame.instanceId)?.applyResized(frame.cols, frame.rows);
       case "call":
         return this.onCall(frame);
       case "response":

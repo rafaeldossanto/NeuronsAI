@@ -18,6 +18,7 @@ import {
   PROTOCOL_VERSION,
   REVISION_TOOL_CALLS,
   REVISION_GRAPH_TOOLS,
+  REVISION_TERMINAL_RESIZE,
   revisionOf,
   type AgentDeliverFrame,
   type AgentStartFrame,
@@ -198,6 +199,11 @@ export class RunnerHost {
         if (runtime && isTerminalRuntime(runtime)) runtime.writeInput(frame.data);
         return;
       }
+      case "agent.resize": {
+        const runtime = this.instances.get(frame.instanceId)?.runtime;
+        if (runtime && isTerminalRuntime(runtime)) runtime.resize(frame.cols, frame.rows);
+        return;
+      }
       case "call.result":
         return this.onCallResult(frame);
     }
@@ -279,6 +285,18 @@ export class RunnerHost {
             data,
           }),
         ),
+        // The confirmation goes out in the output's own order (the resize happens before any byte
+        // laid out for it), so the server restarts its replay exactly where the PTY did.
+        runtime.onResize(({ cols, rows }) => {
+          if (!this.serverSupports(REVISION_TERMINAL_RESIZE)) return;
+          this.send({
+            v: PROTOCOL_VERSION,
+            type: "agent.resized",
+            instanceId: frame.instanceId,
+            cols,
+            rows,
+          });
+        }),
       );
     }
     const startDone = runtime.start(frame.briefing);

@@ -18,3 +18,15 @@ export const terminalInputMessageSchema = runRef.extend({
 });
 
 export type TerminalInputMessage = z.infer<typeof terminalInputMessageSchema>;
+
+/**
+ * `cols` and `rows` must be whole numbers here; the accepted range is checked with the rest of the
+ * rules (`terminal-size.ts`), so a size out of range is an `invalid_size` and not a malformed message.
+ */
+export const terminalResizeMessageSchema = runRef.extend({
+  agent: z.string().min(1).max(200),
+  cols: z.int(),
+  rows: z.int(),
+});
+
+export type TerminalResizeMessage = z.infer<typeof terminalResizeMessageSchema>;

@@ -1,4 +1,4 @@
-/** The `error` codes the server answers `terminal.input` with (apps/server/README.md, "Digitar no terminal"). */
+/** The `error` codes the server answers `terminal.input` and `terminal.resize` with (apps/server/README.md, "Digitar no terminal"). */
 const TERMINAL_MESSAGES: Record<string, string> = {
   rate_limited: "Você está digitando rápido demais. Espere um instante e tente de novo.",
   input_too_large: "Esse trecho é grande demais para enviar de uma vez.",
@@ -7,6 +7,8 @@ const TERMINAL_MESSAGES: Record<string, string> = {
   not_a_terminal: "Este agente não tem uma tela de terminal para digitar.",
   terminal_not_ready:
     "O terminal ainda não subiu. Ele abre quando o agente recebe a primeira mensagem.",
+  invalid_size: "O servidor não aceitou esse tamanho de terminal.",
+  resize_rate_limited: "O tamanho do terminal está mudando rápido demais. Espere um instante.",
   terminal_unavailable:
     "O terminal não está aceitando texto agora. O que você digitou foi perdido.",
 };

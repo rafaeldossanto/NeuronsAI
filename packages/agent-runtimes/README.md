@@ -24,6 +24,7 @@ Dois pontos de entrada:
   - _Saída:_ `onOutput` entrega os bytes brutos (evento efêmero, nunca vai para `run_events`); `outputSnapshot()` guarda os últimos
     ~200 KB para quem conectar depois; `writeInput(data)` digita no terminal. Um prompt que o usuário digita na própria tela vira um turno
     normal (`ocupado` → `ocioso`).
+  - _Tamanho:_ abre em 120×40 (`DEFAULT_TERMINAL_SIZE`). `resize(cols, rows)` redimensiona o PTY (o programa recebe o `SIGWINCH` e repinta) e a tela `@xterm/headless` que o runtime lê, **recomeça o buffer do `outputSnapshot()`** (o que foi impresso para o tamanho antigo sairia embaralhado no novo; `size` é o tamanho em que o snapshot foi impresso) e avisa `onResize`, antes de qualquer saída desenhada para o novo tamanho. O mesmo tamanho, um tamanho que não seja inteiro positivo ou uma sessão já encerrada não fazem nada; pedido antes de subir vale quando subir. Quem decide o tamanho entre vários clientes é o servidor (`apps/server/README.md`, "Tamanho do terminal").
   - _Diálogos da 1ª execução_ (tema, notas de segurança, extensão do Chrome) são confirmados sozinhos; **confiar na pasta nunca**: o
     boot espera o usuário responder no terminal e, passado `userDialogTimeoutMs`, falha dizendo o que fazer. Pedido de login falha com
     mensagem em português.

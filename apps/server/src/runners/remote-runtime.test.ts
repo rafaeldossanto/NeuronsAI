@@ -460,7 +460,12 @@ describe("what the dashboard shows, through the protocol", () => {
     const session = (): string => {
       const seen: string[] = [];
       wiring.terminals.replayTo(
-        { send: () => undefined, sendEphemeral: (event) => void seen.push(event.data) },
+        {
+          send: () => undefined,
+          sendEphemeral: (event) => {
+            if (event.type === "TerminalOutput") seen.push(event.data);
+          },
+        },
         runId,
       );
       return seen.join("");
@@ -489,5 +494,79 @@ describe("what the dashboard shows, through the protocol", () => {
       TerminalUnavailableError,
     );
     expect(terminal.typed).toEqual(["ls\r"]);
+  });
+
+  it("resizes the terminal in the runner, and the server's replay restarts there, laid out for the new size", async () => {
+    const wiring = start({ runtimeOptions: { Beta: { terminal: true } } });
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+    await eventually(() => expect(received("Beta")).toEqual(["oi"]));
+    const terminal = rig.fakes.runtimeOf("Beta") as FakeTerminalRuntime;
+    terminal.print("tela do tamanho antigo");
+    const live: string[] = [];
+    await wiring.subscriptions.subscribe(
+      {
+        send: () => undefined,
+        sendEphemeral: (event) => {
+          if (event.type === "TerminalResized") live.push(`${event.cols}x${event.rows}`);
+        },
+      },
+      runId,
+    );
+
+    wiring.terminals.reportSize({}, runId, "Beta", 100, 30);
+
+    await eventually(() => expect(terminal.resized).toEqual([{ cols: 100, rows: 30 }]));
+    await eventually(() => expect(live).toEqual(["100x30"]));
+    terminal.print("tela nova");
+    const replays: unknown[] = [];
+    await eventually(() => {
+      replays.length = 0;
+      wiring.terminals.replayTo(
+        { send: () => undefined, sendEphemeral: (event) => void replays.push(event) },
+        runId,
+      );
+      expect(replays).toMatchObject([
+        { type: "TerminalOutput", data: "tela nova", replay: true, cols: 100, rows: 30 },
+      ]);
+    });
+  });
+
+  it("does not send the resize to a runner that predates revision 4, which would drop the connection", async () => {
+    rig = createRunnerRig({ runtimeOptions: { Beta: { terminal: true } } });
+    const { server, runner } = createMemoryChannelPair();
+    const frames: { type: string }[] = [];
+    runner.onFrame((frame) => {
+      frames.push(frame);
+      // The test plays an old runner: it answers the start and never announces a revision.
+      if (frame.type === "agent.start") {
+        runner.send({
+          v: PROTOCOL_VERSION,
+          type: "response",
+          requestId: frame.requestId,
+          ok: true,
+        });
+      }
+    });
+    rig.registry.accept(rig.identity, server);
+    runner.send({
+      v: PROTOCOL_VERSION,
+      type: "register",
+      runner: { name: "antigo" },
+      capabilities: { terminal: true, streamJson: true },
+      agents: [],
+    });
+    await eventually(() => expect(rig.link?.connected).toBe(true));
+    const wiring = createHubWiring(persistence, rig.factory);
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+    await eventually(() => expect(frames.some((frame) => frame.type === "agent.start")).toBe(true));
+    await eventually(() => expect(wiring.terminals.activeGraph(runId)).toBeDefined());
+
+    wiring.terminals.reportSize({}, runId, "Beta", 100, 30);
+    await delay(50);
+
+    expect(frames.filter((frame) => frame.type === "agent.resize")).toEqual([]);
+    expect(rig.link?.connected).toBe(true);
   });
 });
