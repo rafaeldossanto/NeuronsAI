@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   PROTOCOL_REVISION,
   PROTOCOL_VERSION,
+  REVISION_TERMINAL_RESIZE,
   REVISION_TOOL_CALLS,
   revisionOf,
   createMemoryChannelPair,
@@ -105,6 +106,40 @@ describe("revisions inside version 1", () => {
     // What an older server sees of a newer runner's register: the extra field is not an error.
     const newer = { ...register, revision: PROTOCOL_REVISION, campoDoFuturo: true };
     expect(decodeRunnerFrame(JSON.stringify(newer)).ok).toBe(true);
+  });
+
+  describe("terminal resize (revision 4)", () => {
+    const resize = {
+      v: PROTOCOL_VERSION,
+      type: "agent.resize",
+      instanceId: "i1",
+      cols: 90,
+      rows: 30,
+    };
+    const resized = { ...resize, type: "agent.resized" };
+
+    it("is a revision of its own, announced by both peers", () => {
+      expect(REVISION_TERMINAL_RESIZE).toBe(4);
+      expect(PROTOCOL_REVISION).toBeGreaterThanOrEqual(REVISION_TERMINAL_RESIZE);
+    });
+
+    it("reads the request (server to runner) and the confirmation (runner to server)", () => {
+      expect(decodeServerFrame(JSON.stringify(resize))).toEqual({ ok: true, frame: resize });
+      expect(decodeRunnerFrame(JSON.stringify(resized))).toEqual({ ok: true, frame: resized });
+    });
+
+    it("refuses sizes that are not whole, positive and bounded", () => {
+      for (const bad of [
+        { cols: 0 },
+        { rows: -1 },
+        { cols: 80.5 },
+        { rows: "30" },
+        { cols: 1_001 },
+      ]) {
+        expect(decodeServerFrame(JSON.stringify({ ...resize, ...bad })).ok).toBe(false);
+        expect(decodeRunnerFrame(JSON.stringify({ ...resized, ...bad })).ok).toBe(false);
+      }
+    });
   });
 
   it("checks the report of a tool call, and bounds how much a peer can put in it", () => {

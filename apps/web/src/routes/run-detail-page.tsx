@@ -29,7 +29,7 @@ import { buildReplay, type Replay } from "@/live/replay";
 import { ReplayControls } from "@/live/replay-controls";
 import type { TerminalInputError } from "@/live/terminal-errors";
 import { useReplayPlayer } from "@/live/use-replay-player";
-import { useRunEvents } from "@/live/use-run-events";
+import { describeEventsProgress, useRunEvents } from "@/live/use-run-events";
 import { pulsesByEdge, useActivePulses } from "@/live/pulse-edges";
 import { useRunDetail, useRunGraph, useSendHumanMessage, useStopRun } from "@/live/run-queries";
 
@@ -91,8 +91,15 @@ function LiveRunView({
   onReplay,
   replayBlocked,
 }: ViewProps & { onReplay: (() => void) | undefined; replayBlocked: boolean }) {
-  const { state, connection, error, inputError, sendTerminalInput, clearInputError } =
-    useRunLive(id);
+  const {
+    state,
+    connection,
+    error,
+    inputError,
+    sendTerminalInput,
+    sendTerminalResize,
+    clearInputError,
+  } = useRunLive(id);
   const queryClient = useQueryClient();
   const moving = useActivePulses(state.pulses, (pulse) => isRecent(state, pulse));
 
@@ -114,7 +121,7 @@ function LiveRunView({
       status={status}
       finish={state.finish ?? data.finish}
       movingPulses={moving}
-      terminal={{ inputError, sendTerminalInput, clearInputError }}
+      terminal={{ inputError, sendTerminalInput, sendTerminalResize, clearInputError }}
       headerExtra={
         <>
           <ConnectionIndicator connection={connection} />
@@ -152,7 +159,7 @@ function ReplayRunView({ id, data, graph, onLeave }: ViewProps & { onLeave: () =
   if (!replay)
     return (
       <p role="status" className="text-sm text-muted-foreground">
-        Carregando os eventos da execução… {events.loaded} carregados
+        Carregando os eventos da execução… {describeEventsProgress(events.loaded, events.total)}
       </p>
     );
   return <ReplayLoaded id={id} data={data} graph={graph} replay={replay} onLeave={onLeave} />;
@@ -203,6 +210,7 @@ interface ScreenProps extends ViewProps {
   terminal?: {
     inputError: TerminalInputError | null;
     sendTerminalInput: (agent: string, data: string) => boolean;
+    sendTerminalResize: (agent: string, cols: number, rows: number) => boolean;
     clearInputError: () => void;
   };
 }
@@ -288,6 +296,7 @@ function RunScreen({
             runActive={active}
             inputError={terminal?.inputError ?? null}
             onSendInput={terminal?.sendTerminalInput ?? (() => false)}
+            onResize={terminal?.sendTerminalResize ?? (() => false)}
             onClearInputError={terminal?.clearInputError ?? (() => undefined)}
             replay={replay}
             onClose={() => setSelectedId(null)}

@@ -16,4 +16,8 @@ export class InMemorySecretRepository implements SecretRepository {
   listNames(): Promise<string[]> {
     return Promise.resolve([...this.stored.keys()].sort());
   }
+
+  delete(name: string): Promise<boolean> {
+    return Promise.resolve(this.stored.delete(name));
+  }
 }

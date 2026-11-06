@@ -36,4 +36,12 @@ export class DrizzleSecretRepository implements SecretRepository {
       .orderBy(asc(secrets.name));
     return rows.map((row) => row.name);
   }
+
+  async delete(name: string): Promise<boolean> {
+    const removed = await this.database.db
+      .delete(secrets)
+      .where(and(eq(secrets.name, name), resourceScope.matches(secrets.organizationId)))
+      .returning({ id: secrets.id });
+    return removed.length > 0;
+  }
 }

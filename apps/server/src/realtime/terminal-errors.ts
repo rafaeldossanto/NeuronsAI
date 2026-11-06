@@ -1,6 +1,6 @@
 import { DomainError, type DomainErrorKind } from "../shared/errors/domain-error.js";
 
-/** Why a `terminal.input` was refused. The messages never carry what was typed. */
+/** Why a `terminal.input` or `terminal.resize` was refused. The messages never carry what was typed. */
 export class TerminalInputRefusedError extends DomainError {
   constructor(
     code: TerminalInputRefusal,
@@ -18,7 +18,9 @@ export type TerminalInputRefusal =
   | "terminal_not_ready"
   | "terminal_unavailable"
   | "input_too_large"
-  | "rate_limited";
+  | "rate_limited"
+  | "invalid_size"
+  | "resize_rate_limited";
 
 /** The agent has no terminal open yet (it starts on its first message) or it already closed. */
 export class TerminalNotFoundError extends DomainError {

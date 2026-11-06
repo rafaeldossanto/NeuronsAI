@@ -63,3 +63,17 @@ export function resolveHooks(
     ratePerMinute: env.NEURONS_HOOKS_RATE_PER_MIN,
   };
 }
+
+/**
+ * The hooks listener for an application that embeds the server (the desktop app), which chooses
+ * the port itself instead of reading `NEURONS_HOOKS_PORT`: loopback only (a tunnel connects from
+ * this machine) and the default limits.
+ */
+export function embeddedHooksConfig(port: number): HooksConfig {
+  return {
+    port,
+    host: DEFAULT_LISTEN_HOST,
+    maxBodyBytes: DEFAULT_HOOKS_MAX_BODY_KB * 1024,
+    ratePerMinute: DEFAULT_HOOKS_RATE_PER_MIN,
+  };
+}

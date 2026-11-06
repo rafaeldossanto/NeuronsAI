@@ -40,6 +40,7 @@ function setup(revision: number, resolveSecret = vi.fn().mockResolvedValue("cred
     bind: vi.fn(),
     unbind: vi.fn(),
     sendInput: () => false,
+    sendResize: () => false,
     request: (build) => {
       frames.push(build("request"));
       return Promise.resolve();

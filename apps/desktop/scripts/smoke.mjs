@@ -232,16 +232,17 @@ async function main() {
       throw new Error("O agente não gravou a memória.");
     log("memória do servidor gravada pelo agente via MCP/runner");
 
-    return { scratch, app, exited, ok: true };
+    return { scratch, app, exited, ok: true, output: () => output };
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     console.error(`--- saída do app ---\n${output.slice(-3000)}`);
-    return { scratch, app, exited, ok: false };
+    return { scratch, app, exited, ok: false, output: () => output };
   }
 }
 
-const { scratch, app, exited, ok } = await main();
+const { scratch, app, exited, ok, output } = await main();
 // Ask the app to quit the way a user would, so the server shuts down cleanly (`Browser.close`).
+const quitAskedAt = Date.now();
 try {
   const { webSocketDebuggerUrl } = await (
     await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/version`)
@@ -252,13 +253,22 @@ try {
 } catch {
   app.kill();
 }
+let forced = false;
 const timer = setTimeout(() => {
+  forced = true;
   log("o app não saiu sozinho; encerrando à força");
   if (process.platform === "win32") spawn("taskkill", ["/pid", String(app.pid), "/T", "/F"]);
   else app.kill("SIGKILL");
 }, 20_000);
-await exited;
+const exitCode = await exited;
 clearTimeout(timer);
+const quitMs = Date.now() - quitAskedAt;
+// What the app said about its own shutdown (only slow or failed steps are said).
+for (const line of output().split(/\r?\n/))
+  if (line.includes("[desktop]") && line.includes("Encerramento")) log(line.trim());
+log(
+  `${forced ? "o app só saiu depois de ser encerrado à força" : "o app saiu sozinho"} em ${(quitMs / 1000).toFixed(1)} s (código ${String(exitCode)})`,
+);
 let released = false;
 try {
   await stat(path.join(scratch, "data", "db.lock"));
@@ -267,5 +277,6 @@ try {
 }
 log(released ? "trava do banco liberada ao sair" : "ATENÇÃO: a trava do banco ficou para trás");
 await rm(scratch, { recursive: true, force: true, maxRetries: 20, retryDelay: 500 });
-log(ok && released ? "OK" : "FALHOU");
-process.exitCode = ok && released ? 0 : 1;
+// An app that had to be killed is a failure even if the data folder happens to be free.
+log(ok && released && !forced ? "OK" : "FALHOU");
+process.exitCode = ok && released && !forced ? 0 : 1;

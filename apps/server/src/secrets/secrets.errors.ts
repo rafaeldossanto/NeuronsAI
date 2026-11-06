@@ -30,6 +30,18 @@ export class InvalidSecretNameError extends DomainError {
   }
 }
 
+/** Names the server uses for its own secrets (webhook signing keys) are not for people to write. */
+export class ReservedSecretNameError extends DomainError {
+  readonly kind: DomainErrorKind = "invalid";
+
+  constructor() {
+    super(
+      "reserved_secret_name",
+      'Nomes que começam com "webhook." são reservados ao servidor; escolha outro nome.',
+    );
+  }
+}
+
 /** Wrong master key or tampered data; deliberately says nothing about the plaintext. */
 export class SecretDecryptionError extends DomainError {
   readonly kind: DomainErrorKind = "internal";

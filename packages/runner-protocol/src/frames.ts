@@ -128,6 +128,22 @@ export const agentOutputFrame = frame("agent.output", { instanceId, data: z.stri
  */
 export const callFrame = frame("call", { callId: requestId, instanceId, call: callSchema });
 
+/** Biggest terminal the protocol carries; the server applies its own, smaller, limits before asking. */
+export const MAX_TERMINAL_COLS = 1_000;
+export const MAX_TERMINAL_ROWS = 1_000;
+const terminalCells = (max: number) => z.number().int().min(1).max(max);
+
+/**
+ * The terminal of an agent was resized, as the runner applied it. Revision 4. It comes after the
+ * resize and before any output laid out for the new size, so the server can restart the replay of
+ * the terminal exactly there.
+ */
+export const agentResizedFrame = frame("agent.resized", {
+  instanceId,
+  cols: terminalCells(MAX_TERMINAL_COLS),
+  rows: terminalCells(MAX_TERMINAL_ROWS),
+});
+
 /** The runner's answer to a request of the server (`agent.start`, `agent.deliver`, `agent.stop`). */
 export const responseFrame = frame("response", {
   requestId,
@@ -140,6 +156,7 @@ export const runnerFrameSchema = z.discriminatedUnion("type", [
   runnerHeartbeatFrame,
   agentStateFrame,
   agentOutputFrame,
+  agentResizedFrame,
   callFrame,
   responseFrame,
 ]);
@@ -184,6 +201,13 @@ export const agentStopFrame = frame("agent.stop", { requestId, instanceId });
 /** The user typed into an agent's terminal. */
 export const agentInputFrame = frame("agent.input", { instanceId, data: z.string() });
 
+/** The terminal of an agent must have this size (revision 4; sent only to a runner that announced it). */
+export const agentResizeFrame = frame("agent.resize", {
+  instanceId,
+  cols: terminalCells(MAX_TERMINAL_COLS),
+  rows: terminalCells(MAX_TERMINAL_ROWS),
+});
+
 export const callResultFrame = frame("call.result", {
   callId: requestId,
   ok: z.boolean(),
@@ -200,6 +224,7 @@ export const serverFrameSchema = z.discriminatedUnion("type", [
   agentDeliverFrame,
   agentStopFrame,
   agentInputFrame,
+  agentResizeFrame,
   callResultFrame,
 ]);
 export type ServerFrame = z.infer<typeof serverFrameSchema>;
@@ -215,6 +240,8 @@ export type AgentStartFrame = z.infer<typeof agentStartFrame>;
 export type AgentDeliverFrame = z.infer<typeof agentDeliverFrame>;
 export type AgentStopFrame = z.infer<typeof agentStopFrame>;
 export type AgentInputFrame = z.infer<typeof agentInputFrame>;
+export type AgentResizeFrame = z.infer<typeof agentResizeFrame>;
+export type AgentResizedFrame = z.infer<typeof agentResizedFrame>;
 export type CallResultFrame = z.infer<typeof callResultFrame>;
 /** The requests of the server that the runner answers with a `response`. */
 export type RequestFrame = AgentStartFrame | AgentDeliverFrame | AgentStopFrame;

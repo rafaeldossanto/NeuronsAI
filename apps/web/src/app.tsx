@@ -13,6 +13,7 @@ import { RunDetailPage } from "@/routes/run-detail-page";
 import { RunsPage } from "@/routes/runs-page";
 import { OrganizationsPage } from "@/routes/organizations-page";
 import { RunnersPage } from "@/routes/runners-page";
+import { SettingsPage } from "@/routes/settings-page";
 
 export function createQueryClient() {
   return new QueryClient({
@@ -37,6 +38,7 @@ export function App({ api, queryClient }: { api: ApiClient; queryClient?: QueryC
               <Route path="runs/:id" element={<RunDetailPage />} />
               <Route path="organizations" element={<OrganizationsPage />} />
               <Route path="runners" element={<RunnersPage />} />
+              <Route path="settings" element={<SettingsPage />} />
               <Route path="*" element={<EmptyState title="Página não encontrada" />} />
             </Route>
           </Routes>

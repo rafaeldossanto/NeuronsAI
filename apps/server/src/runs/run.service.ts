@@ -1,4 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { DEFAULT_QUOTAS } from "../shared/config/quota-config.js";
+import type { RunQuotas } from "../run-log/run-quota.js";
 import { resourceScope } from "../accounts/resource-scope.js";
 import type { GraphDefinition, TriggerNode } from "@neurons/graph-schema";
 import {
@@ -39,6 +41,8 @@ const STATUS_BY_REASON: Record<RunFinishReason, FinalRunStatus> = {
 export interface RunServiceOptions {
   /** Spending limit of a run that does not set its own. */
   defaultBudgetUsd?: number;
+  /** Per-organization limits on runs; absent means the defaults. They never apply to the local workspace. */
+  quotas?: RunQuotas;
 }
 
 export const RUN_SERVICE_OPTIONS = Symbol("RUN_SERVICE_OPTIONS");
@@ -100,7 +104,14 @@ export class RunService {
           budgetUsd: budgetUsd ?? null,
         }),
       ],
-      budgetUsd === undefined ? {} : { budgetUsd },
+      {
+        ...(budgetUsd !== undefined && { budgetUsd }),
+        // Checked by the repository in the transaction that creates the run (see createRunning). The
+        // local workspace has no organization and no limits.
+        ...(resourceScope.current().organizationId !== null && {
+          quotas: this.options.quotas ?? DEFAULT_QUOTAS,
+        }),
+      },
     );
     this.recorder.publish(events);
 

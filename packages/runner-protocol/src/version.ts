@@ -17,9 +17,14 @@ export const SUPPORTED_VERSIONS: readonly number[] = [PROTOCOL_VERSION];
  *  - 1: the first protocol (T24).
  *  - 2: `report_tool_call` (an agent's tool call goes to the run log as `ToolCalled`).
  *  - 3: graph tools (`list_tools`/`use_tool`) and transient per-agent API credentials.
+ *  - 4: terminal resize (`agent.resize` from the server, `agent.resized` back from the runner).
+ *       The server sends `agent.resize` only to a runner that announced revision 4 or later, so an
+ *       older runner never sees a frame it cannot read; a newer runner talking to an older server
+ *       simply never gets one (the terminal stays at its opening size).
  */
-export const PROTOCOL_REVISION = 3;
+export const PROTOCOL_REVISION = 4;
 export const REVISION_GRAPH_TOOLS = 3;
+export const REVISION_TERMINAL_RESIZE = 4;
 
 /** First revision that understands the `report_tool_call` call. */
 export const REVISION_TOOL_CALLS = 2;

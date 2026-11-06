@@ -2,8 +2,9 @@ import { existsSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { neuronsServerEntry } from "@neurons/mcp-neurons";
-import { createApp, loadConfig, type AppConfig } from "@neurons/server";
+import { createApp, embeddedHooksConfig, loadConfig, type AppConfig } from "@neurons/server";
 import type { DesktopConfig } from "./config.js";
+import type { TriggersSettings } from "./triggers-settings.js";
 
 export interface RunningServer {
   /** `http://127.0.0.1:<port>`: the interface at `/`, the API under `/api`. */
@@ -36,6 +37,16 @@ export function serverConfigFor(desktop: DesktopConfig, env?: NodeJS.ProcessEnv)
     },
     ...(desktop.claudeCommand && { claudeCommand: desktop.claudeCommand }),
   };
+}
+
+/**
+ * Adds the webhook port the person chose in the settings screen. `NEURONS_HOOKS_PORT` in the
+ * environment comes first (it is already in `config.hooks`), and with the triggers off nothing is
+ * added: the embedded server then has no webhook listener at all.
+ */
+export function withTriggers(config: AppConfig, triggers: TriggersSettings): AppConfig {
+  if (config.hooks || !triggers.enabled) return config;
+  return { ...config, hooks: embeddedHooksConfig(triggers.port) };
 }
 
 /** Where the built interface is: in the app's resources when packaged, in `apps/web` otherwise. */

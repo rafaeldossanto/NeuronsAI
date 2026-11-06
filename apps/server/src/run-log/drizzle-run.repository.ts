@@ -1,11 +1,12 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, desc, eq, gte, lte, sql, type SQL } from "drizzle-orm";
-import { DatabaseService } from "../database/database.service.js";
+import { and, asc, desc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import { DatabaseService, type DatabaseTransaction } from "../database/database.service.js";
 import { graphVersions, graphs, runEvents, runs } from "../database/schema/index.js";
 import { appendEvents } from "./drizzle-event-writer.js";
 import { resourceScope } from "../accounts/resource-scope.js";
 import { requireOwnedVersion } from "../accounts/resource-ownership.js";
 import type { Recorded, RunEventDraft } from "./run-event-draft.js";
+import { DAY_MS, assertRunQuota, type RunQuotas } from "./run-quota.js";
 import type {
   ActiveRun,
   FinalRunStatus,
@@ -16,6 +17,17 @@ import type {
   RunRepository,
   RunSummaryRecord,
 } from "./run-repository.js";
+
+/** Runs of the current organization (or local workspace) that match, counted inside `tx`. */
+async function countRuns(tx: DatabaseTransaction, condition: SQL): Promise<number> {
+  const [row] = await tx
+    .select({ total: sql<number>`count(*)::int` })
+    .from(runs)
+    .innerJoin(graphVersions, eq(graphVersions.id, runs.graphVersionId))
+    .innerJoin(graphs, eq(graphs.id, graphVersions.graphId))
+    .where(and(condition, resourceScope.matches(graphs.organizationId)));
+  return Number(row?.total ?? 0);
+}
 
 const toRunRecord = (row: typeof runs.$inferSelect): RunRecord => ({
   id: row.id,
@@ -33,10 +45,28 @@ export class DrizzleRunRepository implements RunRepository {
   createRunning(
     graphVersionId: string,
     eventsFor: (run: RunRecord) => RunEventDraft[],
-    options: { budgetUsd?: number } = {},
+    options: { budgetUsd?: number; quotas?: RunQuotas } = {},
   ): Promise<Recorded<RunRecord>> {
     return this.database.db.transaction(async (tx) => {
       await requireOwnedVersion(tx, graphVersionId);
+      const organizationId = resourceScope.current().organizationId;
+      if (options.quotas && organizationId !== null) {
+        // Counting and inserting under one lock per organization: without it, N requests at once
+        // all count the same runs and all get in. The lock goes away with the transaction.
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`neurons:run-quota:${organizationId}`}))`,
+        );
+        assertRunQuota(
+          {
+            active: await countRuns(tx, inArray(runs.status, ["pending", "running"])),
+            startedInLastDay: await countRuns(
+              tx,
+              gte(runs.startedAt, new Date(Date.now() - DAY_MS)),
+            ),
+          },
+          options.quotas,
+        );
+      }
       const [row] = await tx
         .insert(runs)
         .values({
@@ -126,10 +156,16 @@ export class DrizzleRunRepository implements RunRepository {
       filter.order === "asc"
         ? sql`${runs.startedAt} asc nulls first`
         : sql`${runs.startedAt} desc nulls last`;
+    // A run with no end (or no start) has no duration: it goes last in both directions.
+    const duration = sql`extract(epoch from (${runs.finishedAt} - ${runs.startedAt}))`;
+    const durationOrder =
+      filter.order === "asc" ? sql`${duration} asc nulls last` : sql`${duration} desc nulls last`;
     const orderBy =
       filter.sort === "costUsd"
         ? [direction(cost), startedAt, direction(runs.id)]
-        : [startedAt, direction(runs.id)];
+        : filter.sort === "durationMs"
+          ? [durationOrder, startedAt, direction(runs.id)]
+          : [startedAt, direction(runs.id)];
 
     const [rows, [counted]] = await Promise.all([
       db
@@ -168,6 +204,14 @@ export class DrizzleRunRepository implements RunRepository {
       unknownCostTurns: Number(row.unknown ?? 0),
     }));
     return { items, total: Number(counted?.total ?? 0) };
+  }
+
+  async countEvents(runId: string): Promise<number> {
+    const [row] = await this.database.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(runEvents)
+      .where(eq(runEvents.runId, runId));
+    return Number(row?.total ?? 0);
   }
 
   async listRunning(): Promise<ActiveRun[]> {

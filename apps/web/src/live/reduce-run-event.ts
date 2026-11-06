@@ -9,6 +9,7 @@ import type {
   RunLiveStatus,
   RunLogEvent,
   TerminalChunk,
+  TerminalSize,
 } from "./types";
 
 export const PREVIEW_MAX = 200;
@@ -43,6 +44,8 @@ const STATUS_BY_REASON: Record<RunLiveFinish["reason"], RunLiveStatus> = {
 const MESSAGE_KINDS: readonly string[] = ["message", "ask", "reply"];
 const isTerminalChunk = (event: RunLiveEvent): event is TerminalChunk =>
   event.type === "TerminalOutput";
+const isTerminalSize = (event: RunLiveEvent): event is TerminalSize =>
+  event.type === "TerminalResized";
 /** `@human` and `@trigger` are senders, not agents. */
 const isAgentName = (name: string) => !name.startsWith("@");
 const isDead = (status: AgentLiveStatus) => status === "failed" || status === "finished";
@@ -54,6 +57,7 @@ const isDead = (status: AgentLiveStatus) => status === "failed" || status === "f
  */
 export function reduceRunEvent(state: RunLiveState, event: RunLiveEvent): RunLiveState {
   if (isTerminalChunk(event)) return reduceTerminal(state, event);
+  if (isTerminalSize(event)) return reduceTerminalSize(state, event);
   if (event.seq <= state.lastSeq) return state;
 
   const next = { ...state, lastSeq: event.seq };
@@ -183,11 +187,30 @@ function reduceTerminal(state: RunLiveState, chunk: TerminalChunk): RunLiveState
     terminalMeta: {
       ...state.terminalMeta,
       [chunk.agent]: chunk.replay
-        ? { resets: meta.resets + 1, total: chunk.data.length }
-        : { resets: meta.resets, total: meta.total + chunk.data.length },
+        ? {
+            resets: meta.resets + 1,
+            total: chunk.data.length,
+            ...sizeOf(chunk.cols ?? meta.cols, chunk.rows ?? meta.rows),
+          }
+        : { ...meta, total: meta.total + chunk.data.length },
     },
   };
 }
+
+/** The terminal changed size: the screen keeps what it shows, the view only takes the new size. */
+function reduceTerminalSize(state: RunLiveState, event: TerminalSize): RunLiveState {
+  const meta = state.terminalMeta[event.agent] ?? { resets: 0, total: 0 };
+  return {
+    ...state,
+    terminalMeta: {
+      ...state.terminalMeta,
+      [event.agent]: { ...meta, cols: event.cols, rows: event.rows },
+    },
+  };
+}
+
+const sizeOf = (cols: number | undefined, rows: number | undefined) =>
+  cols !== undefined && rows !== undefined ? { cols, rows } : {};
 
 function finishRun(
   state: RunLiveState,

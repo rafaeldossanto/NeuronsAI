@@ -6,6 +6,8 @@ import { z } from "zod";
 import type { AppConfig } from "../shared/config/app-config.js";
 import { APP_CONFIG } from "../shared/config/tokens.js";
 import { DomainError, type DomainErrorKind } from "../shared/errors/domain-error.js";
+import { DEFAULT_QUOTAS } from "../shared/config/quota-config.js";
+import { QuotaExceededError } from "../shared/errors/quota-exceeded.error.js";
 import { resourceScope } from "../accounts/resource-scope.js";
 import {
   MAX_IMPORT_BYTES,
@@ -51,6 +53,9 @@ export function importPath(value: string): string[] {
 /** One manifest per memory, published last: a failed import never appears in the catalog. */
 @Injectable()
 export class MemoriesService {
+  /** The last queued creation of each organization (`""` is the local workspace). */
+  private readonly queues = new Map<string, Promise<void>>();
+
   private readonly baseRoot: string;
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {
     this.baseRoot = path.join(config.dataDir, "memories");
@@ -61,6 +66,36 @@ export class MemoriesService {
     return organizationId === null
       ? this.baseRoot
       : path.join(this.baseRoot, "organizations", organizationId);
+  }
+
+  /**
+   * An organization's limits on memories (how many, and the size of all their files together).
+   * Called inside `exclusively`, so imports of one organization are checked one at a time. The local
+   * workspace has no limits.
+   * @throws QuotaExceededError
+   */
+  private async assertWithinQuotas(incomingBytes: number): Promise<void> {
+    if (resourceScope.current().organizationId === null) return;
+    const limits = this.config.quotas ?? DEFAULT_QUOTAS;
+    if (limits.memoriesPerOrganization > 0) {
+      const existing = (await this.list()).length;
+      if (existing >= limits.memoriesPerOrganization) {
+        throw new QuotaExceededError(
+          "quota_memories",
+          `Sua organização já tem ${limits.memoriesPerOrganization} memórias, o limite. Apague alguma antes de criar outra.`,
+        );
+      }
+    }
+    if (limits.memoryBytesPerOrganization > 0) {
+      const used = await directorySize(this.root);
+      if (used + incomingBytes > limits.memoryBytesPerOrganization) {
+        const megabytes = Math.floor(limits.memoryBytesPerOrganization / (1024 * 1024));
+        throw new QuotaExceededError(
+          "quota_memory_bytes",
+          `As memórias da sua organização passariam do limite de ${megabytes} MB no total. Remova arquivos ou importe menos.`,
+        );
+      }
+    }
   }
 
   async list(): Promise<MemoryRecord[]> {
@@ -173,6 +208,34 @@ export class MemoriesService {
         );
       return { segments, content };
     });
+    // Check and write as one step per organization, or two imports at once both pass the limit.
+    return this.exclusively(async () => {
+      await this.assertWithinQuotas(bytes);
+      return this.write(body, files, vaultPath);
+    });
+  }
+
+  /** Runs `action` after the ones already queued for the same organization (this server process). */
+  private exclusively<T>(action: () => Promise<T>): Promise<T> {
+    const key = resourceScope.current().organizationId ?? "";
+    const previous = this.queues.get(key) ?? Promise.resolve();
+    const run = previous.then(action, action);
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.queues.set(key, tail);
+    void tail.then(() => {
+      if (this.queues.get(key) === tail) this.queues.delete(key);
+    });
+    return run;
+  }
+
+  private async write(
+    body: CreateMemory,
+    files: { segments: string[]; content: Buffer }[],
+    vaultPath: string | undefined,
+  ): Promise<MemoryRecord> {
     const id = randomUUID();
     const directory = path.join(this.root, id);
     const vault = path.join(directory, "vault");
@@ -199,4 +262,22 @@ export class MemoriesService {
       throw error;
     }
   }
+}
+
+/** Total size of the files under `directory` (0 when it does not exist yet). */
+async function directorySize(directory: string): Promise<number> {
+  let total = 0;
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw error;
+  }
+  for (const entry of entries) {
+    const target = path.join(directory, entry.name);
+    if (entry.isDirectory()) total += await directorySize(target);
+    else if (entry.isFile()) total += (await stat(target)).size;
+  }
+  return total;
 }

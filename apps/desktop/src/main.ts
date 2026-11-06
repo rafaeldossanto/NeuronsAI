@@ -12,8 +12,22 @@ import { installWindowControls } from "./window-controls.js";
 import { desktopMasterKey } from "./master-key.js";
 import { SECURE_WEB_PREFERENCES, lockDownSession, lockDownWindow } from "./security.js";
 import { installUpdater } from "./updater.js";
-import { updateMode } from "./update-policy.js";
-import { type RunningServer, serverConfigFor, startServer, webRoot } from "./server.js";
+import { hasActiveRuns, updateMode } from "./update-policy.js";
+import {
+  type RunningServer,
+  serverConfigFor,
+  startServer,
+  webRoot,
+  withTriggers,
+} from "./server.js";
+import { installSettingsControls } from "./settings-controls.js";
+import { DesktopSettingsStore } from "./settings-store.js";
+import {
+  appliedFrom,
+  startWithTriggersFallback,
+  type AppliedTriggers,
+} from "./triggers-settings.js";
+import { createShutdown } from "./shutdown.js";
 
 const APP_NAME = "NeuronsAI";
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -89,10 +103,22 @@ async function boot(): Promise<void> {
 
   await app.whenReady();
   installMenu();
+  // The triggers choice (webhook port) is the person's, saved in the app's profile; the server only
+  // reads it when it starts. `NEURONS_HOOKS_PORT` in the environment, if set, decides instead.
+  const settings = new DesktopSettingsStore(config.dataDir);
+  const environmentHooks = config.hooks !== undefined;
+  let applied: AppliedTriggers = appliedFrom(config.hooks, "environment");
   try {
-    server = await startServer(
-      await desktopMasterKey(config),
-      webRoot(app.isPackaged, process.resourcesPath, APP_DIR),
+    const ui = webRoot(app.isPackaged, process.resourcesPath, APP_DIR);
+    const wanted = withTriggers(config, (await settings.load()).triggers);
+    const started = await startWithTriggersFallback(wanted, !environmentHooks, async (candidate) =>
+      startServer(await desktopMasterKey(candidate), ui),
+    );
+    server = started.server;
+    applied = appliedFrom(
+      started.problem ? undefined : wanted.hooks,
+      environmentHooks ? "environment" : "app",
+      started.problem,
     );
   } catch (error) {
     fail("Não foi possível iniciar o NeuronsAI", error);
@@ -135,6 +161,16 @@ async function boot(): Promise<void> {
     }
   };
   installWindowControls(() => currentOrigin, origin);
+  installSettingsControls({
+    store: settings,
+    applied: () => applied,
+    localOrigin: origin,
+    hasActiveRuns: () => hasActiveRuns(origin),
+    relaunch: () => {
+      app.relaunch();
+      app.quit();
+    },
+  });
   lockDownSession(session.defaultSession, origin);
   accounts = new DesktopAccountManager({
     dataDir: config.dataDir,
@@ -173,17 +209,40 @@ app.on("window-all-closed", () => {
 });
 
 // Stopping the server ends every agent and its terminal tree and closes the database cleanly, so
-// quitting waits for it instead of exiting at once.
+// quitting waits for it instead of exiting at once. But it never waits for ever: each step has a
+// time limit (the packaged smoke test gives the whole quit 20 s) and the process leaves whatever
+// happened, so a hung close can not keep the app alive after the person asked to quit.
+const ACCOUNTS_CLOSE_MS = 3_000;
+const SERVER_CLOSE_MS = 12_000;
+/** If `app.exit` itself does not end the process (something native holding it), this does. */
+const HARD_EXIT_MS = 4_000;
+
+/** Kinds of things still open in this process, counted (`TCPSocketWrap×3, Timeout×2`): never their contents. */
+function activeResources(): string {
+  const counts = new Map<string, number>();
+  for (const kind of process.getActiveResourcesInfo())
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  return [...counts].map(([kind, count]) => `${kind}×${String(count)}`).join(", ");
+}
+
 app.on("before-quit", (event) => {
   if (stopping || !server) return;
   event.preventDefault();
   stopping = true;
   const running = server;
   server = undefined;
-  void (async () => {
-    await accounts?.close();
-    await running.close();
-  })().finally(() => app.exit(0));
+  void createShutdown({
+    steps: [
+      { name: "contas", run: () => accounts?.close(), timeoutMs: ACCOUNTS_CLOSE_MS },
+      { name: "servidor embutido", run: () => running.close(), timeoutMs: SERVER_CLOSE_MS },
+    ],
+    exit: () => {
+      setTimeout(() => process.exit(0), HARD_EXIT_MS).unref();
+      app.exit(0);
+    },
+    log: (line) => console.warn(`[desktop] ${line}`),
+    diagnose: activeResources,
+  }).run();
 });
 
 boot().catch((error: unknown) => {

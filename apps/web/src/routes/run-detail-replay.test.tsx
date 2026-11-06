@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fixture from "@/live/fixtures/two-terminals-demo.json";
 import { FakeSocket } from "@/live/fake-socket";
+import { describeEventsProgress } from "@/live/use-run-events";
 import { graphId, renderApp, runDetail, runId } from "@/test/helpers";
 
 const versionId = runDetail.graphVersionId;
@@ -50,7 +51,7 @@ const baseRoutes = {
 const replayRoutes = {
   ...baseRoutes,
   [`GET /runs/${runId}`]: { body: finishedDetail },
-  [`GET /runs/${runId}/events`]: { body: { items } },
+  [`GET /runs/${runId}/events`]: { body: { items, total: items.length } },
 };
 
 const position = () => screen.getByRole("status", { name: "Posição" });
@@ -145,7 +146,9 @@ describe("replay no detalhe da execução", () => {
         const query = new URL(request.url).searchParams;
         const from = Number(query.get("fromSeq"));
         const limit = Number(query.get("limit"));
-        return { body: { items: many.filter((e) => e.seq >= from).slice(0, limit) } };
+        return {
+          body: { items: many.filter((e) => e.seq >= from).slice(0, limit), total: many.length },
+        };
       },
     });
     await controls();
@@ -153,6 +156,14 @@ describe("replay no detalhe da execução", () => {
     expect(calls.filter((c) => c.path === `GET /runs/${runId}/events`)).toHaveLength(2);
     fireEvent.change(slider(), { target: { value: "1500" } });
     await waitFor(() => expect(screen.getByText(/^Total/)).toHaveTextContent("$1.499"));
+  });
+
+  it("o progresso do carregamento diz N de M e a porcentagem, e cai para N carregados sem total", () => {
+    expect(describeEventsProgress(250, 1000)).toBe("250 de 1000 (25%)");
+    expect(describeEventsProgress(1000, 1000)).toBe("1000 de 1000 (100%)");
+    expect(describeEventsProgress(999, 1000)).toBe("999 de 1000 (99%)");
+    expect(describeEventsProgress(40, null)).toBe("40 carregados");
+    expect(describeEventsProgress(0, 0)).toBe("0 carregados");
   });
 
   it("uma execução em andamento não entra em replay: fica ao vivo, com um aviso", async () => {

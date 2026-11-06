@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { GraphVersionRepository } from "../../graphs/graph-version-repository.js";
 import type { RunEventHistory } from "../../realtime/run-event-history.js";
 import type { RunEvent } from "../../realtime/run-event.js";
+import { resourceScope } from "../../accounts/resource-scope.js";
 import type { Recorded, RunEventDraft } from "../run-event-draft.js";
+import { DAY_MS, assertRunQuota, type RunQuotas } from "../run-quota.js";
 import type { RunEventLog } from "../run-event-log.js";
 import type {
   ActiveRun,
@@ -68,8 +70,26 @@ export class InMemoryRunLog implements RunEventLog, RunRepository, RunEventHisto
   createRunning(
     graphVersionId: string,
     eventsFor: (run: RunRecord) => RunEventDraft[],
-    options: { budgetUsd?: number } = {},
+    options: { budgetUsd?: number; quotas?: RunQuotas } = {},
   ): Promise<Recorded<RunRecord>> {
+    if (options.quotas && resourceScope.current().organizationId !== null) {
+      // Synchronous from the check to the insert, so parallel starts line up as they do on the database.
+      const since = Date.now() - DAY_MS;
+      const all = [...this.runs.values()];
+      try {
+        assertRunQuota(
+          {
+            active: all.filter((run) => run.status === "pending" || run.status === "running")
+              .length,
+            startedInLastDay: all.filter((run) => run.startedAt && run.startedAt.getTime() >= since)
+              .length,
+          },
+          options.quotas,
+        );
+      } catch (error) {
+        return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
     const record: RunRecord = {
       id: randomUUID(),
       graphVersionId,
@@ -139,13 +159,30 @@ export class InMemoryRunLog implements RunEventLog, RunRepository, RunEventHisto
       });
     }
     const sign = filter.order === "asc" ? 1 : -1;
+    const duration = (item: RunListItem) =>
+      item.startedAt && item.finishedAt
+        ? item.finishedAt.getTime() - item.startedAt.getTime()
+        : undefined;
     const key = (item: RunListItem) =>
       filter.sort === "costUsd" ? item.costUsd : (item.startedAt?.getTime() ?? 0);
-    matching.reverse().sort((a, b) => sign * (key(a) - key(b)) || 0);
+    matching.reverse().sort((a, b) => {
+      if (filter.sort === "durationMs") {
+        const [x, y] = [duration(a), duration(b)];
+        // No duration: last, whichever the direction.
+        if (x === undefined || y === undefined)
+          return (x === undefined ? 1 : 0) - (y === undefined ? 1 : 0);
+        return sign * (x - y) || 0;
+      }
+      return sign * (key(a) - key(b)) || 0;
+    });
     return {
       items: matching.slice(filter.offset ?? 0, (filter.offset ?? 0) + filter.limit),
       total: matching.length,
     };
+  }
+
+  countEvents(runId: string): Promise<number> {
+    return Promise.resolve(this.events.filter((event) => event.runId === runId).length);
   }
 
   async listRunning(): Promise<ActiveRun[]> {

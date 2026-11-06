@@ -45,7 +45,7 @@ export class RunsController {
     body: startRunBody,
     response: runDetailSchema,
     status: 201,
-    errors: [404],
+    errors: [404, 429],
   })
   async start(@ValidBody() body: StartRunBody) {
     const run = await this.runs.start(body.graphVersionId, body.input, {
@@ -143,7 +143,8 @@ export class RunsController {
   @Endpoint({
     method: "get",
     path: ":id/events",
-    summary: "Lista os eventos da execução, em ordem (o mesmo log que o WebSocket transmite).",
+    summary:
+      "Lista os eventos da execução, em ordem (o mesmo log que o WebSocket transmite), com o total.",
     params: runParams,
     query: eventsQuery,
     response: runEventListSchema,
@@ -151,6 +152,6 @@ export class RunsController {
   })
   async events(@ValidParams() { id }: RunParams, @ValidQuery() query: EventsQuery) {
     const events = await this.queries.events(id, query.fromSeq, query.limit);
-    return { items: events.map(presentRunEvent) };
+    return { items: events.map(presentRunEvent), total: await this.queries.eventCount(id) };
   }
 }

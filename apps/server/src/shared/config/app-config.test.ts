@@ -13,6 +13,13 @@ const defaults = {
   host: "127.0.0.1",
   port: 3100,
   guards: { runMaxMessages: 200, pingPongMessages: 20 },
+  quotas: {
+    organizationsPerUser: 5,
+    memoriesPerOrganization: 50,
+    memoryBytesPerOrganization: 512 * 1024 * 1024,
+    concurrentRunsPerOrganization: 5,
+    runsPerDayPerOrganization: 500,
+  },
   terminalInput: { maxChars: 4_096, maxPerSecond: 100 },
   profile: "local",
   runners: { graceMs: 60_000, heartbeatMs: 15_000, waitMs: 30_000 },
@@ -301,5 +308,40 @@ describe("webhook listener", () => {
       loadConfig({ NEURONS_HOOKS_PORT: "3101", NEURONS_HOOKS_MAX_BODY_KB: "0" }),
     ).toThrow(ConfigError);
     expect(() => loadConfig({ NEURONS_HOOKS_PORT: "70000" })).toThrow(ConfigError);
+  });
+});
+
+describe("cotas por organização", () => {
+  it("têm padrões sensatos", () => {
+    expect(loadConfig({}).quotas).toEqual({
+      organizationsPerUser: 5,
+      memoriesPerOrganization: 50,
+      memoryBytesPerOrganization: 512 * 1024 * 1024,
+      concurrentRunsPerOrganization: 5,
+      runsPerDayPerOrganization: 500,
+    });
+  });
+
+  it("vêm do ambiente; o tamanho das memórias é em MB e 0 desliga o limite", () => {
+    expect(
+      loadConfig({
+        NEURONS_QUOTA_ORGANIZATIONS_PER_USER: "2",
+        NEURONS_QUOTA_MEMORIES_PER_ORG: "10",
+        NEURONS_QUOTA_MEMORY_MB_PER_ORG: "100",
+        NEURONS_QUOTA_CONCURRENT_RUNS_PER_ORG: "0",
+        NEURONS_QUOTA_RUNS_PER_DAY_PER_ORG: "",
+      }).quotas,
+    ).toEqual({
+      organizationsPerUser: 2,
+      memoriesPerOrganization: 10,
+      memoryBytesPerOrganization: 100 * 1024 * 1024,
+      concurrentRunsPerOrganization: 0,
+      runsPerDayPerOrganization: 500,
+    });
+  });
+
+  it("recusam valores que não são inteiros não negativos", () => {
+    expect(() => loadConfig({ NEURONS_QUOTA_MEMORIES_PER_ORG: "-1" })).toThrow(ConfigError);
+    expect(() => loadConfig({ NEURONS_QUOTA_RUNS_PER_DAY_PER_ORG: "muitas" })).toThrow(ConfigError);
   });
 });

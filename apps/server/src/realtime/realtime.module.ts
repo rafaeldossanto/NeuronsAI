@@ -7,6 +7,7 @@ import { RunSubscriptions } from "./run-subscriptions.js";
 import type { AppConfig } from "../shared/config/app-config.js";
 import { APP_CONFIG, TERMINAL_INPUT_LIMITS } from "../shared/config/tokens.js";
 import { TerminalInput } from "./terminal-input.js";
+import { TerminalResize } from "./terminal-resize.js";
 import { TerminalSessions } from "./terminal-sessions.js";
 import { AccountsModule } from "../accounts/accounts.module.js";
 
@@ -17,6 +18,7 @@ import { AccountsModule } from "../accounts/accounts.module.js";
     RunSubscriptions,
     TerminalSessions,
     TerminalInput,
+    TerminalResize,
     {
       provide: TERMINAL_INPUT_LIMITS,
       useFactory: (config: AppConfig) => config.terminalInput,

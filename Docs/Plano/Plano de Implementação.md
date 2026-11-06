@@ -432,15 +432,19 @@ Decisões:
   anima cada mensagem uma vez, só se for recente (o histórico ao abrir a tela não vira rajada) e
   com teto de 12 simultâneos. A seta fica âmbar enquanto o pulso passa; `prefers-reduced-motion`
   mostra só um ponto.
-- **Terminal:** xterm.js 6.0.0 (mesma versão do `@xterm/headless` do servidor), no tamanho do PTY
-  (120×40). **Sem `@xterm/addon-fit`**: o protocolo não tem `terminal.resize`, e ajustar à caixa
-  desalinharia a TUI. O que se digita vai por `terminal.input` (colagens longas partidas em 4000
+- **Terminal:** xterm.js 6.0.0 (mesma versão do `@xterm/headless` do servidor). O tamanho era o do PTY (120×40) sem `@xterm/addon-fit`; o `terminal.resize` veio depois (ver "Redimensionamento do terminal" abaixo). O que se digita vai por `terminal.input` (colagens longas partidas em 4000
   caracteres), nunca é logado, e as recusas do servidor aparecem no painel em pt-BR. CSP: só
   estilos inline (já liberados); `script-src 'self'` intacto, conferido no build servido pelo
   servidor com o CLI de mentira.
-- **Falta:** uma rodada com o Claude Code real (cota Pro) para confirmar a digitação no terminal
-  real; `terminal.resize` no `/ws` e no protocolo do runner, se o terminal do navegador precisar
-  mudar de tamanho.
+- **Falta:** uma rodada com o Claude Code real (cota Pro) para confirmar a digitação e o redimensionamento no terminal real.
+
+**Redimensionamento do terminal (feito, 2026-11-05).** `@xterm/addon-fit` 0.11.0 (a versão publicada junto com o xterm 6.0.0) **só mede** a caixa; a tela segue o tamanho do terminal do servidor.
+
+- **Mensagem:** `terminal.resize { runId, agent, cols, rows }` no `/ws`, sem resposta quando aceita (a resposta é o evento efêmero `TerminalResized { cols, rows }` para todos que acompanham a execução). Mesmas checagens do `terminal.input` (execução em andamento e da organização de quem pede, agente de terminal `pty`) mais faixa de 20–400 colunas e 5–200 linhas (`invalid_size`) e no máximo 5 mensagens por segundo por conexão (`resize_rate_limited`). Erros em pt-BR. O painel manda o tamanho da caixa com 200 ms de debounce, uma vez ao abrir, e de novo depois de reconectar.
+- **Vários clientes:** vale o **menor tamanho entre os conectados** (colunas e linhas separadas), como o tmux: todos veem a tela inteira como o programa a desenhou, e um cliente maior que chega não mexe no que os outros veem. Quando o menor sai o terminal volta a crescer. Decisão registrada em `apps/server/README.md` ("Tamanho do terminal").
+- **Runtime:** `TerminalAgentRuntime` ganhou `size`, `resize()` e `onResize()`. O `ClaudeTerminalRuntime` redimensiona o PTY e a tela headless que ele lê. **O resumo `replay` recomeça no redimensionamento** e traz `cols`/`rows` (o que foi impresso para o tamanho antigo sairia embaralhado no novo; a TUI repinta sozinha com o `SIGWINCH`). No Windows o ConPTY repinta a própria tela uma vez depois do corte.
+- **Perfil `hybrid`:** protocolo do runner **revisão 4**, ainda na versão 1: `agent.resize` (servidor → runner) e `agent.resized` (runner → servidor, na ordem da saída). Compatível nos dois sentidos: o servidor só manda `agent.resize` a um runner que anunciou a revisão 4; um runner antigo continua funcionando, só não redimensiona.
+- **Testes:** validação, recusas e taxa (unitários e `live-events.int.test.ts` pelo `/ws`), regra de vários clientes, runtime com a CLI de mentira num PTY de verdade (`--show-size`), protocolo e `RunnerHost` (inclusive servidor sem a revisão 4), servidor + runner de ponta a ponta e o painel (`run-detail-live.test.tsx`).
 
 ### T15 — Histórico e replay
 
@@ -453,7 +457,8 @@ Dividida em duas:
   - **Tempo:** horários reais dos eventos ÷ velocidade (0,5× a 8×); **esperas acima de 2 s em 1× viram 2 s** e há piso de 150 ms. A tela diz isso (trechos encurtados, duração do replay contra a real).
   - **Pulsos:** só um passo para frente (um evento) desenha o pulso, na seta e no sentido certos; voltar e arrastar mostram o estado parado. Lista própria no player em vez de `useActivePulses`, que não repetiria um pulso depois de voltar.
   - **Terminal:** não é reproduzido (a saída não fica no log); a tela e o painel do agente avisam.
-  - **Falta/anotado:** ordenação por duração na lista continua opcional; a API não informa o total de eventos, então o progresso é "N carregados".
+  - **Falta/anotado:** ordenação por duração na lista continua opcional; a API não informa o total de eventos, então o progresso é "N carregados". *(Resolvido em 2026-11-05, abaixo.)*
+- **T15c · Pendências fechadas (2026-11-05).** `GET /runs/{id}/events` agora devolve também `total` (contagem de eventos da execução inteira, por chave primária `(run_id, seq)`, independente de `fromSeq`/`limit`; quem só lia `items` não muda), e o carregamento do replay mostra "N de M (X%)". `GET /runs` aceita `sort=durationMs` (`finishedAt - startedAt`); **execuções sem fim ou sem início ficam no fim da lista nos dois sentidos** (`asc` e `desc`), e a tela `/runs` ganhou "Mais demoradas" e "Mais rápidas". Testes nos dois bancos.
 
 **Pronto quando (T15a):** com execuções de grafos e versões diferentes, cada filtro e as combinações dão o conjunto certo, na API e na tela (testes de integração nos dois bancos e da tela).
 **Pronto quando (T15b):** o replay de uma execução mostra as mensagens na ordem certa e nas setas certas.
@@ -477,6 +482,7 @@ Dividida em duas:
   - **Tela:** o inspetor do gatilho mostra URL, "Gerar/Trocar segredo" (uma vez, com aviso), `curl` assinado, cron com explicação em português, as próximas 3 execuções e o fuso.
   - **Desktop:** o agendador e a porta dos webhooks só funcionam com o app aberto.
   - **Falta/anotado:** rodar manualmente um `* * * * *` por 1–2 minutos no app real; a porta dos gatilhos no app desktop só liga por variável de ambiente (sem tela de configuração).
+  - **Segredo órfão: resolvido (2026-11-05).** O `SecretsService` ganhou `delete`. Apagar um grafo (só os nunca publicados podem ser apagados) remove, **na mesma transação**, os segredos de webhook dos gatilhos dele (`webhook.<hookId>`); trocar o segredo já o substitui no mesmo nome (o antigo deixa de valer na hora). Para os órfãos que já existiam, a rotina `OrphanWebhookSecrets` roda na partida do servidor, é idempotente e só apaga nomes **exatamente** `webhook.` + id gerado (22 caracteres base64url) sem linha em `graph_triggers` (um segredo com nome escolhido à mão nunca é tocado); registra quantos removeu. Sem migration.
 - **T16b · WhatsApp: pendente.** Depende do número de teste da Meta que o Rafael vai criar. **WhatsApp Cloud API** oficial como gatilho e como ferramenta de resposta; validar `X-Hub-Signature-256` (reaproveita a porta dos gatilhos da T16a); agente que lê mensagem de cliente começa sem ferramenta de escrita.
 
 **Pronto quando (T16a):** um `POST` assinado dispara a versão publicada mais recente; assinatura errada, vencida ou repetida volta 401 sem criar execução; a API normal não responde na porta dos gatilhos; o `schedule` dispara no horário e não sobrepõe.
@@ -564,6 +570,11 @@ A tela `/new` oferece projeto em branco e os três templates, com prévia por `G
 - **Empacotamento:** `asar: false` por ora (o CLI e o node-pty leem arquivos do disco); o `--dir` não gera instalador. `scripts/smoke.mjs` abre o app (do código-fonte ou empacotado) com o CLI de mentira e roda o `two-terminals.json`; roda no CI do Windows.
 - **Ícone provisório** (neurônio âmbar sobre grafite) gerado por `scripts/make-icon.mjs`; o definitivo substitui `build/icon.png`.
 
+**Pendências resolvidas (2026-11-06).**
+
+- **Porta dos webhooks no app:** item **Configurações** (só no app para computador) com **Gatilhos externos**: liga/desliga e porta (1024–65535, padrão 3101, **desligado por padrão**). A escolha fica em `<pasta de dados>/desktop-settings.json` e vai ao servidor embutido quando ele inicia (`NEURONS_HOOKS_PORT` no ambiente, se existir, manda); mudar pede reiniciar, e a tela avisa e oferece o botão. Mostra o endereço local e o link do túnel da Cloudflare. Porta ocupada: o app abre com os gatilhos desligados e diz o porquê. IPC com três ações validadas (`settings-controls.ts`).
+- **Encerramento:** o `before-quit` agora fecha contas e servidor com limite de tempo por etapa (3 s e 12 s) e **sai sempre** (`shutdown.ts`, testado com tempo falso: etapa que falha ou trava não segura a saída; `process.exit` de reserva em 4 s). Uma etapa lenta é registrada com os tipos de recurso ainda abertos. Revisados e descartados como causa: o agendador (só `setTimeout`, limpo em `onModuleDestroy`), a porta dos webhooks (fechada em `onModuleDestroy`), o timer do `electron-updater` (`unref`) e o node-pty (terminal fechado com a execução). Medição: com 4 apps em paralelo a saída leva de 1 s a ~15 s (sem carga, ~2 s) e **ainda falha 1 em ~12** quando o `app.close()` do servidor passa do limite; a causa dentro do fechamento do servidor sob carga **não foi achada**, e o smoke agora imprime o tempo de saída e o que estava aberto para a próxima rodada no CI.
+
 ### T22 — Release multiplataforma
 
 - `release.yml` disparado por tag `v*`: matriz macOS (dmg arm64 e x64), Windows (instalador NSIS) e Linux (AppImage e deb) com `electron-builder`.
@@ -630,7 +641,12 @@ A tela `/new` oferece projeto em branco e os três templates, com prévia por `G
 - **Segredos — resolvido pelo modelo "admin publica".** Publicar versão com `{{secret:...}}` em qualquer string exige `admin`/`owner` (`403 secret_publish_forbidden`); `member` publica o resto. Lista de hosts permitidos por segredo ficou fora (seria coluna nova em `secrets` e UI): continua sendo a evolução natural.
 - **Sem contas, fora do loopback:** `NEURONS_ALLOW_REMOTE=true` sem as variáveis do Google deixa a API aberta (inclui MCP stdio no servidor). É o comportamento anterior, agora documentado nos comentários. Continua valendo: **não** exponha o servidor sem contas.
 
-**Dívidas menores:** quem entra (por convite ou lista) pode criar organizações novas sem cota; gatilhos/rotação do segredo de webhook pedem só papel `write` (mapa de papéis no interceptor depende do prefixo do controller; trocar por decorator por rota); dados antigos (organização `NULL`) ficam fora das contas e não há comando de adoção (cron antigo e tokens de runner antigos continuam valendo no escopo `NULL`); sem cotas de organizações/memórias/execuções; `/ws` não fecha upgrade sem sessão (cada operação já exige); HTTP em loopback aceito também no app empacotado; `Retry-After`/limite de tentativas usa `request.ip` (atrás de proxy é preciso configurar `trustProxy`).
+**Dados locais, cotas e limpeza (2026-11-05).**
+- **Adoção dos dados locais.** Servidor com contas começa vazio para cada organização; os dados antigos (`organization_id` NULL) ficam fora de todas. `GET /auth/organizations/{id}/local-data` mostra o que há e `POST /auth/organizations/{id}/adopt-local-data` (`{ "confirm": true }`) move tudo para a organização. **Só `owner` daquela organização, só com contas ligadas, ação única e confirmada, nunca automática.** Numa transação: grafos (com versões, execuções e gatilhos, que acompanham o grafo) e segredos, que são **recriptografados** porque a organização faz parte do que o AES-GCM autentica; depois as pastas de memórias vão para a pasta da organização, uma a uma (uma segunda chamada termina o que uma queda deixou e, sem nada, não faz nada). Recusa com 409 se há execução local em andamento ou se a organização já tem segredo com o mesmo nome; sem a chave mestra certa nada é movido. Gatilhos com agenda ficam **desligados** (o temporizador em memória é do escopo local) e o dono liga de novo. Runners e conexões do Claude (que são do computador, não do banco) não mudam. Na tela, painel de organizações > "Dados locais deste servidor", só para o `owner` e só quando há o que mover, com aviso e confirmação. O perfil `local` sem conta não muda.
+- **Cotas por organização** (só onde há organização; o perfil `local` sem conta não tem cotas; `0` desliga). Estourar responde **429** com mensagem em pt-BR. Variáveis `NEURONS_QUOTA_ORGANIZATIONS_PER_USER` (5; organizações de que a conta é proprietária, contando o espaço pessoal), `NEURONS_QUOTA_MEMORIES_PER_ORG` (50), `NEURONS_QUOTA_MEMORY_MB_PER_ORG` (512), `NEURONS_QUOTA_CONCURRENT_RUNS_PER_ORG` (5) e `NEURONS_QUOTA_RUNS_PER_DAY_PER_ORG` (500, janela móvel de 24 h). As de memória e execução são conferências "leitura e depois escrita": duas chamadas no mesmo instante podem passar por uma; a de organizações trava a linha da conta.
+- **Teste instável de `graphs`:** a causa era `updatedAt` carimbado pelo relógio do host (`$onUpdate`) contra `createdAt` do relógio do banco (`now()`); o repositório agora carimba o `updatedAt` também com `now()` do banco, então `updatedAt >= createdAt` não depende mais de dois relógios.
+
+**Dívidas menores:** ~~quem entra pode criar organizações novas sem cota;~~ gatilhos/rotação do segredo de webhook pedem só papel `write` (mapa de papéis no interceptor depende do prefixo do controller; trocar por decorator por rota); tokens de runner antigos (escopo `NULL`) continuam valendo e não são adotados; `/ws` não fecha upgrade sem sessão (cada operação já exige); HTTP em loopback aceito também no app empacotado; `Retry-After`/limite de tentativas usa `request.ip` (atrás de proxy é preciso configurar `trustProxy`).
 
 **Depende do Rafael:** criar o OAuth client no Google Cloud (tipo "Aplicativo da Web"; URI de redirecionamento exata `<origem>/api/auth/google/callback` com a interface servida junto, ou `/auth/google/callback` sem ela; HTTP só em loopback), configurar `NEURONS_PUBLIC_ORIGIN`, `NEURONS_GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI`, `NEURONS_MASTER_KEY` e perfil `hybrid`/`hosted` fora do Git, e aceitar o login real no Electron (reinício com o cofre) nos três sistemas.
 

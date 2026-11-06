@@ -4,6 +4,8 @@ import type {
   AgentRuntimeFactory,
   AgentRuntimeState,
   InboundMessage,
+  TerminalAgentRuntime,
+  TerminalSize,
 } from "@neurons/agent-runtimes";
 import { Signal } from "@neurons/agent-runtimes";
 import type { AgentNode } from "@neurons/graph-schema";
@@ -54,6 +56,34 @@ class StubRuntime implements AgentRuntime {
   }
 }
 
+/** A runtime with a terminal: remembers its size and says when it changed. */
+class StubTerminalRuntime extends StubRuntime implements TerminalAgentRuntime {
+  size: TerminalSize = { cols: 120, rows: 40 };
+  readonly resizeCalls: TerminalSize[] = [];
+  private readonly resizes = new Signal<TerminalSize>();
+  private readonly output = new Signal<string>();
+
+  onOutput(listener: (chunk: string) => void) {
+    return this.output.subscribe(listener);
+  }
+  outputSnapshot(): string {
+    return "";
+  }
+  writeInput(): void {}
+  onResize(listener: (size: TerminalSize) => void) {
+    return this.resizes.subscribe(listener);
+  }
+  resize(cols: number, rows: number): void {
+    this.resizeCalls.push({ cols, rows });
+    if (cols === this.size.cols && rows === this.size.rows) return;
+    this.size = { cols, rows };
+    this.resizes.emit(this.size);
+  }
+  print(chunk: string): void {
+    this.output.emit(chunk);
+  }
+}
+
 const agent: AgentNode = {
   id: "agente-alfa",
   type: "agent",
@@ -73,11 +103,13 @@ type ServerBody = ServerFrame extends infer Frame
   : never;
 
 /** A host plus the server end of its channel, where the test plays the server. */
-function rig() {
+function rig(options: { terminal?: boolean } = {}) {
   const runtimes: StubRuntime[] = [];
   const factory: AgentRuntimeFactory = {
     create: (_agent, communication) => {
-      const runtime = new StubRuntime(communication);
+      const runtime = options.terminal
+        ? new StubTerminalRuntime(communication)
+        : new StubRuntime(communication);
       runtimes.push(runtime);
       return runtime;
     },
@@ -361,6 +393,94 @@ describe("RunnerHost: protocol revisions", () => {
     await r.runtimes[0]?.communication.reportToolCall(report);
 
     expect(r.count("call")).toBe(0);
+    r.host.detach();
+  });
+});
+
+describe("RunnerHost: terminal resize (revision 4)", () => {
+  const registered = (revision?: number): ServerBody => ({
+    type: "registered",
+    runnerId: "r1",
+    ...(revision !== undefined && { revision }),
+    heartbeatIntervalMs: 60_000,
+    keep: [],
+  });
+
+  it("resizes the terminal and confirms the size it applied, before the output that follows", async () => {
+    const r = rig({ terminal: true });
+    r.connect();
+    r.say(registered(PROTOCOL_REVISION));
+    await r.start("i1");
+    const runtime = r.runtimes[0] as StubTerminalRuntime;
+
+    r.say({ type: "agent.resize", instanceId: "i1", cols: 90, rows: 30 });
+    await r.next("agent.resized");
+    runtime.print("depois");
+    await vi.waitFor(() => expect(r.count("agent.output")).toBe(1));
+
+    expect(runtime.size).toEqual({ cols: 90, rows: 30 });
+    const order = r.received
+      .map((frame) => frame.type)
+      .filter((t) => t.startsWith("agent.") && t !== "agent.state");
+    expect(order).toEqual(["agent.resized", "agent.output"]);
+    expect(r.received.find((frame) => frame.type === "agent.resized")).toMatchObject({
+      instanceId: "i1",
+      cols: 90,
+      rows: 30,
+    });
+    r.host.detach();
+  });
+
+  it("does not confirm a resize to the size it already has", async () => {
+    const r = rig({ terminal: true });
+    r.connect();
+    r.say(registered(PROTOCOL_REVISION));
+    await r.start("i1");
+
+    r.say({ type: "agent.resize", instanceId: "i1", cols: 120, rows: 40 });
+    r.say({ type: "agent.resize", instanceId: "i1", cols: 100, rows: 30 });
+    await r.next("agent.resized");
+
+    expect(r.count("agent.resized")).toBe(1);
+    r.host.detach();
+  });
+
+  it("ignores a resize for an agent it does not host or that has no terminal", async () => {
+    const r = rig(); // plain runtimes: stream-json agents have no terminal
+    r.connect();
+    r.say(registered(PROTOCOL_REVISION));
+    await r.start("i1");
+
+    r.say({ type: "agent.resize", instanceId: "i1", cols: 90, rows: 30 });
+    r.say({ type: "agent.resize", instanceId: "ninguem", cols: 90, rows: 30 });
+    // A frame that does get an answer, sent after the resizes, proves they were handled by now.
+    r.say({
+      type: "agent.stop",
+      requestId: "stop-1",
+      instanceId: "i1",
+    });
+    await vi.waitFor(() =>
+      expect(r.received).toContainEqual(
+        expect.objectContaining({ type: "response", requestId: "stop-1" }),
+      ),
+    );
+
+    expect(r.count("agent.resized")).toBe(0);
+    r.host.detach();
+  });
+
+  it("does not announce a resize to a server that predates revision 4", async () => {
+    const r = rig({ terminal: true });
+    r.connect();
+    r.say(registered()); // no revision: an older server
+    await r.start("i1");
+    const runtime = r.runtimes[0] as StubTerminalRuntime;
+
+    runtime.resize(80, 24); // however it came about
+    runtime.print("x");
+    await vi.waitFor(() => expect(r.count("agent.output")).toBe(1));
+
+    expect(r.count("agent.resized")).toBe(0);
     r.host.detach();
   });
 });

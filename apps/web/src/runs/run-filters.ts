@@ -14,6 +14,8 @@ export const SORT_OPTIONS = {
   oldest: { label: "Mais antigas", sort: "startedAt", order: "asc" },
   costly: { label: "Maior custo", sort: "costUsd", order: "desc" },
   cheap: { label: "Menor custo", sort: "costUsd", order: "asc" },
+  longest: { label: "Mais demoradas", sort: "durationMs", order: "desc" },
+  shortest: { label: "Mais rápidas", sort: "durationMs", order: "asc" },
 } as const;
 export type SortKey = keyof typeof SORT_OPTIONS;
 

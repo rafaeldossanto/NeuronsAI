@@ -7,3 +7,5 @@ export { createApp, type CreateAppOptions } from "./create-app.js";
 export { ConfigError, loadConfig, type AppConfig } from "./shared/config/app-config.js";
 export { DataDirLockedError } from "./database/directory-lock.js";
 export { isLoopbackHost } from "./shared/config/listen-config.js";
+export { embeddedHooksConfig } from "./shared/config/hooks-config.js";
+export type { HooksConfig } from "./shared/config/app-config.js";

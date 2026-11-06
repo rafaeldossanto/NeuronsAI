@@ -22,6 +22,8 @@ import {
   SignupClosedError,
 } from "./account.errors.js";
 import type { VerifiedIdentity } from "./identity-provider.js";
+import { QuotaExceededError } from "../shared/errors/quota-exceeded.error.js";
+import { testConfig } from "../shared/config/testing/test-config.js";
 
 let testDb: TestDatabase;
 let accounts: AccountsService;
@@ -504,5 +506,47 @@ describe("cadastro fechado e convites", () => {
     await expect(
       accounts.invite(alice.id, organizationId, "isso nao e email", "member"),
     ).rejects.toThrow();
+  });
+});
+
+describe("cota de organizações por conta", () => {
+  const limited = (organizationsPerUser: number) =>
+    new AccountsService(
+      testDb.database,
+      SignupPolicy.open(),
+      testConfig({
+        quotas: {
+          organizationsPerUser,
+          memoriesPerOrganization: 0,
+          memoryBytesPerOrganization: 0,
+          concurrentRunsPerOrganization: 0,
+          runsPerDayPerOrganization: 0,
+        },
+      }),
+    );
+
+  it("recusa a organização que passa do limite de proprietário (o espaço pessoal conta)", async () => {
+    const service = limited(2);
+
+    await service.createOrganization(alice.id, "Segunda");
+    const refused = await service.createOrganization(alice.id, "Terceira").catch((e: unknown) => e);
+
+    expect(refused).toBeInstanceOf(QuotaExceededError);
+    expect(refused).toMatchObject({ code: "quota_organizations", kind: "quota_exceeded" });
+    expect((await service.listOrganizations(alice.id)).map((o) => o.name)).not.toContain(
+      "Terceira",
+    );
+  });
+
+  it("só conta onde a conta é proprietária, e zero desliga o limite", async () => {
+    await accounts.setMember(bob.id, bobOrganizationId, alice.id, "member");
+    const service = limited(2);
+    await service.createOrganization(alice.id, "Segunda");
+    // Being a member elsewhere does not count against the limit; owning does.
+    await expect(service.createOrganization(alice.id, "Terceira")).rejects.toBeInstanceOf(
+      QuotaExceededError,
+    );
+    const unlimited = limited(0);
+    await expect(unlimited.createOrganization(alice.id, "Terceira")).resolves.toBeDefined();
   });
 });

@@ -7,7 +7,7 @@ import { RunLogModule } from "../run-log/run-log.module.js";
 import type { AppConfig } from "../shared/config/app-config.js";
 import { APP_CONFIG } from "../shared/config/tokens.js";
 import { RunQueryService } from "./run-query.service.js";
-import { RUN_SERVICE_OPTIONS, RunService } from "./run.service.js";
+import { RUN_SERVICE_OPTIONS, RunService, type RunServiceOptions } from "./run.service.js";
 import { RunsController } from "./runs.controller.js";
 
 @Module({
@@ -18,7 +18,8 @@ import { RunsController } from "./runs.controller.js";
     RunQueryService,
     {
       provide: RUN_SERVICE_OPTIONS,
-      useFactory: (config: AppConfig) => ({
+      useFactory: (config: AppConfig): RunServiceOptions => ({
+        ...(config.quotas && { quotas: config.quotas }),
         ...(config.guards.runBudgetUsd !== undefined && {
           defaultBudgetUsd: config.guards.runBudgetUsd,
         }),

@@ -7,6 +7,8 @@ import { RunRegistry } from "../hub/run-registry.js";
 import type { SecretsService } from "../secrets/secrets.service.js";
 import { testConfig } from "../shared/config/testing/test-config.js";
 import { GraphToolsService } from "./graph-tools.service.js";
+import { resourceScope } from "../accounts/resource-scope.js";
+import { QuotaExceededError } from "../shared/errors/quota-exceeded.error.js";
 import { importPath, MemoriesService } from "./memories.service.js";
 
 let root: string;
@@ -186,5 +188,75 @@ describe("biblioteca de memórias", () => {
     ]);
     expect(edits[0]).toMatchObject({ ok: true });
     expect(edits[1]).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+  });
+});
+
+describe("cotas de memórias", () => {
+  const ORG = "0b000000-0000-4000-8000-000000000001";
+  const withQuotas = (quotas: Partial<NonNullable<ReturnType<typeof testConfig>["quotas"]>>) =>
+    new MemoriesService(
+      testConfig({
+        dataDir: root,
+        quotas: {
+          organizationsPerUser: 0,
+          memoriesPerOrganization: 0,
+          memoryBytesPerOrganization: 0,
+          concurrentRunsPerOrganization: 0,
+          runsPerDayPerOrganization: 0,
+          ...quotas,
+        },
+      }),
+    );
+  const inOrganization = <T>(action: () => T): T =>
+    resourceScope.run({ organizationId: ORG }, action);
+  const create = (service: MemoriesService, name: string, content = "x") =>
+    inOrganization(() =>
+      service.create({
+        name,
+        storage: "server",
+        files: [{ path: "nota.md", data: encoded(content) }],
+      }),
+    );
+
+  it("recusa a memória que passa da quantidade, mas só dentro de uma organização", async () => {
+    const service = withQuotas({ memoriesPerOrganization: 2 });
+    await create(service, "A");
+    await create(service, "B");
+
+    const refused = await create(service, "C").catch((error: unknown) => error);
+
+    expect(refused).toBeInstanceOf(QuotaExceededError);
+    expect(refused).toMatchObject({ code: "quota_memories" });
+    // The local workspace (no organization) has no quotas.
+    for (const name of ["L1", "L2", "L3"]) await service.create({ name, storage: "server" });
+    expect(await service.list()).toHaveLength(3);
+  });
+
+  it("recusa o que passa do tamanho total da organização e não escreve nada", async () => {
+    const service = withQuotas({ memoryBytesPerOrganization: 1000 });
+    await create(service, "A", "x".repeat(600));
+
+    await expect(create(service, "B", "x".repeat(600))).rejects.toMatchObject({
+      code: "quota_memory_bytes",
+    });
+    await expect(create(service, "C", "x".repeat(100))).resolves.toMatchObject({ name: "C" });
+    expect(await inOrganization(() => service.list())).toHaveLength(2);
+  });
+
+  it("segura o limite quando várias criações chegam ao mesmo tempo", async () => {
+    const service = withQuotas({ memoriesPerOrganization: 2 });
+
+    const results = await Promise.allSettled(
+      ["A", "B", "C", "D", "E"].map((name) => create(service, name)),
+    );
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(2);
+    expect(await inOrganization(() => service.list())).toHaveLength(2);
+  });
+
+  it("zero desliga o limite", async () => {
+    const service = withQuotas({ memoriesPerOrganization: 0, memoryBytesPerOrganization: 0 });
+    for (const name of ["A", "B", "C"]) await create(service, name);
+    expect(await inOrganization(() => service.list())).toHaveLength(3);
   });
 });

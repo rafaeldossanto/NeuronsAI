@@ -3,7 +3,45 @@ import { DomainError } from "../shared/errors/domain-error.js";
 import type { TerminalInputLimits } from "../shared/config/terminal-config.js";
 import { TERMINAL_INPUT_LIMITS } from "../shared/config/tokens.js";
 import { TerminalInputRefusedError, TerminalUnavailableError } from "./terminal-errors.js";
+import { ClientRateLimit } from "./client-rate-limit.js";
 import { TerminalSessions } from "./terminal-sessions.js";
+import type { AgentNode } from "@neurons/graph-schema";
+
+/**
+ * The agent a person is addressing in a run: it must be running here, be one of the run's agents
+ * and have a terminal a person can use. The same rules for typing and for resizing.
+ * @throws TerminalInputRefusedError with the reason.
+ */
+export function requireTerminalAgent(
+  terminals: TerminalSessions,
+  runId: string,
+  agentName: string,
+): AgentNode {
+  const graph = terminals.activeGraph(runId);
+  if (!graph) {
+    throw new TerminalInputRefusedError(
+      "run_not_running",
+      `A execução "${runId}" não está em andamento.`,
+      "conflict",
+    );
+  }
+  const agent = graph.nodes.find((node) => node.type === "agent" && node.name === agentName);
+  if (agent?.type !== "agent") {
+    throw new TerminalInputRefusedError(
+      "agent_not_in_run",
+      `"${agentName}" não é um agente desta execução.`,
+      "not_found",
+    );
+  }
+  if (agent.runtime.kind !== "terminal" || agent.runtime.mode !== "pty") {
+    throw new TerminalInputRefusedError(
+      "not_a_terminal",
+      `O agente "${agent.name}" não roda num terminal que se possa digitar.`,
+      "invalid",
+    );
+  }
+  return agent;
+}
 
 /** What `terminal.input` carries once validated. */
 export interface TerminalInputRequest {
@@ -11,11 +49,6 @@ export interface TerminalInputRequest {
   agent: string;
   /** Exactly what the person typed (keys, a paste, control sequences). Never stored nor logged. */
   data: string;
-}
-
-interface Bucket {
-  tokens: number;
-  at: number;
 }
 
 /**
@@ -26,19 +59,27 @@ interface Bucket {
  */
 @Injectable()
 export class TerminalInput {
-  private readonly buckets = new WeakMap<object, Bucket>();
+  private readonly rate: ClientRateLimit;
 
   constructor(
     @Inject(TerminalSessions) private readonly terminals: TerminalSessions,
     @Inject(TERMINAL_INPUT_LIMITS) private readonly limits: TerminalInputLimits,
-  ) {}
+  ) {
+    this.rate = new ClientRateLimit(limits.maxPerSecond);
+  }
 
   /**
    * @param client whoever is typing (one connection): the rate is counted per client.
    * @throws DomainError with the reason, in a `code` the client can act on.
    */
   write(client: object, request: TerminalInputRequest): void {
-    this.takeToken(client);
+    if (!this.rate.take(client)) {
+      throw new TerminalInputRefusedError(
+        "rate_limited",
+        "Muitas mensagens de teclado em pouco tempo; espere um instante.",
+        "unavailable",
+      );
+    }
     if (request.data.length > this.limits.maxChars) {
       throw new TerminalInputRefusedError(
         "input_too_large",
@@ -47,29 +88,7 @@ export class TerminalInput {
       );
     }
 
-    const graph = this.terminals.activeGraph(request.runId);
-    if (!graph) {
-      throw new TerminalInputRefusedError(
-        "run_not_running",
-        `A execução "${request.runId}" não está em andamento.`,
-        "conflict",
-      );
-    }
-    const agent = graph.nodes.find((node) => node.type === "agent" && node.name === request.agent);
-    if (agent?.type !== "agent") {
-      throw new TerminalInputRefusedError(
-        "agent_not_in_run",
-        `"${request.agent}" não é um agente desta execução.`,
-        "not_found",
-      );
-    }
-    if (agent.runtime.kind !== "terminal" || agent.runtime.mode !== "pty") {
-      throw new TerminalInputRefusedError(
-        "not_a_terminal",
-        `O agente "${agent.name}" não roda num terminal que se possa digitar.`,
-        "invalid",
-      );
-    }
+    const agent = requireTerminalAgent(this.terminals, request.runId, request.agent);
 
     try {
       this.terminals.writeInput(request.runId, agent.name, request.data);
@@ -78,23 +97,5 @@ export class TerminalInput {
       // A runtime failing to write: say the terminal is unreachable, without its own message.
       throw new TerminalUnavailableError(agent.name);
     }
-  }
-
-  /** A bucket of `maxPerSecond` tokens that refills at that rate: bursts pass, a flood does not. */
-  private takeToken(client: object): void {
-    const capacity = this.limits.maxPerSecond;
-    const now = Date.now();
-    const bucket = this.buckets.get(client) ?? { tokens: capacity, at: now };
-    bucket.tokens = Math.min(capacity, bucket.tokens + ((now - bucket.at) / 1000) * capacity);
-    bucket.at = now;
-    this.buckets.set(client, bucket);
-    if (bucket.tokens < 1) {
-      throw new TerminalInputRefusedError(
-        "rate_limited",
-        "Muitas mensagens de teclado em pouco tempo; espere um instante.",
-        "unavailable",
-      );
-    }
-    bucket.tokens -= 1;
   }
 }

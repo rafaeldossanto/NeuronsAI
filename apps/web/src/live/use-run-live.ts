@@ -53,6 +53,8 @@ export function useRunLive(runId: string): {
   inputError: TerminalInputError | null;
   /** Sends keystrokes to the agent's terminal; false when there is no open connection. */
   sendTerminalInput: (agent: string, data: string) => boolean;
+  /** Tells the server how big the screen of the agent's terminal is here (`terminal.resize`). */
+  sendTerminalResize: (agent: string, cols: number, rows: number) => boolean;
   clearInputError: () => void;
 } {
   const [model, dispatch] = useReducer(reducer, initialModel);
@@ -88,6 +90,9 @@ export function useRunLive(runId: string): {
   const sendTerminalInput = useCallback((agent: string, data: string) => {
     return clientRef.current?.sendTerminalInput(agent, data) ?? false;
   }, []);
+  const sendTerminalResize = useCallback((agent: string, cols: number, rows: number) => {
+    return clientRef.current?.sendTerminalResize(agent, cols, rows) ?? false;
+  }, []);
   const clearInputError = useCallback(() => dispatch({ type: "inputError", inputError: null }), []);
 
   return {
@@ -96,6 +101,7 @@ export function useRunLive(runId: string): {
     error: model.error,
     inputError: model.inputError,
     sendTerminalInput,
+    sendTerminalResize,
     clearInputError,
   };
 }

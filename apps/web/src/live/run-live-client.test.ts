@@ -247,3 +247,100 @@ describe("RunLiveClient: digitar no terminal", () => {
     expect(renewSession.mock.calls.length).toBeLessThanOrEqual(2);
   });
 });
+
+describe("RunLiveClient: tamanho do terminal", () => {
+  it("manda terminal.resize só depois da assinatura confirmada", () => {
+    const { client } = setup();
+    FakeSocket.last.open();
+    expect(client.sendTerminalResize("Pesquisador", 100, 30)).toBe(false);
+    expect(FakeSocket.last.sent).toEqual([{ event: "subscribe", data: { runId, fromSeq: 1 } }]);
+
+    FakeSocket.last.push("subscribed", { runId });
+    // The size asked for before the confirmation goes out with it.
+    expect(FakeSocket.last.sent.at(-1)).toEqual({
+      event: "terminal.resize",
+      data: { runId, agent: "Pesquisador", cols: 100, rows: 30 },
+    });
+    expect(client.sendTerminalResize("Pesquisador", 110, 35)).toBe(true);
+    expect(FakeSocket.last.sent.at(-1)).toEqual({
+      event: "terminal.resize",
+      data: { runId, agent: "Pesquisador", cols: 110, rows: 35 },
+    });
+  });
+
+  it("lembra o último tamanho de cada agente e o manda de novo ao reassinar", () => {
+    const { client } = setup();
+    FakeSocket.last.open();
+    FakeSocket.last.push("subscribed", { runId });
+    client.sendTerminalResize("A", 100, 30);
+    client.sendTerminalResize("A", 120, 40);
+    client.sendTerminalResize("B", 80, 24);
+
+    FakeSocket.last.drop();
+    vi.advanceTimersByTime(100);
+    FakeSocket.last.open();
+    FakeSocket.last.push("subscribed", { runId });
+
+    const resizes = FakeSocket.last.sent.filter((message) => message.event === "terminal.resize");
+    expect(resizes.map((message) => message.data)).toEqual([
+      { runId, agent: "A", cols: 120, rows: 40 },
+      { runId, agent: "B", cols: 80, rows: 24 },
+    ]);
+  });
+
+  it("repassa o tamanho que o servidor deu ao terminal, e o tamanho do resumo", () => {
+    const { events } = setup();
+    FakeSocket.last.open();
+    FakeSocket.last.push("run.ephemeral", {
+      runId,
+      type: "TerminalResized",
+      agent: "A",
+      cols: 90,
+      rows: 30,
+    });
+    FakeSocket.last.push("run.ephemeral", {
+      runId,
+      type: "TerminalOutput",
+      agent: "A",
+      data: "x",
+      replay: true,
+      cols: 90,
+      rows: 30,
+    });
+
+    expect(events).toEqual([
+      { type: "TerminalResized", agent: "A", cols: 90, rows: 30 },
+      { type: "TerminalOutput", agent: "A", data: "x", replay: true, cols: 90, rows: 30 },
+    ]);
+  });
+
+  it("ignora tamanhos que não são números inteiros positivos", () => {
+    const { events } = setup();
+    FakeSocket.last.open();
+    for (const [cols, rows] of [
+      [0, 30],
+      [90.5, 30],
+      ["90", 30],
+      [90, null],
+    ]) {
+      FakeSocket.last.push("run.ephemeral", {
+        runId,
+        type: "TerminalResized",
+        agent: "A",
+        cols,
+        rows,
+      });
+    }
+    FakeSocket.last.push("run.ephemeral", {
+      runId,
+      type: "TerminalOutput",
+      agent: "A",
+      data: "x",
+      replay: true,
+      cols: -1,
+      rows: 30,
+    });
+
+    expect(events).toEqual([{ type: "TerminalOutput", agent: "A", data: "x", replay: true }]);
+  });
+});

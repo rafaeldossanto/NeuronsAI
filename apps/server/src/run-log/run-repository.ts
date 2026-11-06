@@ -1,4 +1,5 @@
 import type { GraphDefinition } from "@neurons/graph-schema";
+import type { RunQuotas } from "./run-quota.js";
 import type { RunStatus } from "../database/schema/index.js";
 import type { Recorded, RunEventDraft } from "./run-event-draft.js";
 
@@ -28,7 +29,7 @@ export interface RunListItem extends RunSummaryRecord {
   unknownCostTurns: number;
 }
 
-export const RUN_SORTS = ["startedAt", "costUsd"] as const;
+export const RUN_SORTS = ["startedAt", "costUsd", "durationMs"] as const;
 export type RunSort = (typeof RUN_SORTS)[number];
 
 export interface RunListFilter {
@@ -41,7 +42,10 @@ export interface RunListFilter {
   /** Bounds on `startedAt`, inclusive; runs that never started never match when one is given. */
   from?: Date;
   to?: Date;
-  /** Defaults to `startedAt`. */
+  /**
+   * Defaults to `startedAt`. `durationMs` sorts by `finishedAt - startedAt`; runs without both
+   * (still going, never started) always come last, ascending or descending.
+   */
   sort?: RunSort;
   /** Defaults to `desc` (newest / dearest first). */
   order?: "asc" | "desc";
@@ -66,11 +70,15 @@ export interface ActiveRun {
 export type FinalRunStatus = Extract<RunStatus, "succeeded" | "failed" | "cancelled">;
 
 export interface RunRepository {
-  /** Creates the run already `running` and stores the events in the same transaction. */
+  /**
+   * Creates the run already `running` and stores the events in the same transaction.
+   * With `quotas` (inside an organization) the limits are checked in that same transaction, under
+   * a lock per organization, so parallel starts cannot slip past them; it throws QuotaExceededError.
+   */
   createRunning(
     graphVersionId: string,
     eventsFor: (run: RunRecord) => RunEventDraft[],
-    options?: { budgetUsd?: number },
+    options?: { budgetUsd?: number; quotas?: RunQuotas },
   ): Promise<Recorded<RunRecord>>;
 
   /**
@@ -87,6 +95,9 @@ export interface RunRepository {
 
   /** The run as the listings show it. */
   findSummary(runId: string): Promise<RunSummaryRecord | undefined>;
+
+  /** How many events the run's log holds (a count over the primary key; 0 for an unknown run). */
+  countEvents(runId: string): Promise<number>;
 
   listRunning(): Promise<ActiveRun[]>;
 
