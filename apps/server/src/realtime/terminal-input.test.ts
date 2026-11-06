@@ -1,10 +1,10 @@
-import { Signal, type TerminalAgentRuntime } from "@neurons/agent-runtimes";
 import type { AgentNode, GraphDefinition } from "@neurons/graph-schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RunSubscriptions } from "./run-subscriptions.js";
 import { TerminalUnavailableError } from "./terminal-errors.js";
 import { TerminalInput } from "./terminal-input.js";
 import { TerminalSessions } from "./terminal-sessions.js";
+import { FakeTerminal } from "./testing/fake-terminal.js";
 
 const RUN = "0192f1c0-0000-7000-8000-000000000001";
 const position = { x: 0, y: 0 };
@@ -38,19 +38,6 @@ const graph: GraphDefinition = {
   links: [],
   annotations: [],
 };
-
-/** Just the terminal side of a runtime. */
-class FakeTerminal {
-  readonly typed: string[] = [];
-  failWith: Error | undefined;
-  onOutput = (listener: (chunk: string) => void) => new Signal<string>().subscribe(listener);
-  outputSnapshot = () => "";
-  writeInput = (data: string) => {
-    if (this.failWith) throw this.failWith;
-    this.typed.push(data);
-  };
-  asRuntime = () => this as unknown as TerminalAgentRuntime;
-}
 
 describe("TerminalInput", () => {
   let sessions: TerminalSessions;

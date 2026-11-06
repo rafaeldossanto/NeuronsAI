@@ -125,6 +125,7 @@ async function main(): Promise<number> {
     const runId = wiring.published[0]?.runId;
     if (runId) wiring.terminals.replayTo(sink, runId);
     for (const screen of screens) {
+      if (screen.type !== "TerminalOutput") continue;
       log(`fim da tela de ${screen.agent}:\n${lastLines(screen.data, 12)}`);
     }
     // The run may already be ending on its own: this waits for that to finish before exiting.

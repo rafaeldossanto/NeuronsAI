@@ -2,7 +2,7 @@ import type { AddressInfo } from "node:net";
 import { Logger } from "@nestjs/common";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import twoTerminals from "@neurons/graph-schema/examples/two-terminals.json" with { type: "json" };
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import {
   FakeAgentRuntimeFactory,
@@ -11,7 +11,7 @@ import {
 } from "../agents/testing/fake-agent-runtime.js";
 import { startTestApi } from "../api/testing/test-api.js";
 import { startTestDatabase, type TestDatabase } from "../database/testing/test-database.js";
-import { deferred, delay, eventually } from "../hub/testing/async-helpers.js";
+import { deferred, eventually } from "../hub/testing/async-helpers.js";
 import type { AppConfig } from "../shared/config/app-config.js";
 
 /** The realtime endpoint (/ws) over the whole app: the new events and typing into a terminal. */
@@ -86,6 +86,22 @@ async function connect(): Promise<{ socket: WebSocket; frames: Frame[] }> {
 
 const send = (socket: WebSocket, event: string, data: unknown) =>
   socket.send(JSON.stringify({ event, data }));
+
+/**
+ * Follows the run from its start and waits for the server's `subscribed`. Handling a subscription is
+ * asynchronous (it reads the history from the database), and the terminal's snapshot is taken at
+ * its end: whatever the test does with the terminal before that confirmation may be delivered live
+ * AND again in the snapshot. Waiting for the event, not for the agent's state, removes that race.
+ */
+async function follow(client: { socket: WebSocket; frames: Frame[] }, runId: string) {
+  const confirmed = client.frames.filter((frame) => frame.event === "subscribed").length;
+  send(client.socket, "subscribe", { runId, fromSeq: 1 });
+  await eventually(() =>
+    expect(client.frames.filter((frame) => frame.event === "subscribed")).toHaveLength(
+      confirmed + 1,
+    ),
+  );
+}
 
 interface WireEvent {
   seq: number;
@@ -180,7 +196,7 @@ describe("terminal.input", () => {
     );
     const { socket, frames } = await connect();
     const runId = await startRun();
-    send(socket, "subscribe", { runId, fromSeq: 1 });
+    await follow({ socket, frames }, runId);
     await eventually(() => expect(fakes.runtimeOf("Pesquisador")?.state).toBe("busy"));
     return { fakes, socket, frames, runId };
   }
@@ -191,8 +207,11 @@ describe("terminal.input", () => {
     send(socket, "terminal.input", { runId, agent: "Pesquisador", data: "ls\r" });
 
     await eventually(() => expect(typed(fakes)).toEqual(["ls\r"]));
-    await delay(50);
-    expect(errors(frames)).toEqual([]);
+    // "No error came back" is proved by an event, not by waiting: a refusal sent after the accepted
+    // message is answered, and nothing was answered before it.
+    send(socket, "terminal.input", { runId, agent: "Fantasma", data: "x" });
+    await eventually(() => expect(errors(frames)).toHaveLength(1));
+    expect(errors(frames)).toMatchObject([{ code: "agent_not_in_run" }]);
     await release(frames);
   });
 
@@ -238,13 +257,20 @@ describe("terminal.input", () => {
       terminalInput: { maxChars: 100, maxPerSecond: 3 },
     });
 
-    for (let i = 0; i < 10; i++) {
-      send(socket, "terminal.input", { runId, agent: "Pesquisador", data: String(i) });
+    // The bucket refills with time, so with a clock that stands still the count is exact: a burst
+    // of 3 gets through and the other 7 are refused, however slow the machine is.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      for (let i = 0; i < 10; i++) {
+        send(socket, "terminal.input", { runId, agent: "Pesquisador", data: String(i) });
+      }
+      await eventually(() => expect(errors(frames)).toHaveLength(7));
+      await eventually(() => expect(typed(fakes)).toHaveLength(3));
+    } finally {
+      vi.useRealTimers();
     }
 
-    await eventually(() => expect(errors(frames).length).toBeGreaterThan(0));
     expect(errors(frames).every((error) => error.code === "rate_limited")).toBe(true);
-    expect(typed(fakes).length).toBeLessThanOrEqual(4);
     await release(frames);
   });
 
@@ -285,7 +311,7 @@ describe("terminal output when a client reconnects", () => {
     });
     const first = await connect();
     const runId = await startRun();
-    send(first.socket, "subscribe", { runId, fromSeq: 1 });
+    await follow(first, runId);
     await eventually(() => expect(fakes.runtimeOf("Pesquisador")?.state).toBe("busy"));
     const terminal = fakes.runtimeOf("Pesquisador") as FakeTerminalRuntime;
     terminal.print("antes da queda;");
@@ -296,7 +322,7 @@ describe("terminal output when a client reconnects", () => {
     first.socket.close();
     terminal.print("durante a queda;");
     const second = await connect();
-    send(second.socket, "subscribe", { runId, fromSeq: 1 });
+    await follow(second, runId);
 
     await eventually(() =>
       expect(second.frames.filter((frame) => frame.event === "run.ephemeral")).toMatchObject([
@@ -313,5 +339,154 @@ describe("terminal output when a client reconnects", () => {
     expect(JSON.stringify(events(second.frames))).not.toContain("durante a queda");
     hold.resolve();
     await eventually(() => expect(events(second.frames, "RunFinished")).toHaveLength(1));
+  });
+});
+
+describe("terminal.resize", () => {
+  let hold = deferred();
+  const researcher = (fakes: FakeAgentRuntimeFactory) =>
+    fakes.runtimeOf("Pesquisador") as FakeTerminalRuntime;
+  const sizes = (frames: Frame[]) =>
+    frames
+      .filter(
+        (frame) => frame.event === "run.ephemeral" && frame.data["type"] === "TerminalResized",
+      )
+      .map((frame) => `${String(frame.data["cols"])}x${String(frame.data["rows"])}`);
+
+  const release = async (frames: Frame[]) => {
+    hold.resolve();
+    await eventually(() => expect(events(frames, "RunFinished")).toHaveLength(1));
+  };
+
+  /** A run whose researcher stays busy (and so keeps its terminal) until the test lets it go. */
+  async function startHeldRun() {
+    hold = deferred();
+    const fakes = await startServer({
+      Pesquisador: async (turn) => {
+        await hold.promise;
+        await turn.finish("fim");
+      },
+    });
+    const first = await connect();
+    const runId = await startRun();
+    await follow(first, runId);
+    await eventually(() => expect(fakes.runtimeOf("Pesquisador")?.state).toBe("busy"));
+    return { fakes, runId, ...first };
+  }
+
+  it("resizes the terminal and tells everyone who follows the run, with no reply to the asker", async () => {
+    const { fakes, socket, frames, runId } = await startHeldRun();
+
+    send(socket, "terminal.resize", { runId, agent: "Pesquisador", cols: 100, rows: 30 });
+
+    await eventually(() => expect(sizes(frames).length).toBeGreaterThan(0));
+    await eventually(() => expect(sizes(frames)).toEqual(["100x30"]));
+    expect(researcher(fakes).resized).toEqual([{ cols: 100, rows: 30 }]);
+    // Never in the run log, like the output.
+    expect(JSON.stringify(events(frames))).not.toContain("TerminalResized");
+    expect(errors(frames)).toEqual([]);
+    await release(frames);
+  });
+
+  it("gives the terminal the smallest size among its viewers, and grows back when that viewer leaves", async () => {
+    const { socket: big, frames: bigFrames, runId } = await startHeldRun();
+    const small = await connect();
+    await follow(small, runId);
+
+    send(big, "terminal.resize", { runId, agent: "Pesquisador", cols: 200, rows: 50 });
+    await eventually(() => expect(sizes(bigFrames)).toEqual(["200x50"]));
+    send(small.socket, "terminal.resize", { runId, agent: "Pesquisador", cols: 80, rows: 24 });
+    await eventually(() => expect(sizes(bigFrames)).toEqual(["200x50", "80x24"]));
+    // The small viewer is a viewer like any other: a bigger one asking again does not move it.
+    send(big, "terminal.resize", { runId, agent: "Pesquisador", cols: 220, rows: 60 });
+    send(big, "terminal.input", { runId, agent: "Fantasma", data: "x" }); // a barrier: answered after
+    await eventually(() => expect(errors(bigFrames)).toHaveLength(1));
+    expect(sizes(bigFrames)).toEqual(["200x50", "80x24"]);
+
+    small.socket.close();
+    await eventually(() => expect(sizes(bigFrames)).toEqual(["200x50", "80x24", "220x60"]));
+    await release(bigFrames);
+  });
+
+  it("gives a client that subscribes late the size the terminal has, with the screen", async () => {
+    const { fakes, socket, frames, runId } = await startHeldRun();
+    send(socket, "terminal.resize", { runId, agent: "Pesquisador", cols: 100, rows: 30 });
+    await eventually(() => expect(sizes(frames)).toEqual(["100x30"]));
+    researcher(fakes).print("tela nova");
+
+    const late = await connect();
+    await follow(late, runId);
+
+    await eventually(() =>
+      expect(late.frames.filter((frame) => frame.event === "run.ephemeral")).toMatchObject([
+        { data: { type: "TerminalOutput", data: "tela nova", replay: true, cols: 100, rows: 30 } },
+      ]),
+    );
+    await release(frames);
+  });
+
+  it("refuses with error { code, message }, and resizes nothing", async () => {
+    const { fakes, socket, frames, runId } = await startHeldRun();
+    const refuse = (data: Record<string, unknown>) => send(socket, "terminal.resize", data);
+    const ok = { runId, agent: "Pesquisador", cols: 100, rows: 30 };
+
+    refuse({ ...ok, agent: "Fantasma" });
+    refuse({ ...ok, agent: "Revisor" });
+    refuse({ ...ok, cols: 19 });
+    refuse({ ...ok, rows: 201 });
+    refuse({ ...ok, runId: "0192f1c0-0000-7000-8000-0000000000ff" });
+    refuse({ ...ok, cols: 80.5 });
+    refuse({ runId, agent: "Pesquisador", cols: 100 });
+    refuse({ ...ok, runId: "não-é-uuid" });
+
+    await eventually(() => expect(errors(frames)).toHaveLength(8));
+    expect(
+      errors(frames)
+        .map((error) => error.code)
+        .sort(),
+    ).toEqual(
+      [
+        "agent_not_in_run",
+        "invalid_message",
+        "invalid_message",
+        "invalid_message",
+        "invalid_size",
+        "invalid_size",
+        "not_a_terminal",
+        "run_not_running",
+      ].sort(),
+    );
+    for (const error of errors(frames)) expect(typeof error.message).toBe("string");
+    expect(researcher(fakes).resized).toEqual([]);
+    await release(frames);
+  });
+
+  it("refuses to resize once the run is over", async () => {
+    const { socket, frames, runId } = await startHeldRun();
+    hold.resolve();
+    await eventually(() => expect(events(frames, "RunFinished")).toHaveLength(1));
+
+    send(socket, "terminal.resize", { runId, agent: "Pesquisador", cols: 100, rows: 30 });
+
+    await eventually(() => expect(errors(frames)).toMatchObject([{ code: "run_not_running" }]));
+  });
+
+  it("limits the rate of one connection", async () => {
+    const { fakes, socket, frames, runId } = await startHeldRun();
+
+    // A clock that stands still makes the count exact: a burst of 5 gets through, the rest is refused.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      for (let i = 0; i < 8; i++) {
+        send(socket, "terminal.resize", { runId, agent: "Pesquisador", cols: 80 + i, rows: 24 });
+      }
+      await eventually(() => expect(errors(frames)).toHaveLength(3));
+      await eventually(() => expect(researcher(fakes).resized.length).toBeGreaterThanOrEqual(1));
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(errors(frames).every((error) => error.code === "resize_rate_limited")).toBe(true);
+    await release(frames);
   });
 });
