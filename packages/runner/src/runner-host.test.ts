@@ -398,14 +398,13 @@ describe("RunnerHost: protocol revisions", () => {
 });
 
 describe("RunnerHost: terminal resize (revision 4)", () => {
-  const registered = (revision?: number) =>
-    ({
-      type: "registered",
-      runnerId: "r1",
-      ...(revision !== undefined && { revision }),
-      heartbeatIntervalMs: 60_000,
-      keep: [],
-    }) as const;
+  const registered = (revision?: number): ServerBody => ({
+    type: "registered",
+    runnerId: "r1",
+    ...(revision !== undefined && { revision }),
+    heartbeatIntervalMs: 60_000,
+    keep: [],
+  });
 
   it("resizes the terminal and confirms the size it applied, before the output that follows", async () => {
     const r = rig({ terminal: true });
