@@ -1,4 +1,5 @@
 import type { GraphDefinition } from "@neurons/graph-schema";
+import type { RunQuotas } from "./run-quota.js";
 import type { RunStatus } from "../database/schema/index.js";
 import type { Recorded, RunEventDraft } from "./run-event-draft.js";
 
@@ -69,11 +70,15 @@ export interface ActiveRun {
 export type FinalRunStatus = Extract<RunStatus, "succeeded" | "failed" | "cancelled">;
 
 export interface RunRepository {
-  /** Creates the run already `running` and stores the events in the same transaction. */
+  /**
+   * Creates the run already `running` and stores the events in the same transaction.
+   * With `quotas` (inside an organization) the limits are checked in that same transaction, under
+   * a lock per organization, so parallel starts cannot slip past them; it throws QuotaExceededError.
+   */
   createRunning(
     graphVersionId: string,
     eventsFor: (run: RunRecord) => RunEventDraft[],
-    options?: { budgetUsd?: number },
+    options?: { budgetUsd?: number; quotas?: RunQuotas },
   ): Promise<Recorded<RunRecord>>;
 
   /**
@@ -93,12 +98,6 @@ export interface RunRepository {
 
   /** How many events the run's log holds (a count over the primary key; 0 for an unknown run). */
   countEvents(runId: string): Promise<number>;
-
-  /** Runs of the current organization (or the local workspace) that are `pending` or `running`. */
-  countActive(): Promise<number>;
-
-  /** Runs of the current organization (or the local workspace) that started at or after `since`. */
-  countStartedSince(since: Date): Promise<number>;
 
   listRunning(): Promise<ActiveRun[]>;
 

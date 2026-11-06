@@ -56,6 +56,22 @@ describe("RunService", () => {
       ).resolves.toBeDefined();
     });
 
+    it("lets only the limit through when the starts arrive at the same moment", async () => {
+      const { runService, runtimes } = createHubHarness(persistence, {
+        runQuotas: { concurrentRunsPerOrganization: 2, runsPerDayPerOrganization: 0 },
+      });
+      runtimes.setScript("Alfa", () => new Promise<void>(() => {}));
+
+      const results = await Promise.allSettled(
+        Array.from({ length: 6 }, (_, index) =>
+          inOrganization(() => runService.start(versionId, `entrada ${String(index)}`)),
+        ),
+      );
+
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(2);
+      expect(results.filter((result) => result.status === "rejected")).toHaveLength(4);
+    });
+
     it("refuses a run beyond the daily limit, counting the last 24 hours", async () => {
       const { runService } = createHubHarness(persistence, {
         runQuotas: { concurrentRunsPerOrganization: 0, runsPerDayPerOrganization: 2 },
