@@ -108,7 +108,7 @@ Dados criados antes de o servidor ter contas (`organization_id` nulo: grafos, ve
 
 - `GET /auth/organizations/{id}/local-data` mostra quantos itens há; `POST /auth/organizations/{id}/adopt-local-data` com `{ "confirm": true }` os move para a organização. Só o `owner` dela, só com contas ligadas, e só quando ele pede (nunca na partida).
 - Uma transação move grafos (com versões, execuções e gatilhos) e segredos (recriptografados para a organização); depois as pastas de memórias vão para a pasta da organização. Repetir não duplica nem perde nada: sem nada local, devolve zeros.
-- Recusa (`409`) com execução local em andamento ou segredo de mesmo nome já existente na organização (nada é movido); sem a chave mestra certa (`503`) também nada é movido. Gatilhos com agenda ficam desligados: ligue de novo. Runners não mudam.
+- Recusa (`409`) com execução local em andamento ou segredo de mesmo nome já existente na organização (nada é movido); sem a chave mestra certa (`503`) também nada é movido. Todos os gatilhos (agendas e webhooks) chegam desligados: ligue de novo. Duas adoções ao mesmo tempo são feitas uma de cada vez. Runners não mudam.
 
 ### Segredos em grafo publicado
 
