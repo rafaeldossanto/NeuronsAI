@@ -8,6 +8,8 @@ import { createApp } from "../create-app.js";
 import { testConfig } from "../shared/config/testing/test-config.js";
 import { MemoriesService } from "./memories.service.js";
 
+// A full run: the app boots a PGlite, a runner and a child process. On a machine busy with other suites
+// it takes several times its ~8 s, so the budgets are generous: they only decide when to give up.
 it("terminal → MCP → runner → servidor: cria, lê e edita a memória, com eventos registrados", async () => {
   Logger.overrideLogger(false);
   const directory = await mkdtemp(path.join(tmpdir(), "neurons-memory-run-"));
@@ -116,7 +118,7 @@ it("terminal → MCP → runner → servidor: cria, lê e edita a memória, com 
         expect(result.status).toBe("succeeded");
         expect(result.finish?.result).toContain("Versão final");
       },
-      { timeout: 35_000, interval: 150 },
+      { timeout: 90_000, interval: 150 },
     );
     expect(
       await readFile(
@@ -141,4 +143,4 @@ it("terminal → MCP → runner → servidor: cria, lê e edita a memória, com 
     await app.close();
     await rm(directory, { recursive: true, force: true });
   }
-}, 50_000);
+}, 120_000);
