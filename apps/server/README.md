@@ -108,7 +108,7 @@ Dados criados antes de o servidor ter contas (`organization_id` nulo: grafos, ve
 
 - `GET /auth/organizations/{id}/local-data` mostra quantos itens há; `POST /auth/organizations/{id}/adopt-local-data` com `{ "confirm": true }` os move para a organização. Só o `owner` dela, só com contas ligadas, e só quando ele pede (nunca na partida).
 - Uma transação move grafos (com versões, execuções e gatilhos) e segredos (recriptografados para a organização); depois as pastas de memórias vão para a pasta da organização. Repetir não duplica nem perde nada: sem nada local, devolve zeros.
-- Recusa (`409`) com execução local em andamento ou segredo de mesmo nome já existente na organização (nada é movido); sem a chave mestra certa (`503`) também nada é movido. Gatilhos com agenda ficam desligados: ligue de novo. Runners não mudam.
+- Recusa (`409`) com execução local em andamento ou segredo de mesmo nome já existente na organização (nada é movido); sem a chave mestra certa (`503`) também nada é movido. Todos os gatilhos (agendas e webhooks) chegam desligados: ligue de novo. Duas adoções ao mesmo tempo são feitas uma de cada vez. Runners não mudam.
 
 ### Segredos em grafo publicado
 
@@ -179,20 +179,20 @@ Verificação rápida: `http://127.0.0.1:3100/health`. O campo `database.type` d
 
 Sem login ainda. Cada endpoint declara o seu contrato em zod (`*.contract.ts`: parâmetros, query, corpo e resposta) e o `@Endpoint(contrato)` do controller usa **esse mesmo** schema para validar o pedido, conferir a resposta e gerar o OpenAPI: não há DTO escrito à mão. Um pedido fora do contrato recebe `400`; um campo que o schema de resposta não nomeia nunca sai do servidor.
 
-| Método e caminho                                    | O que faz                                                                                                                                                                                   |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET/POST /graphs`, `GET/PATCH/DELETE /graphs/{id}` | CRUD de grafos (nome e rascunho). Só apaga grafo sem versões publicadas (`409 graph_has_versions`).                                                                                         |
-| `GET /graphs/{id}/versions`, `GET .../{version}`    | Versões publicadas (imutáveis).                                                                                                                                                             |
-| `POST /graphs/{id}/versions`                        | Valida com o `validateGraph` e congela a próxima versão. Sem `definition`, publica o rascunho. Inválido: `400 invalid_graph` com `details` apontando o que corrigir.                        |
-| `POST /runs`, `GET /runs`, `GET /runs/{id}`         | Inicia uma execução de uma versão (`graphVersionId`, `input`, `triggerId?`, `budgetUsd?`), [lista com filtros](#get-runs-lista-de-execuções) e detalha (motivo do fim, consumo por agente). |
-| `POST /runs/{id}/stop`                              | Para a execução: encerra os runtimes e os terminais (`RunService` → `Supervisor.stopRun`). Pode repetir.                                                                                    |
-| `POST /runs/{id}/messages`                          | Manda uma mensagem como `@human` a qualquer agente da execução (as setas não valem para você).                                                                                              |
-| `GET /runs/{id}/messages`, `GET /runs/{id}/events`  | Mensagens e eventos em ordem (`afterSeq`/`fromSeq`, `limit`): o mesmo log que o WebSocket transmite. Os eventos vêm com `total` (quantos a execução tem no todo, independente da página).   |
-| `GET /graphs/{id}/triggers/{triggerId}`             | Estado de um gatilho externo: `enabled`, `hookPath`, `hooksPort`, `hasSecret`, `lastRun` e `nextRunAt` ([ver abaixo](#gatilhos-externos-t16a)).                                             |
-| `POST /graphs/{id}/triggers/{triggerId}/secret`     | Gera o segredo do webhook ou **troca** o atual. O segredo aparece **só nesta resposta** (`201`); depois só se sabe que existe. Sem `NEURONS_MASTER_KEY`: `503`.                             |
-| `PUT /graphs/{id}/triggers/{triggerId}/enabled`     | `{ "enabled": true\|false }`. Ativar exige o gatilho (webhook ou agenda) na versão publicada mais recente e, no webhook, o segredo (`409`).                                                 |
-| `GET /secrets`, `PUT /secrets/{name}`               | **Só** nomes e escrita. O valor entra e nunca volta: nenhum schema de resposta o carrega, e erros de validação não repetem o que foi enviado.                                               |
-| `GET /openapi.json`, `GET /health`                  | Documento OpenAPI e saúde.                                                                                                                                                                  |
+| Método e caminho                                    | O que faz                                                                                                                                                                                           |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET/POST /graphs`, `GET/PATCH/DELETE /graphs/{id}` | CRUD de grafos (nome e rascunho). Só apaga grafo sem versões publicadas (`409 graph_has_versions`).                                                                                                 |
+| `GET /graphs/{id}/versions`, `GET .../{version}`    | Versões publicadas (imutáveis).                                                                                                                                                                     |
+| `POST /graphs/{id}/versions`                        | Valida com o `validateGraph` e congela a próxima versão. Sem `definition`, publica o rascunho. Inválido: `400 invalid_graph` com `details` apontando o que corrigir.                                |
+| `POST /runs`, `GET /runs`, `GET /runs/{id}`         | Inicia uma execução de uma versão (`graphVersionId`, `input`, `triggerId?`, `budgetUsd?`), [lista com filtros](#get-runs-lista-de-execuções) e detalha (motivo do fim, consumo por agente).         |
+| `POST /runs/{id}/stop`                              | Para a execução: encerra os runtimes e os terminais (`RunService` → `Supervisor.stopRun`). Pode repetir.                                                                                            |
+| `POST /runs/{id}/messages`                          | Manda uma mensagem como `@human` a qualquer agente da execução (as setas não valem para você).                                                                                                      |
+| `GET /runs/{id}/messages`, `GET /runs/{id}/events`  | Mensagens e eventos em ordem (`afterSeq`/`fromSeq`, `limit`): o mesmo log que o WebSocket transmite. Os eventos vêm com `total` (quantos a execução tem no todo, independente da página).           |
+| `GET /graphs/{id}/triggers/{triggerId}`             | Estado de um gatilho externo: `enabled`, `hookPath`, `hooksPort`, `hasSecret`, `lastRun` e `nextRunAt` ([ver abaixo](#gatilhos-externos-t16a)).                                                     |
+| `POST /graphs/{id}/triggers/{triggerId}/secret`     | Gera o segredo do webhook ou **troca** o atual. O segredo aparece **só nesta resposta** (`201`); depois só se sabe que existe. Sem `NEURONS_MASTER_KEY`: `503`.                                     |
+| `PUT /graphs/{id}/triggers/{triggerId}/enabled`     | `{ "enabled": true\|false }`. Ativar exige o gatilho (webhook ou agenda) na versão publicada mais recente e, no webhook, o segredo (`409`).                                                         |
+| `GET /secrets`, `PUT /secrets/{name}`               | **Só** nomes e escrita. O valor entra e nunca volta: nenhum schema de resposta o carrega, e erros de validação não repetem o que foi enviado. Nomes `webhook.*` são reservados ao servidor (`400`). |
+| `GET /openapi.json`, `GET /health`                  | Documento OpenAPI e saúde.                                                                                                                                                                          |
 
 ### `GET /runs`: lista de execuções
 

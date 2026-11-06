@@ -1,7 +1,7 @@
 import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import path from "node:path";
 import { Inject, Injectable } from "@nestjs/common";
-import { and, count, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   DatabaseService,
@@ -94,7 +94,12 @@ export class LocalDataAdoption {
    */
   async adopt(userId: string, organizationId: string): Promise<LocalDataSummary> {
     const moved = await this.database.db.transaction(async (tx) => {
-      // Serialises two adoptions (and member changes) on the same organization.
+      // There is one local workspace and many organizations that could claim it: two adoptions at
+      // once (into different organizations) would each read the same local rows, and the second
+      // would then re-point secrets the first had just moved. One adoption at a time, whichever the
+      // organization; the lock is released with the transaction.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('neurons:adopt-local-data'))`);
+      // Serialises an adoption with member changes on the same organization.
       await tx
         .select({ id: organizations.id })
         .from(organizations)
@@ -112,9 +117,10 @@ export class LocalDataAdoption {
 
       const summary = await this.summarize(tx);
       await this.moveSecrets(tx, organizationId);
-      // Schedules armed in memory belong to the local scope and cannot fire from there once the
-      // graph has left it: they are turned off, and the owner turns them on again in the
-      // organization.
+      // Triggers arrive switched off, webhooks as well as schedules: a schedule armed in memory
+      // cannot fire from the local scope once the graph has left it, and a webhook that answered
+      // for the local workspace must not start answering for an organization without its owner
+      // saying so. The owner turns them on again in the organization.
       const localGraphs = tx
         .select({ id: graphs.id })
         .from(graphs)
@@ -122,9 +128,7 @@ export class LocalDataAdoption {
       await tx
         .update(graphTriggers)
         .set({ enabled: false, nextRunAt: null })
-        .where(
-          and(inArray(graphTriggers.graphId, localGraphs), isNotNull(graphTriggers.nextRunAt)),
-        );
+        .where(inArray(graphTriggers.graphId, localGraphs));
       await tx.update(graphs).set({ organizationId }).where(isNull(graphs.organizationId));
       return summary;
     });
@@ -189,7 +193,7 @@ export class LocalDataAdoption {
       await tx
         .update(secrets)
         .set({ organizationId, ...next, updatedAt: sql`now()` })
-        .where(eq(secrets.id, row.id));
+        .where(and(eq(secrets.id, row.id), isNull(secrets.organizationId)));
     }
   }
 

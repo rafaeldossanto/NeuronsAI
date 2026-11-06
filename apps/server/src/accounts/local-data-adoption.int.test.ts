@@ -162,6 +162,38 @@ describe("LocalDataAdoption", () => {
     expect(await readdir(memoriesRoot)).toEqual(["organizations"]);
   });
 
+  it("brings every trigger over switched off, a webhook that was on included", async () => {
+    const { graph } = await seedLocalWorkspace();
+    await db()
+      .insert(graphTriggers)
+      .values({
+        graphId: graph.id,
+        triggerId: "webhook",
+        hookId: randomBytes(16).toString("base64url"),
+        enabled: true,
+        secretSetAt: new Date(),
+      });
+
+    await adoption.adopt(alice.id, aliceOrg);
+
+    const triggers = await db().select().from(graphTriggers);
+    expect(triggers).toHaveLength(2);
+    expect(triggers.every((trigger) => !trigger.enabled && trigger.nextRunAt === null)).toBe(true);
+  });
+
+  it("gives the local workspace to only one of two organizations that claim it at once", async () => {
+    const { graph } = await seedLocalWorkspace();
+    const bobOrg = (await accounts.listOrganizations(bob.id))[0]!.id;
+
+    await Promise.allSettled([adoption.adopt(alice.id, aliceOrg), adoption.adopt(bob.id, bobOrg)]);
+
+    // Graph and secret end up together in one organization: none is left behind, none is taken.
+    const [movedGraph] = await db().select().from(graphs).where(eq(graphs.id, graph.id));
+    const [movedSecret] = await db().select().from(secrets);
+    expect([aliceOrg, bobOrg]).toContain(movedGraph?.organizationId);
+    expect(movedSecret?.organizationId).toBe(movedGraph?.organizationId);
+  });
+
   it("is idempotent: a second call finds nothing and changes nothing", async () => {
     await seedLocalWorkspace();
     await adoption.adopt(alice.id, aliceOrg);
