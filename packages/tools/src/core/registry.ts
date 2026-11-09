@@ -12,6 +12,8 @@ export interface ToolDeps {
   /** Used at setup time (e.g. secrets in MCP server env); calls use `ToolContext.secrets`. */
   secrets: SecretResolver;
   limits?: Partial<ToolLimits>;
+  /** Called before note writes; caller serializes writes across the organization. */
+  checkNoteWrite?: (deltaBytes: number) => Promise<void>;
   /**
    * Restricts what HTTP and MCP-over-HTTP tools may reach (public servers). Absent: unrestricted,
    * as on a user's own machine where calling localhost is legitimate.

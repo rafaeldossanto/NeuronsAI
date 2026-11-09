@@ -1,5 +1,10 @@
-import OpenAI from "openai";
-import Anthropic from "@anthropic-ai/sdk";
+import {
+  defaultProviders,
+  UsageCalculator,
+  type ProviderRegistry,
+  type TurnClient,
+} from "@neurons/providers";
+export type { ModelTurn, TurnClient } from "@neurons/providers";
 import {
   Signal,
   type AgentCommunication,
@@ -7,139 +12,10 @@ import {
   type AgentRuntimeFactory,
   type AgentRuntimeState,
   type InboundMessage,
-  type AgentUsage,
 } from "@neurons/agent-runtimes";
 import type { AgentNode } from "@neurons/graph-schema";
 import { z } from "zod";
 import { resourceScope } from "../accounts/resource-scope.js";
-
-interface FunctionTool {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-}
-interface ToolCall {
-  id: string;
-  name: string;
-  input: string;
-}
-export interface ModelTurn {
-  calls: ToolCall[];
-  usage: AgentUsage;
-}
-export interface TurnClient {
-  addMessage(text: string): void;
-  respond(briefing: string, tools: FunctionTool[], signal: AbortSignal): Promise<ModelTurn>;
-  result: (call: ToolCall, text: string) => void;
-}
-
-class OpenAITurnClient implements TurnClient {
-  private readonly messages: OpenAI.Responses.ResponseInputItem[] = [];
-  private readonly client: OpenAI;
-  constructor(
-    private readonly model: string,
-    key: string,
-    private readonly effort: AgentNode["effort"],
-  ) {
-    this.client = new OpenAI({ apiKey: key, maxRetries: 2, timeout: 90_000 });
-  }
-  addMessage(text: string) {
-    this.messages.push({ role: "user", content: text });
-  }
-  async respond(briefing: string, tools: FunctionTool[], signal: AbortSignal): Promise<ModelTurn> {
-    const effort = this.effort === "max" || this.effort === "xhigh" ? "high" : this.effort;
-    const response = await this.client.responses.create(
-      {
-        model: this.model,
-        instructions: briefing,
-        input: this.messages,
-        store: false,
-        // Without storage, reasoning items only round-trip when their encrypted content comes along.
-        include: ["reasoning.encrypted_content"],
-        max_output_tokens: 8192,
-        reasoning: { effort },
-        tools: tools.map((tool) => ({ type: "function" as const, ...tool, strict: false })),
-      },
-      { signal },
-    );
-    this.messages.push(...(response.output as OpenAI.Responses.ResponseInputItem[]));
-    return {
-      calls: response.output.flatMap((item) =>
-        item.type === "function_call"
-          ? [{ id: item.call_id, name: item.name, input: item.arguments }]
-          : [],
-      ),
-      usage: {
-        model: response.model,
-        inputTokens: response.usage?.input_tokens ?? 0,
-        outputTokens: response.usage?.output_tokens ?? 0,
-        cacheReadTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
-        cacheCreationTokens: 0,
-      },
-    };
-  }
-  result(call: ToolCall, text: string) {
-    this.messages.push({ type: "function_call_output", call_id: call.id, output: text });
-  }
-}
-
-class AnthropicTurnClient implements TurnClient {
-  private readonly messages: Anthropic.MessageParam[] = [];
-  private readonly client: Anthropic;
-  constructor(
-    private readonly model: string,
-    key: string,
-    private readonly effort: AgentNode["effort"],
-  ) {
-    this.client = new Anthropic({ apiKey: key, maxRetries: 2, timeout: 90_000 });
-  }
-  addMessage(text: string) {
-    this.messages.push({ role: "user", content: text });
-  }
-  async respond(briefing: string, tools: FunctionTool[], signal: AbortSignal): Promise<ModelTurn> {
-    const effort = this.effort === "max" || this.effort === "xhigh" ? "high" : this.effort;
-    const response = await this.client.messages.create(
-      {
-        model: this.model,
-        max_tokens: 8192,
-        system: briefing,
-        messages: this.messages,
-        output_config: { effort },
-        tools: tools.map((tool) => ({
-          name: tool.name,
-          description: tool.description,
-          input_schema: { ...tool.parameters, type: "object" as const },
-        })),
-      },
-      { signal },
-    );
-    this.messages.push({ role: "assistant", content: response.content });
-    return {
-      calls: response.content.flatMap((block) =>
-        block.type === "tool_use"
-          ? [{ id: block.id, name: block.name, input: JSON.stringify(block.input) }]
-          : [],
-      ),
-      usage: {
-        model: response.model,
-        inputTokens: response.usage.input_tokens,
-        outputTokens: response.usage.output_tokens,
-        cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
-        cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
-      },
-    };
-  }
-  result(call: ToolCall, text: string) {
-    const block: Anthropic.ToolResultBlockParam = {
-      type: "tool_result",
-      tool_use_id: call.id,
-      content: text,
-    };
-    const previous = this.messages.at(-1);
-    if (previous?.role === "user" && Array.isArray(previous.content)) previous.content.push(block);
-    else this.messages.push({ role: "user", content: [block] });
-  }
-}
 
 const communicationTools = [
   {
@@ -181,6 +57,7 @@ const communicationTools = [
 
 export interface ApiRuntimeDeps {
   resolveSecret(name: string): Promise<string>;
+  providers?: ProviderRegistry;
   createClient?(agent: AgentNode, key: string): TurnClient;
 }
 
@@ -195,7 +72,13 @@ export class ApiRuntimeFactory implements AgentRuntimeFactory {
 }
 
 export class ApiRuntime implements AgentRuntime {
-  readonly reportsCost = false; // Usage has tokens, not a billed USD figure. Never fabricate a zero cost.
+  private readonly calculator = new UsageCalculator();
+  get reportsCost(): boolean {
+    const runtime = this.agent.runtime;
+    return (
+      runtime.kind === "api" && Boolean(this.calculator.price(runtime.provider, runtime.model))
+    );
+  }
   private current: AgentRuntimeState = "starting";
   private readonly changed = new Signal<AgentRuntimeState>();
   private readonly lifetime = new AbortController();
@@ -225,16 +108,17 @@ export class ApiRuntime implements AgentRuntime {
       throw new Error(
         "Este runtime requer uma chave de API. A integração de assinatura ainda não está disponível.",
       );
-    if (!runtime.secretName)
+    if (!runtime.secretName && runtime.provider !== "openai-compatible")
       throw new Error("Selecione uma chave salva nas propriedades deste agente.");
-    if (!["openai", "anthropic"].includes(runtime.provider))
-      throw new Error("Este runtime suporta os provedores OpenAI e Anthropic.");
-    const key = await this.deps.resolveSecret(runtime.secretName);
+    const key = runtime.secretName ? await this.deps.resolveSecret(runtime.secretName) : "local";
     this.client =
       this.deps.createClient?.(this.agent, key) ??
-      (runtime.provider === "openai"
-        ? new OpenAITurnClient(runtime.model, key, this.agent.effort)
-        : new AnthropicTurnClient(runtime.model, key, this.agent.effort));
+      (this.deps.providers ?? defaultProviders()).createSession(
+        runtime.provider,
+        runtime.model,
+        key,
+        this.agent.effort,
+      );
     this.briefing = briefing;
     this.setState("idle");
   }
@@ -262,7 +146,19 @@ export class ApiRuntime implements AgentRuntime {
     }));
     for (let step = 0; step < 20 && !this.lifetime.signal.aborted; step++) {
       const result = await this.client!.respond(this.briefing, tools, this.lifetime.signal);
-      await this.communication.reportUsage(result.usage);
+      const runtime = this.agent.runtime;
+      const cost =
+        runtime.kind === "api"
+          ? this.calculator.calculate(
+              runtime.provider,
+              result.usage.model ?? runtime.model,
+              result.usage,
+            )
+          : undefined;
+      await this.communication.reportUsage({
+        ...result.usage,
+        ...(cost !== undefined && { costUsd: cost }),
+      });
       if (!result.calls.length) {
         this.setState("idle");
         return;

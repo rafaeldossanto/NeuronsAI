@@ -74,7 +74,7 @@ beforeEach(async () => {
   }
   dataDir = await mkdtemp(path.join(os.tmpdir(), "neurons-adopt-"));
   masterKey = randomBytes(32);
-  adoption = new LocalDataAdoption(testDb.database, testConfig({ dataDir, masterKey }));
+
   const identity = () => ({
     issuer: "https://identity.example.invalid",
     subject: `adopt-${++sequence}`,
@@ -83,6 +83,10 @@ beforeEach(async () => {
   alice = await accounts.provisionIdentity(identity());
   bob = await accounts.provisionIdentity(identity());
   aliceOrg = (await accounts.listOrganizations(alice.id))[0]!.id;
+  adoption = new LocalDataAdoption(
+    testDb.database,
+    testConfig({ dataDir, masterKey, localDataOrganizationId: aliceOrg }),
+  );
 });
 
 afterAll(async () => {
@@ -190,7 +194,8 @@ describe("LocalDataAdoption", () => {
     // Graph and secret end up together in one organization: none is left behind, none is taken.
     const [movedGraph] = await db().select().from(graphs).where(eq(graphs.id, graph.id));
     const [movedSecret] = await db().select().from(secrets);
-    expect([aliceOrg, bobOrg]).toContain(movedGraph?.organizationId);
+    expect(movedGraph?.organizationId).toBe(aliceOrg);
+    await expect(adoption.summary(bob.id, bobOrg)).rejects.toBeInstanceOf(OrganizationAccessError);
     expect(movedSecret?.organizationId).toBe(movedGraph?.organizationId);
   });
 
@@ -271,7 +276,7 @@ describe("LocalDataAdoption", () => {
     await seedLocalWorkspace();
     const wrongKey = new LocalDataAdoption(
       testDb.database,
-      testConfig({ dataDir, masterKey: randomBytes(32) }),
+      testConfig({ dataDir, masterKey: randomBytes(32), localDataOrganizationId: aliceOrg }),
     );
 
     await expect(wrongKey.adopt(alice.id, aliceOrg)).rejects.toMatchObject({
@@ -280,4 +285,21 @@ describe("LocalDataAdoption", () => {
 
     expect(await db().select().from(graphs).where(isNull(graphs.organizationId))).toHaveLength(1);
   });
+});
+
+it("requires operator authorization and preserves the destination across config changes", async () => {
+  await seedLocalWorkspace();
+  const denied = new LocalDataAdoption(testDb.database, testConfig({ dataDir, masterKey }));
+  await expect(denied.summary(alice.id, aliceOrg)).rejects.toBeInstanceOf(OrganizationAccessError);
+  await expect(denied.adopt(alice.id, aliceOrg)).rejects.toBeInstanceOf(OrganizationAccessError);
+  await adoption.adopt(alice.id, aliceOrg);
+  const bobOrg = (await accounts.listOrganizations(bob.id))[0]!.id;
+  const changed = new LocalDataAdoption(
+    testDb.database,
+    testConfig({ dataDir, masterKey, localDataOrganizationId: bobOrg }),
+  );
+  const pendingMemory = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  await mkdir(path.join(dataDir, "memories", pendingMemory), { recursive: true });
+  await expect(changed.adopt(bob.id, bobOrg)).rejects.toBeInstanceOf(OrganizationAccessError);
+  expect((await adoption.adopt(alice.id, aliceOrg)).memories).toBe(1);
 });

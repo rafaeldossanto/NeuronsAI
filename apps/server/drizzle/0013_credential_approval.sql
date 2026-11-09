@@ -1,0 +1,1 @@
+ALTER TABLE "graph_versions" ADD COLUMN "credentials_approved" boolean DEFAULT false NOT NULL;

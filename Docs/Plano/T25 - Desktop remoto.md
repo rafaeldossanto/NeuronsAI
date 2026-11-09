@@ -1,11 +1,17 @@
 ---
-atualizado: 2026-11-05
-status: implementado em branch; revisão e aceitação Google real pendentes
+atualizado: 2026-11-06
+status: implementação revisada e integrada em dev/main; aceitação Google real pendente
 ---
 
 # T25 — Desktop remoto
 
-Continuação autorizada por Rafael após os painéis administrativos. Branch `codex/t25-desktop-remote`, worktree `C:\Users\rafae\Work\NeuronsAI-codex-t25-desktop`, baseada em `b4165cc` do PR #10. A base de contas e os painéis continuam em revisão; não foram integrados na dev.
+**Estado atual:** desktop remoto, base de contas e painéis revisados e integrados na dev e
+presentes na main. A aceitação com Google real, renovação e reabertura/cofre nos três
+sistemas permanece pendente. Andamento e evidência de CI em [[Plano de Implementação]].
+
+**Origem histórica:** continuação autorizada por Rafael após os painéis administrativos,
+desenvolvida na branch `codex/t25-desktop-remote`, worktree
+`C:\Users\rafae\Work\NeuronsAI-codex-t25-desktop`, a partir de `b4165cc` do PR #10.
 
 ## Comportamento
 
@@ -35,16 +41,20 @@ Rotas novas, com `/api` quando a interface é servida junto:
 
 A troca rejeita requisições identificadas como JavaScript de navegador por Origin/Sec-Fetch-Site. Código, verifier e credenciais não são expostos em mensagens de erro. O cliente nativo não segue redirecionamentos na troca/renovação. O OpenAPI e o cliente gerado foram atualizados.
 
-## Verificação e limites
+## Verificação da entrega inicial e limites — 2026-11-05
+
+As contagens abaixo preservam a validação da entrega inicial. A revisão posterior corrigiu
+a revogação ao esquecer uma sessão salva sem cookies abertos e bloqueou downloads na
+partição remota; integração e CI do commit consolidado já foram conferidos no plano central.
 
 - Desktop: 64 testes, incluindo callback HTTP real em loopback, state incorreto, cancelamento antes/depois da abertura, expiração, PKCE, cookies, rotação/cofre por origem, conexão serializada e autorização da ponte. Acesso negado para subframe, outra janela/origem, troca de servidor pela página remota, seletor de pasta remoto e instalação de atualização pela página remota.
 - Web: 186 testes na suíte completa, incluindo formulário de conexão, retorno ao local e login/cancelamento delegado ao main, sem login Google dentro da janela Electron.
-- Servidor: 566 cenários validados; o arquivo de API/OpenAPI foi repetido integralmente, com 29 testes, após atualizar a enumeração das três novas rotas. O resultado integral do head final deve ser conferido no CI.
+- Servidor na entrega inicial: 566 cenários validados; o arquivo de API/OpenAPI foi repetido integralmente, com 29 testes, após atualizar a enumeração das três novas rotas. O CI posterior do commit consolidado passou, conforme o plano central.
 - Postgres 18: 31 testes de login nativo, OIDC e isolamento passaram. Os mesmos cenários nativos/OIDC passaram em PGlite. Incluem vínculo ao navegador, expiração, retorno/verifier errados, cancelamento, replay, concorrência, ausência de sessão antes da troca e remoção de membro.
 - Smoke padrão do Electron real no Windows preserva UI/CSP/IPC, banco, execução com CLI simulada, memória MCP/runner e encerramento. A janela local foi observada com o novo controle de conexão.
 - A automação de captura/input nativo do Windows falhou por timeout/ausência de geometria mesmo após recuperar a janela. O formulário foi conferido em navegador com o bundle real e ponte nativa simulada, em desktop e 390 px, sem overflow ou erros no console. Capturas em `C:\Users\rafae\Work\neurons-validation\t25-native-connect-desktop.jpg` e mobile. Essa prévia não substitui a aceitação completa do login remoto no Electron.
 
-**Pendentes:** revisão dos PRs, aceitação com OAuth client Google real/domínio/retorno configurados e conferência manual completa no Electron, incluindo reinício com cofre real nos três sistemas. Não marcar T25 concluída pela aceitação simulada. Nenhuma conta real, agente pago, AWS, assinatura ou release nesta etapa.
+**Pendentes:** aceitação com OAuth client Google real/origem/retorno configurados e conferência manual completa no Electron, incluindo renovação e reinício com cofre real nos três sistemas. Revisão e integração já foram concluídas. Não marcar a aceitação T25 concluída pelos testes simulados. A conexão remota não inicia o runner local automaticamente; simplificar esse cadastro/início é uma evolução de experiência. Nenhuma conta real, agente pago, AWS, assinatura ou release foi usado na validação inicial.
 
 ## Referências
 

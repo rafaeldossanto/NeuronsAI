@@ -4,6 +4,13 @@ Interface do NeuronsAI: Vite 8, React 19, Tailwind 4 (componentes no estilo shad
 
 Telas: **Grafos** (`/graphs`: listar e criar), **Editor** (`/graphs/:id`: canvas, inspetor, validação ao vivo, salvar rascunho, publicar versão e versões publicadas) e **Execuções** (`/runs`: tabela paginada com filtros de status, grafo, versão, faixa de custo e período, todos no endereço; `/runs/:id`: ao vivo pelo `/ws`, com o desenho da versão em que roda, o estado e o custo de cada agente nos blocos, o pulso âmbar nas setas, o painel do agente com o terminal ao vivo, a linha do tempo, o botão Parar e o envio de mensagem como `@human`; uma execução terminada tem o **Replay**, em `/runs/:id?replay=1`).
 
+Também estão integrados **Novo projeto** (`/new`, vazio ou com um dos três templates),
+**Conexões de IA** (`/connections`), **Memórias** (`/memories`), **Organizações**
+(`/organizations`), **Runners** (`/runners`) e **Configurações** (`/settings`, controles de
+gatilhos no desktop). Contas são opcionais no servidor; os painéis administrativos exigem
+sessão e papel apropriado. Implementação e aceitação real são acompanhadas no
+[plano consolidado](../../Docs/Plano/Plano%20de%20Implementação.md#estado-consolidado).
+
 ## Rodar
 
 Primeira vez (o cliente da API precisa estar compilado):
@@ -31,7 +38,7 @@ O Vite encaminha `/api/*` para o servidor (o prefixo é removido) e `/ws` (WebSo
 
 ## Lista de execuções (`/runs`)
 
-Os filtros vivem na query string (`?status=failed&graphId=…&graphVersionId=…&minCostUsd=1&maxCostUsd=5&from=2026-11-01&to=2026-11-30&sort=costly&page=2`), então recarregar ou mandar o link mantém a seleção; valores inválidos no endereço são ignorados. Mudar um filtro volta à página 1. Os dias de `from`/`to` valem do começo ao fim do dia, no fuso do usuário. A versão só aparece para um grafo escolhido. O custo é a soma dos turnos que informaram preço: a tabela mostra `≥ $x` quando há turnos sem preço e `Desconhecido` quando nenhum informou, nunca zero (o filtro de custo compara essa parte conhecida, ver o README do servidor). Páginas de 20 por `offset`; clicar na linha abre `/runs/:id`; as terminadas têm o botão **Replay**, que abre `/runs/:id?replay=1`. Código em `src/runs/` (`run-filters.ts` lê e escreve o endereço; `runs-filter-bar.tsx`, `runs-table.tsx`, `use-run-list.ts`) e `src/routes/runs-page.tsx`.
+Os filtros vivem na query string (`?status=failed&graphId=…&graphVersionId=…&minCostUsd=1&maxCostUsd=5&from=2026-11-01&to=2026-11-30&sort=costly&page=2`), então recarregar ou mandar o link mantém a seleção; valores inválidos no endereço são ignorados. Mudar um filtro volta à página 1. Os dias de `from`/`to` valem do começo ao fim do dia, no fuso do usuário. A versão só aparece para um grafo escolhido. O custo é a soma dos turnos que informaram preço: a tabela mostra `≥ $x` quando há turnos sem preço e `Desconhecido` quando nenhum informou, nunca zero (o filtro de custo compara essa parte conhecida, ver o README do servidor). Páginas de 20 por `offset`; clicar na linha abre `/runs/:id`; as terminadas têm o botão **Replay**, que abre `/runs/:id?replay=1`. Código em `src/runs/` (`run-filters.ts` lê e escreve o endereço; `runs-filter-bar.tsx`, `runs-table.tsx`, `use-run-list.ts`) e `src/runs/runs-page.tsx`.
 
 ## Testes e build
 
@@ -42,7 +49,7 @@ pnpm --filter @neurons/web build      # gera dist/
 
 ## Editor (canvas e inspetor)
 
-`@xyflow/react` (React Flow) em `src/editor/`. O **estado é o próprio JSON do grafo** (`GraphDefinition` do `@neurons/graph-schema`), num reducer puro com histórico (`model.ts`); a tela só dispara as mesmas ações que o teste da fixture usa.
+`@xyflow/react` (React Flow) em `src/graphs/editor/`. O **estado é o próprio JSON do grafo** (`GraphDefinition` do `@neurons/graph-schema`), num reducer puro com histórico (`model.ts`); a tela só dispara as mesmas ações que o teste da fixture usa.
 
 - **Blocos:** agente (ícone de nuvem para API, de terminal para CLI), ferramenta e gatilho. **Setas:** conversa (linha cheia, simples ou dupla pelo campo `bidirectional`) e uso de ferramenta (tracejada). A seta do gatilho é o campo `target` dele, não uma ligação.
 - **Inspetor:** Nome, Papel, Contexto, Runtime (API: fornecedor e modelo; terminal: CLI, comando, pasta, argumentos, modo), Esforço, Orçamento, Tempo ocioso, ferramentas e gatilhos. Sem seleção, edita o nome do grafo.
@@ -66,7 +73,7 @@ Nos testes com jsdom, `src/test/setup.ts` simula `ResizeObserver`, `DOMMatrixRea
 
 ## Execução ao vivo (canvas e terminal)
 
-`/runs/:id` mostra o **desenho da versão** da execução com o mesmo canvas do editor, só leitura (`editor/graph-viewer.tsx`, que reaproveita `nodes.tsx` e `flow-model.ts`; nada de arrastar, ligar ou apagar). Cada bloco de agente mostra o estado (subindo, ocupado, ocioso, esperando resposta, falhou, finalizado) e o custo; a cada mensagem um pulso âmbar percorre a seta no sentido de quem mandou (SVG `animateMotion`, leve mesmo com muitas mensagens). Clicar num bloco abre o painel do agente: a conversa dele e, para agente de terminal em `pty`, o **terminal ao vivo** (xterm.js 6.0.0) onde o que você digita vai por `terminal.input`; as recusas do servidor aparecem no painel em pt-BR. Custo por agente, total, Parar e mensagem como `@human` continuam na tela. Como os dados chegam, o replay e as decisões: [`src/live/README.md`](src/live/README.md).
+`/runs/:id` mostra o **desenho da versão** da execução com o mesmo canvas do editor, só leitura (`graphs/editor/graph-viewer.tsx`, que reaproveita `nodes.tsx` e `flow-model.ts`; nada de arrastar, ligar ou apagar). Cada bloco de agente mostra o estado (subindo, ocupado, ocioso, esperando resposta, falhou, finalizado) e o custo; a cada mensagem um pulso âmbar percorre a seta no sentido de quem mandou (SVG `animateMotion`, leve mesmo com muitas mensagens). Clicar num bloco abre o painel do agente: a conversa dele e, para agente de terminal em `pty`, o **terminal ao vivo** (xterm.js 6.0.0) onde o que você digita vai por `terminal.input`; as recusas do servidor aparecem no painel em pt-BR. Custo por agente, total, Parar e mensagem como `@human` continuam na tela. Como os dados chegam, o replay e as decisões: [`src/runs/live/README.md`](src/runs/live/README.md).
 
 O xterm.js só usa estilos inline, que a CSP do servidor/desktop já permite; `script-src` continua `'self'`.
 
@@ -78,7 +85,7 @@ Só para execução **terminada** (em andamento, a tela fica ao vivo e avisa). M
 - **Pulsos:** só um passo para frente (de um em um evento) desenha o pulso daquela mensagem, na seta e no sentido certos; voltar e arrastar mostram o estado parado.
 - **Terminal:** não é reproduzido (a saída dele não fica no registro); o painel do agente avisa e mostra só a conversa.
 
-Código em `src/live/replay*.ts(x)`, `use-run-events.ts`, `use-replay-player.ts`.
+Código em `src/runs/live/replay*.ts(x)`, `use-run-events.ts`, `use-replay-player.ts`.
 
 ## Estrutura e visual
 
@@ -86,13 +93,23 @@ Código em `src/live/replay*.ts(x)`, `use-run-events.ts`, `use-replay-player.ts`
 src/
   config.ts          única leitura de import.meta.env
   styles.css         tokens (cores, fonte, raios) no formato de variáveis do shadcn/ui
-  lib/               api (cliente, ApiError, unwrap), queries (TanStack Query), format
-  live/              execução ao vivo: cliente do /ws, reducer puro, useRunLive, painel do agente, terminal e linha do tempo (ver live/README.md)
-  components/        layout, estados (carregando, erro, vazio) e ui/ (button, card, input, badge, skeleton)
-  editor/            canvas e inspetor: model (reducer e histórico), issues, nodes, inspector, graph-editor; camada livre: annotations, annotation-nodes, annotation-inspector, rough-shapes; execução: flow-model, graph-viewer, pulse-edge
-  routes/            uma página por tela, com seus testes
+  accounts/          organizações, convites, conta do desktop e auth/ (sessão)
+  graphs/            páginas e consultas dos projetos; editor/ (canvas e inspetor), templates/
+  runs/              histórico, filtros, detalhes; live/ (eventos, replay e terminal)
+  runners/           cadastro e gerenciamento de runners
+  memories/          cadastro, importação e tipos das memórias
+  connections/       painel de conexões dos provedores
+  triggers/          consultas e comandos dos gatilhos
+  settings/          configurações do desktop
+  updates/           aviso de atualização do desktop
+  shell/             navegação, layout e moldura da janela
+  workspace/         composição de recursos e abertura dos painéis
+  shared/            API, formatação, estados, modal e ui/ (controles reutilizados)
   test/              helpers: fetch simulado e dados de exemplo
 ```
+
+Páginas, componentes específicos, consultas e testes ficam no seu domínio. As rotas
+continuam em `app.tsx`. Convenções e mapa completo: [Estrutura do projeto](../../Docs/Estrutura%20do%20projeto.md).
 
 Fundo `#F7F7F4`, grafite, âmbar `#E9A15C` (foco e pulso de "em execução"), fonte Manrope, nada de azul. Para mudar uma cor, edite só `src/styles.css`.
 

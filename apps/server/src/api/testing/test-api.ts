@@ -43,7 +43,7 @@ export async function startTestApi(
   const app = (await builder.compile()).createNestApplication<NestFastifyApplication>(
     new FastifyAdapter(),
   );
-  configureApp(app);
+  configureApp(app, options.auth?.config ?? testConfig(options.config));
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
   return app;

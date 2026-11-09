@@ -151,12 +151,20 @@ export const responseFrame = frame("response", {
   error: errorSchema.optional(),
 });
 
+export const agentSnapshotFrame = frame("agent.snapshot", {
+  instanceId,
+  data: z.string().max(300000),
+  cols: terminalCells(MAX_TERMINAL_COLS),
+  rows: terminalCells(MAX_TERMINAL_ROWS),
+});
+
 export const runnerFrameSchema = z.discriminatedUnion("type", [
   registerFrame,
   runnerHeartbeatFrame,
   agentStateFrame,
   agentOutputFrame,
   agentResizedFrame,
+  agentSnapshotFrame,
   callFrame,
   responseFrame,
 ]);

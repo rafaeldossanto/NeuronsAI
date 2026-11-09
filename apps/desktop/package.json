@@ -23,7 +23,8 @@
     "@neurons/mcp-neurons": "workspace:*",
     "@neurons/server": "workspace:*",
     "electron-updater": "6.8.11",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "croner": "10.0.1"
   },
   "devDependencies": {
     "@neurons/web": "workspace:*",

@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { runStatusLabel } from "@/lib/format";
-import { useGraphs } from "@/lib/queries";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { runStatusLabel } from "@/shared/format";
+import { useGraphs } from "@/graphs/queries";
 import {
   RUN_STATUS_VALUES,
   SORT_OPTIONS,

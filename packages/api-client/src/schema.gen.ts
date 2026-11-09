@@ -712,6 +712,7 @@ export interface components {
                         kind: "terminal";
                         /** @enum {string} */
                         cli: "claude" | "codex" | "gemini" | "custom";
+                        runnerId?: string;
                         model?: string;
                         /**
                          * @default pty
@@ -2396,6 +2397,7 @@ export interface operations {
                                 kind: "terminal";
                                 /** @enum {string} */
                                 cli: "claude" | "codex" | "gemini" | "custom";
+                                runnerId?: string;
                                 model?: string;
                                 /**
                                  * @default pty

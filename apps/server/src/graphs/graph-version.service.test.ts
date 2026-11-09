@@ -169,3 +169,42 @@ describe("GraphVersionService.publish com segredos", () => {
     expect(await service.publish(graph.id, definition)).toMatchObject({ ok: true });
   });
 });
+
+it.each(["api", "terminal"] as const)(
+  "member cannot publish a %s agent with a structured secret reference",
+  async (kind) => {
+    const graphs = new InMemoryGraphRepository();
+    const versions = new InMemoryGraphVersionRepository();
+    const graph = await graphs.create({ name: "audit" });
+    const service = new GraphVersionService(graphs, versions);
+    const definition = {
+      ...twoAgents,
+      id: graph.id,
+      nodes: twoAgents.nodes.map((node) =>
+        node.type === "agent"
+          ? {
+              ...node,
+              runtime:
+                kind === "api"
+                  ? { kind, provider: "openai", model: "test", secretName: "audit-key" }
+                  : {
+                      kind,
+                      cli: "claude",
+                      cwd: "/tmp",
+                      access: "api-key",
+                      secretName: "audit-key",
+                    },
+            }
+          : node,
+      ),
+    };
+    expect(usesSecrets(definition)).toBe(true);
+    await expect(
+      resourceScope.run(
+        { organizationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", role: "member" },
+        () => service.publish(graph.id, definition),
+      ),
+    ).rejects.toBeInstanceOf(SecretPublishForbiddenError);
+    expect(await versions.listByGraph(graph.id)).toEqual([]);
+  },
+);

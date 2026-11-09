@@ -19,7 +19,17 @@ const SECRET_PLACEHOLDER = /\{\{secret:[A-Za-z0-9_.-]+\}\}/;
 
 /** True when any string of the definition references a stored secret. */
 export function usesSecrets(definition: unknown): boolean {
-  return SECRET_PLACEHOLDER.test(JSON.stringify(definition) ?? "");
+  if (SECRET_PLACEHOLDER.test(JSON.stringify(definition) ?? "")) return true;
+  if (!definition || typeof definition !== "object") return false;
+  const nodes = (definition as { nodes?: unknown }).nodes;
+  return (
+    Array.isArray(nodes) &&
+    nodes.some((node: unknown) => {
+      if (!node || typeof node !== "object") return false;
+      const runtime = (node as { runtime?: { secretName?: unknown } }).runtime;
+      return typeof runtime?.secretName === "string" && runtime.secretName.length > 0;
+    })
+  );
 }
 
 export type PublishResult =
@@ -51,7 +61,7 @@ export class GraphVersionService {
 
     this.requireSecretPublisher(validation.graph);
 
-    const version = await this.versions.appendNext(graphId, validation.graph);
+    const version = await this.versions.appendNext(graphId, validation.graph, true);
     this.published.next({ graphId, version: version.version });
     return { ok: true, version };
   }

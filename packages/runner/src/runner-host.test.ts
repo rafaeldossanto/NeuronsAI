@@ -484,3 +484,45 @@ describe("RunnerHost: terminal resize (revision 4)", () => {
     r.host.detach();
   });
 });
+
+it("recovers the latest terminal snapshot after reconnect, gated by peer revision", async () => {
+  const r = rig({ terminal: true });
+  r.connect();
+  r.say({ type: "registered", runnerId: "r", revision: 5, heartbeatIntervalMs: 10000, keep: [] });
+  await r.start("a");
+  const runtime = r.runtimes[0] as StubTerminalRuntime;
+  runtime.outputSnapshot = () => "before-and-during-disconnect";
+  r.server().close();
+  r.connect();
+  r.say({
+    type: "registered",
+    runnerId: "r",
+    revision: 5,
+    heartbeatIntervalMs: 10000,
+    keep: ["a"],
+  });
+  await vi.waitFor(() =>
+    expect(r.received).toContainEqual(
+      expect.objectContaining({
+        type: "agent.snapshot",
+        instanceId: "a",
+        data: "before-and-during-disconnect",
+        cols: 120,
+        rows: 40,
+      }),
+    ),
+  );
+  const count = r.count("agent.snapshot");
+  r.server().close();
+  r.connect();
+  r.say({
+    type: "registered",
+    runnerId: "r",
+    revision: 4,
+    heartbeatIntervalMs: 10000,
+    keep: ["a"],
+  });
+  expect(r.count("agent.snapshot")).toBe(count);
+  await r.host.stopAll();
+  r.server().close();
+});

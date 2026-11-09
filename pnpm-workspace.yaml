@@ -1,6 +1,10 @@
 packages:
   - "apps/*"
   - "packages/*"
+overrides:
+  "esbuild@<0.25.0": "0.25.12"
+  "glob@>=9.0.0 <=14.0.1": "14.0.2"
+  "minimatch@>=7.0.0 <11.0.1": "11.0.1"
 allowBuilds:
   cpu-features: false
   # electron: its install script downloads the Electron binary (cached by @electron/get).

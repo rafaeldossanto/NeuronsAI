@@ -1,3 +1,4 @@
+import { RequirePermission } from "../accounts/require-permission.js";
 import { Controller, Inject } from "@nestjs/common";
 import { z } from "zod";
 import { Endpoint, ValidBody, ValidParams } from "../api/endpoint.js";
@@ -17,6 +18,7 @@ const runnerView = z.object({
 });
 
 /** Tokens can only be issued through an authenticated organization; local uses the existing CLI. */
+@RequirePermission("manage_credentials")
 @Controller("runners")
 export class RunnersController {
   constructor(

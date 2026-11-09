@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { unwrap, useApi } from "@/lib/api";
+import { unwrap, useApi } from "@/shared/api";
 import type { toApiQuery } from "./run-filters";
 
 const LIVE_STATUSES = new Set(["pending", "running"]);

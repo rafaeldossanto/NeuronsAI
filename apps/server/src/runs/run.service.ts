@@ -1,3 +1,5 @@
+import { usesSecrets } from "../graphs/graph-version.service.js";
+import { SecretPublishForbiddenError } from "../graphs/graphs.errors.js";
 import { Inject, Injectable } from "@nestjs/common";
 import { DEFAULT_QUOTAS } from "../shared/config/quota-config.js";
 import type { RunQuotas } from "../run-log/run-quota.js";
@@ -89,6 +91,13 @@ export class RunService {
     if (!version) throw new GraphVersionNotFoundError(graphVersionId);
 
     const graph = version.definition;
+    // Historical versions require republishing with the corrected authorization.
+    if (
+      resourceScope.current().organizationId !== null &&
+      usesSecrets(graph) &&
+      !version.credentialsApproved
+    )
+      throw new SecretPublishForbiddenError();
     const trigger = pickTrigger(graph, options.triggerId);
     const target = graph.nodes.find((node) => node.type === "agent" && node.id === trigger.target);
     if (target?.type !== "agent") throw new TriggerTargetNotFoundError(trigger.id);

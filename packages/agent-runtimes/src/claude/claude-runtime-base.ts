@@ -184,7 +184,7 @@ export abstract class ClaudeRuntimeBase implements AgentRuntime {
       mcpServer: this.deps.mcpServer,
       askTimeoutMs: this.deps.askTimeoutMs,
       briefing,
-      withHooks: hooks !== undefined,
+      withHooks: true,
     });
 
     const { command, args: prefix } = cli.command();

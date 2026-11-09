@@ -50,7 +50,7 @@ Windows: ACL reduzida com `icacls`) e a apaga no `stop()`:
   endereço e o token da ponte no `env` dele, e `timeout` = timeout do `ask` do Hub + 30 s.
 - `briefing.md` → `--append-system-prompt-file`.
 - `--setting-sources project,local`: as configurações do usuário (`~/.claude/settings.json`) não entram; as do projeto, sim.
-- `--allowedTools mcp__neurons__send_message,…` (só as 5 ferramentas do Hub). Nunca `--dangerously-skip-permissions`; os `args` do grafo
+- `--allowedTools mcp__neurons__send_message,…` (as 7 ferramentas do MCP `neurons`: comunicação, `list_tools` e `use_tool`). Nunca `--dangerously-skip-permissions`; os `args` do grafo
   são repassados, menos os que desfazem esse arranjo ou ligam o bypass (a fábrica recusa antes de iniciar).
 - Modelo e demais ajustes: pelos `args` do agente (`["--model", "haiku"]`). O esforço do agente vira `--effort` se `claude --help` o listar;
   senão é ignorado com um aviso no log.

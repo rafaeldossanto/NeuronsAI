@@ -2,7 +2,7 @@ import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { vi } from "vitest";
 import { App, createQueryClient } from "@/app";
-import { createApi } from "@/lib/api";
+import { createApi } from "@/shared/api";
 
 type Json = { status?: number; body?: unknown };
 /** A reply is a JSON answer or a function that fails the request (a network error). */

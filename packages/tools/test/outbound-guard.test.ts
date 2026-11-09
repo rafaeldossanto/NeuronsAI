@@ -87,6 +87,7 @@ beforeAll(async () => {
     }
     if (path === "/loop") return void res.writeHead(302, { Location: "/loop" }).end();
     if (path === "/same") return void res.writeHead(302, { Location: "/final" }).end();
+    if (path === "/invalid-status") return void res.writeHead(600).end();
     res.end("ok");
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -359,4 +360,12 @@ describe("ferramenta http com política de saída", () => {
     ).rejects.toMatchObject({ code: "CONNECTION_FAILED" });
     expect(seen.slice(before).some((entry) => entry.url === "/mcp-probe")).toBe(false);
   });
+});
+
+it("rejects invalid upstream status without crashing or poisoning subsequent requests", async () => {
+  const fetch = createGuardedFetch(policy({ allowHosts: ["127.0.0.1"] }));
+  await expect(fetch(`http://127.0.0.1:${port}/invalid-status`)).rejects.toThrow(
+    "Invalid upstream HTTP status",
+  );
+  expect(await (await fetch(`http://127.0.0.1:${port}/final`)).text()).toBe("ok");
 });

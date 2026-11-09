@@ -90,9 +90,9 @@ export class RunnerRegistry implements RunnerPool, OnApplicationShutdown {
   }
 
   /** The runner with the fewest agents among the connected ones; waits for one when none is. */
-  acquire(): Promise<RunnerEndpoint> {
+  acquire(runnerId?: string): Promise<RunnerEndpoint> {
     const organizationId = resourceScope.current().organizationId;
-    const ready = this.pick(organizationId);
+    const ready = this.pick(organizationId, runnerId);
     if (ready) return Promise.resolve(ready);
 
     const waitMs = this.config.runners.waitMs;
@@ -102,7 +102,11 @@ export class RunnerRegistry implements RunnerPool, OnApplicationShutdown {
         reject(new NoRunnerAvailableError(waitMs));
       }, waitMs);
       const stop = this.linkConnected.subscribe((link) => {
-        if ((link.identity.organizationId ?? null) !== organizationId) return;
+        if (
+          (link.identity.organizationId ?? null) !== organizationId ||
+          (runnerId && link.identity.id !== runnerId)
+        )
+          return;
         clearTimeout(timer);
         stop();
         resolve(link);
@@ -125,9 +129,13 @@ export class RunnerRegistry implements RunnerPool, OnApplicationShutdown {
     this.links.clear();
   }
 
-  private pick(organizationId: string | null): RunnerLink | undefined {
+  private pick(organizationId: string | null, runnerId?: string): RunnerLink | undefined {
     return this.connected()
-      .filter((link) => (link.identity.organizationId ?? null) === organizationId)
+      .filter(
+        (link) =>
+          (link.identity.organizationId ?? null) === organizationId &&
+          (!runnerId || link.identity.id === runnerId),
+      )
       .sort((a, b) => a.load - b.load)[0];
   }
 

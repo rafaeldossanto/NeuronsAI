@@ -40,6 +40,9 @@ export type AppMode = (typeof APP_MODES)[number];
 export interface AppConfig {
   /** Optional OIDC settings for hybrid/hosted. Absent: account-free local workspace. */
   auth?: AuthConfig;
+  compatibleBaseUrl?: string;
+  /** Operator-authorized destination for importing the legacy local workspace. */
+  localDataOrganizationId?: string;
   /**
    * What the HTTP / MCP-over-HTTP tools may reach. Absent on the `local` profile (the user's own
    * machine); present on `hybrid`/`hosted`, where it keeps tools away from internal networks.
@@ -91,6 +94,13 @@ const BASE64_32_BYTES = /^[A-Za-z0-9+/]{43}=$/;
 
 const envSchema = z.object({
   ...authEnvShape,
+  NEURONS_OPENAI_COMPATIBLE_BASE_URL: unlessEmpty(
+    z
+      .url()
+      .refine((value) => ["http:", "https:"].includes(new URL(value).protocol))
+      .optional(),
+  ),
+  NEURONS_LOCAL_DATA_ORGANIZATION_ID: unlessEmpty(z.uuid().optional()),
   ...outboundEnvShape,
   NEURONS_UI_DIR: unlessEmpty(z.string().min(1).optional()),
   NEURONS_LANDING_DIR: unlessEmpty(z.string().min(1).optional()),
@@ -155,6 +165,12 @@ export function loadConfig(
 
   return {
     ...(auth && { auth }),
+    ...(values.NEURONS_OPENAI_COMPATIBLE_BASE_URL && {
+      compatibleBaseUrl: values.NEURONS_OPENAI_COMPATIBLE_BASE_URL,
+    }),
+    ...(values.NEURONS_LOCAL_DATA_ORGANIZATION_ID && {
+      localDataOrganizationId: values.NEURONS_LOCAL_DATA_ORGANIZATION_ID,
+    }),
     ...(outbound && { outbound }),
     ...(values.NEURONS_UI_DIR && { uiRoot: values.NEURONS_UI_DIR }),
     ...(values.NEURONS_LANDING_DIR && { landingRoot: values.NEURONS_LANDING_DIR }),

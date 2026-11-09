@@ -246,6 +246,9 @@ export class RunnerLink implements RunnerEndpoint {
         return this.runtimes
           .get(frame.instanceId)
           ?.applyRemoteState(frame.state, frame.failureReason);
+      case "agent.snapshot":
+        this.runtimes.get(frame.instanceId)?.applySnapshot(frame.data, frame.cols, frame.rows);
+        return;
       case "agent.output":
         return this.runtimes.get(frame.instanceId)?.applyOutput(frame.data);
       case "agent.resized":

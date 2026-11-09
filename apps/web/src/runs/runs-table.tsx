@@ -1,7 +1,7 @@
 import type { components } from "@neurons/api-client";
 import { Link, useNavigate } from "react-router";
-import { RunStatusBadge } from "@/components/run-status-badge";
-import { formatDateTime, formatDuration, formatUsd } from "@/lib/format";
+import { RunStatusBadge } from "@/runs/run-status-badge";
+import { formatDateTime, formatDuration, formatUsd } from "@/shared/format";
 
 export type RunListItem = components["schemas"]["RunListItem"];
 

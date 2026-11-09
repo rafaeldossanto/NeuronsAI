@@ -7,6 +7,13 @@ export default defineConfig(({ mode }) => {
   // The dev proxy points at the local server; NEURONS_API_TARGET overrides it (loadEnv, not process.env).
   const env = loadEnv(mode, import.meta.dirname, "NEURONS_");
   const apiTarget = env["NEURONS_API_TARGET"] ?? "http://127.0.0.1:3100";
+  const translateOrigin = (
+    proxyReq: { setHeader: (name: string, value: string) => void },
+    request: { headers: { origin?: string } },
+  ) => {
+    if (["http://127.0.0.1:5173", "http://localhost:5173"].includes(request.headers.origin ?? ""))
+      proxyReq.setHeader("origin", new URL(apiTarget).origin);
+  };
   return {
     plugins: [react(), tailwindcss()],
     resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
@@ -14,9 +21,23 @@ export default defineConfig(({ mode }) => {
       host: "127.0.0.1",
       port: 5173,
       proxy: {
-        "/api": { target: apiTarget, changeOrigin: true, rewrite: (p) => p.replace(/^\/api/, "") },
+        "/api": {
+          target: apiTarget,
+          changeOrigin: true,
+          configure: (proxy) => {
+            proxy.on("proxyReq", translateOrigin);
+          },
+          rewrite: (p) => p.replace(/^\/api/, ""),
+        },
         // Live run events (T14a): the page opens a WebSocket on its own origin.
-        "/ws": { target: apiTarget, changeOrigin: true, ws: true },
+        "/ws": {
+          target: apiTarget,
+          changeOrigin: true,
+          ws: true,
+          configure: (proxy) => {
+            proxy.on("proxyReqWs", translateOrigin);
+          },
+        },
       },
     },
     test: {
