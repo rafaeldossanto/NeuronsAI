@@ -22,7 +22,7 @@ provada antes de gastar tempo com canvas.
 
 ## Estado consolidado
 
-Atualizado em **2026-11-06**. Esta seção é a referência de andamento. As seções por tarefa preservam critérios de aceite,
+Atualizado em **2026-11-09**. Esta seção é a referência de andamento. As seções por tarefa preservam critérios de aceite,
 decisões e resultados datados; uma entrega de código não equivale à aceitação com serviços
 reais nem à publicação. As notas de interface/memórias e T25 mantêm o histórico das entregas.
 
@@ -32,7 +32,7 @@ Base conferida: `25733af` (merge da dev na main, PR #13). O [CI desse commit](ht
 | --- | --- | --- |
 | T01–T03, T05–T06, T10–T13, T15, T19–T20 | Fundação, Hub, guardas, editor e anotações, histórico/replay, CI e PGlite integrados. T15 inclui total de eventos e ordenação por duração. | Nenhuma implementação dessas frentes está aguardando início; os fluxos reais restantes estão nas linhas abaixo. |
 | T04 / T07 | `ApiRuntime` OpenAI Responses/Anthropic com SDKs oficiais, comunicação, ferramentas e tokens, testado com clientes simulados. | Spike real e aceitação de `two-agents.json` e `mixed.json`. Adaptadores, registro, compatível com OpenAI, preços/cálculo e tradução de esforço foram implementados na continuação local; catálogo deliberadamente limitado e transporte validado com fetch simulado. |
-| T08 / T24 | Claude Code em PTY e stream-json, runner embutido ou separado, protocolo v1 revisão 4, reconexão e resize. Há provas reais anteriores de terminal/comunicação. | Aceitação real integrada no perfil hybrid e do fluxo misto com API. Codex, Gemini e `custom` constam do esquema, mas não executam; ficam como expansão do backlog. |
+| T08 / T24 | Claude Code em PTY e stream-json, runner embutido ou separado, protocolo v1 revisão 5, reconexão, resize e snapshot do terminal. Há provas reais anteriores de terminal/comunicação. | Aceitação real integrada no perfil hybrid e do fluxo misto com API. Codex, Gemini e `custom` constam do esquema, mas não executam; ficam como expansão do backlog. |
 | T09 | MCP, HTTP e Obsidian com leitura/escrita autorizada, `list_tools`/`use_tool` e `ToolCalled` integrados. Em 05/11 houve leitura do cofre do Rafael, escrita em cópia e HTTP/MCP stdio por `use_tool`; o cofre original foi preservado. | Hooks nativos implementados na continuação local e validados com eventos simulados; falta aceitação com a CLI real. |
 | T14 | Canvas ao vivo, estado, mensagens, linha do tempo, entrada e redimensionamento do terminal implementados. | Aceitação pela interface com Claude Code real, digitação/resize e agentes de API reais. |
 | T16a | Webhook assinado e agenda implementados. Demonstração no servidor validou assinatura, replay e cron em dois minutos consecutivos. Configuração da porta já existe no desktop. | Conferência manual da configuração e do cron no app desktop instalado. |
@@ -51,6 +51,10 @@ O stream-json informa custo por diferença do total acumulado da sessão.
 ## Continuação local de 06/11/2026
 
 Implementação posterior à consolidação acima: [[Entrega local sem custo]]. Foram entregues a ordem de encerramento da T21, os adaptadores/registro/cálculo de uso da T07, convites e permissões por rota da T25, telemetria nativa da T09, seleção de runner e snapshot de reconexão da T24, e assets isolados da landing na T18. A T22 segue com preparação e validação local; publicação e aceitação nos demais sistemas continuam separadas. As correções de segurança estão em [[Seguranca]].
+
+## Revisão de 09/11/2026 do trabalho do Codex
+
+O trabalho de 06–07/11 estava sem commit na pasta principal; foi salvo e revisado de forma independente antes de entrar na `dev`. Checagens reais: formatação, lint, tipos e build em 48 tarefas do Turborepo, `api:check`, 214 testes de integração com Postgres (migration `0013` incluída) e o smoke do pacote Windows, todos verdes; contagens em [[Seguranca]]. Achados corrigidos: (1) a checagem de Host/Origin bloqueava quem acessa por IP um servidor aberto com `NEURONS_ALLOW_REMOTE`, agora IP literal vale nesse modo; (2) a CSP da landing impedia a consulta à última versão no GitHub; (3) o `openai-compatible` não tinha teste da guarda de saída, agora tem; (4) as permissões por rota não tinham uma lista fixa, agora o teste `route-permissions.test.ts` as enumera. Rota de escrita sem declaração cai em `write` (membro), não em negação: é uma escolha, registrada no teste.
 
 ## Próximos passos
 
@@ -434,7 +438,7 @@ Decisões:
 - **Protocolo do runner na entrega T14b: revisão 2 dentro da versão 1.** O `call`
   `report_tool_call` foi acrescentado nessa etapa; cada ponta anuncia a sua revisão no `register`/`registered` (campo
   opcional, ausente = 1) e só usa o recurso novo quando a outra o tem. Servidor antigo + runner
-  novo e o contrário continuam funcionando. **Estado atual: revisão 4** (`PROTOCOL_REVISION`):
+  novo e o contrário continuam funcionando. **Estado atual: revisão 5** (`PROTOCOL_REVISION`; a 4 trouxe o resize, a 5 o snapshot do terminal na reconexão):
   a revisão 3 acrescentou ferramentas do grafo/credenciais por agente, e a 4, resize do terminal.
 - **Saída do terminal na reconexão: o resumo (`replay: true`, ~200 mil caracteres por terminal)
   basta para o xterm.js** e ficou como está: a TUI repinta a tela, e o resumo inclui o que passou

@@ -109,7 +109,7 @@ flowchart LR
       HUB["Hub de mensagens<br/>permissões, entrega, confirmação"]
       SUP["Supervisor de agentes<br/>sobe, entrega, para"]
       APIRT["Runtime API<br/>SDKs OpenAI e Anthropic"]
-      REMOTE["RemoteAgentRuntime<br/>protocolo de runner v1, revisão 4"]
+      REMOTE["RemoteAgentRuntime<br/>protocolo de runner v1, revisão 5"]
     end
     HUB <--> DB[("PGlite local ou Postgres externo<br/>mensagens, eventos, execuções, contas")]
     SUP --> APIRT
