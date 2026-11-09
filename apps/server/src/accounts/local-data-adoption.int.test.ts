@@ -17,6 +17,7 @@ import { testConfig } from "../shared/config/testing/test-config.js";
 import { OrganizationAccessError } from "./account.errors.js";
 import { AccountsService, type AccountUser } from "./accounts.service.js";
 import {
+  LocalAdoptionBindingCorruptError,
   LocalDataAdoption,
   LocalRunsActiveError,
   LocalSecretsConflictError,
@@ -243,6 +244,30 @@ describe("LocalDataAdoption", () => {
     expect(row?.organizationId).toBeNull();
     await expect(adoption.adopt(alice.id, bob.id)).rejects.toBeInstanceOf(OrganizationAccessError);
   });
+
+  it.each([
+    ["truncated JSON", '{"organizationId": "abc'],
+    ["an empty file", ""],
+    ["JSON that is not an object", "null"],
+    ["an object without the organization", "{}"],
+  ])(
+    "refuses with a clear error when the binding file is %s, and moves nothing",
+    async (_name, content) => {
+      const { graph } = await seedLocalWorkspace();
+      await writeFile(path.join(dataDir, "local-data-adoption.json"), content);
+
+      await expect(adoption.adopt(alice.id, aliceOrg)).rejects.toBeInstanceOf(
+        LocalAdoptionBindingCorruptError,
+      );
+      await expect(adoption.summary(alice.id, aliceOrg)).rejects.toMatchObject({
+        kind: "conflict",
+        code: "local_adoption_binding_corrupt",
+      });
+
+      const [row] = await db().select().from(graphs).where(eq(graphs.id, graph.id));
+      expect(row?.organizationId).toBeNull();
+    },
+  );
 
   it("refuses while a local run is still going, and moves nothing", async () => {
     const { run } = await seedLocalWorkspace();
