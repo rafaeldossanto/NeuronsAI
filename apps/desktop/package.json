@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "NeuronsAI \u2014 orquestrador visual de agentes de IA",
+  "description": "NeuronsAI — orquestrador visual de agentes de IA",
   "author": "Rafael dos Santos",
   "homepage": "https://github.com/rafaeldossanto/NeuronsAI",
   "main": "dist/main.js",
