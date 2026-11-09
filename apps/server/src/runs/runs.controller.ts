@@ -1,4 +1,5 @@
 import { Controller, Inject } from "@nestjs/common";
+import { RequirePermission } from "../accounts/require-permission.js";
 import { Endpoint, ValidBody, ValidParams, ValidQuery } from "../api/endpoint.js";
 import { HUMAN } from "../hub/addresses.js";
 import { Hub } from "../hub/hub.js";
@@ -30,6 +31,7 @@ import {
   presentRunListItem,
 } from "./runs.presenters.js";
 
+@RequirePermission("write")
 @Controller("runs")
 export class RunsController {
   constructor(

@@ -1,4 +1,5 @@
 import { Controller, Inject } from "@nestjs/common";
+import { RequirePermission } from "../accounts/require-permission.js";
 import { Endpoint, ValidBody, ValidParams } from "../api/endpoint.js";
 import { GraphService } from "./graph.service.js";
 import {
@@ -24,6 +25,7 @@ import {
   presentVersionSummary,
 } from "./graphs.presenters.js";
 
+@RequirePermission("write")
 @Controller("graphs")
 export class GraphsController {
   constructor(@Inject(GraphService) private readonly graphs: GraphService) {}
