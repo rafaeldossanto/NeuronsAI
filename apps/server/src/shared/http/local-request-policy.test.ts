@@ -21,4 +21,24 @@ describe("local request origin and host", () => {
     if (origin !== undefined) request.headers.origin = origin;
     expect(allowsLocalRequest(request, testConfig({ port: 3100 }))).toBe(allowed);
   });
+
+  it.each([
+    ["192.168.1.5:3100", "http://192.168.1.5:3100", true],
+    ["192.168.1.5:3100", undefined, true],
+    ["[fd00::5]:3100", "http://[fd00::5]:3100", true],
+    ["192.168.1.5:3100", "http://evil.invalid", false],
+    ["rebind.invalid:3100", "http://rebind.invalid:3100", false],
+    ["192.168.1.5:3101", undefined, false],
+  ] as const)("opted into remote access: checks %s / %s", (host, origin, allowed) => {
+    const request = new IncomingMessage(new Socket());
+    request.headers.host = host;
+    if (origin !== undefined) request.headers.origin = origin;
+    expect(allowsLocalRequest(request, testConfig({ host: "0.0.0.0", port: 3100 }))).toBe(allowed);
+  });
+
+  it("does not accept IP literals while listening on loopback only", () => {
+    const request = new IncomingMessage(new Socket());
+    request.headers.host = "192.168.1.5:3100";
+    expect(allowsLocalRequest(request, testConfig({ port: 3100 }))).toBe(false);
+  });
 });
