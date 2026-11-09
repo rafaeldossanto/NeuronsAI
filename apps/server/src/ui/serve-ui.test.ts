@@ -124,6 +124,10 @@ it("serves landing assets under their own prefix with CSP and without shadowing 
     const index = await app.inject({ method: "GET", url: "/" });
     expect(index.body).toContain("/__landing__/assets/site.js");
     expect(index.headers["content-security-policy"]).toContain("script-src 'self'");
+    // The page asks GitHub for the latest release: without this origin the download links stay generic.
+    expect(index.headers["content-security-policy"]).toContain(
+      "connect-src 'self' https://api.github.com",
+    );
     expect((await app.inject({ method: "GET", url: "/__landing__/assets/site.js" })).body).toBe(
       'console.log("site")',
     );

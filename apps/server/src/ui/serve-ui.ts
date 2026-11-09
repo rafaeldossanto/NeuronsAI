@@ -31,6 +31,23 @@ export const CONTENT_SECURITY_POLICY = [
   "frame-ancestors 'none'",
 ].join("; ");
 
+/**
+ * The landing page looks up the latest release on GitHub (apps/site/src/downloads.ts), so it needs
+ * that one origin in `connect-src`; it has no inline style, no WebSocket and no frame.
+ */
+export const LANDING_CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self' https://api.github.com",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join("; ");
+
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -117,7 +134,7 @@ export function registerUiRoutes(fastify: FastifyInstance, options: UiOptions): 
           .header("content-type", MIME_TYPES[".html"]!)
           .header("cache-control", "no-cache")
           .header("x-content-type-options", "nosniff")
-          .header("content-security-policy", CONTENT_SECURITY_POLICY)
+          .header("content-security-policy", LANDING_CONTENT_SECURITY_POLICY)
           .header("referrer-policy", "no-referrer")
           .send(
             (await readFile(landing, "utf8")).replace(
