@@ -1,4 +1,14 @@
-import { index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 import type { GraphDefinition } from "@neurons/graph-schema";
 import { createdAtColumn, idColumn } from "./columns.js";
 import { organizations } from "./accounts.js";
@@ -32,6 +42,7 @@ export const graphVersions = pgTable(
       .notNull()
       .references(() => graphs.id, { onDelete: "restrict" }),
     version: integer("version").notNull(),
+    credentialsApproved: boolean("credentials_approved").notNull().default(false),
     definition: jsonb("definition").$type<GraphDefinition>().notNull(),
     createdAt: createdAtColumn(),
   },

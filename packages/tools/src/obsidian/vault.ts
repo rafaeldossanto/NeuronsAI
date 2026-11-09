@@ -68,12 +68,17 @@ export class Vault {
   private constructor(
     readonly root: string,
     private readonly maxNoteBytes: number,
+    private readonly checkWrite?: (deltaBytes: number) => Promise<void>,
   ) {}
 
-  static async open(vaultPath: string, maxNoteBytes: number): Promise<Vault> {
+  static async open(
+    vaultPath: string,
+    maxNoteBytes: number,
+    checkWrite?: (deltaBytes: number) => Promise<void>,
+  ): Promise<Vault> {
     const root = await realpath(vaultPath);
     if (!(await stat(root)).isDirectory()) throw new Error("O caminho do cofre não é uma pasta.");
-    return new Vault(root, maxNoteBytes);
+    return new Vault(root, maxNoteBytes, checkWrite);
   }
 
   /** Vault-relative path (forward slashes) of an absolute path inside the vault. */
@@ -119,6 +124,7 @@ export class Vault {
     const destination = path.join(parent, segments.at(-1)!);
     this.assertReadable(destination);
     try {
+      await this.checkWrite?.(Buffer.byteLength(content));
       await writeFile(destination, content, { encoding: "utf8", flag: "wx" });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") {
@@ -135,6 +141,7 @@ export class Vault {
     if ((await this.readResolved(file)) !== previous) {
       throw new VaultError("CONFLICT", "A nota mudou. Leia a versão atual antes de editar.");
     }
+    await this.checkWrite?.(Buffer.byteLength(content) - Buffer.byteLength(previous));
     const temporary = path.join(path.dirname(file), `.neurons-${randomUUID()}.tmp`);
     try {
       await writeFile(temporary, content, { encoding: "utf8", flag: "wx", mode: 0o600 });

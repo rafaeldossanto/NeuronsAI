@@ -4,10 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import { createQueryClient } from "@/app";
-import { ApiProvider, createApi } from "@/lib/api";
+import { ApiProvider, createApi } from "@/shared/api";
 import { mockFetch } from "@/test/helpers";
-import { Inspector } from "@/editor/inspector";
-import { createDoc, createEditorState, editorReducer } from "@/editor/model";
+import { Inspector } from "@/graphs/editor/inspector";
+import { createDoc, createEditorState, editorReducer } from "@/graphs/editor/model";
 import { WorkspaceProvider } from "./resources";
 
 function Harness() {

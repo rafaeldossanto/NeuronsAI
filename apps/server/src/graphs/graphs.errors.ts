@@ -43,7 +43,7 @@ export class SecretPublishForbiddenError extends DomainError {
   constructor() {
     super(
       "secret_publish_forbidden",
-      "Só administradores e proprietários podem publicar um grafo que usa segredos ({{secret:...}}).",
+      "Só administradores e proprietários podem publicar um grafo que usa credenciais. Versões antigas devem ser republicadas para aprovação.",
     );
   }
 }

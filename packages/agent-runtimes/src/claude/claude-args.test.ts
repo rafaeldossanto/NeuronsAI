@@ -121,3 +121,15 @@ describe("formatInboundMessage", () => {
     expect(text.endsWith("Está certo?")).toBe(true);
   });
 });
+
+it.each([
+  ["--permission-mode", "manual", "--permission-mode", "bypassPermissions"],
+  ["--permission-mode=bypassPermissions", "--permission-mode=manual"],
+  ["--permission-mode=manual", "--permission-mode", "bypassPermissions"],
+  ["--permission-mode"],
+])("rejects ambiguous permission arguments %j before launching", (...args) => {
+  expect(() => assertAllowedUserArgs("Audit", args)).toThrow(UnsupportedRuntimeError);
+  expect(() => buildClaudeArgs({ ...base, mode: "pty", userArgs: args })).toThrow(
+    UnsupportedRuntimeError,
+  );
+});

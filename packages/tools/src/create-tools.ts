@@ -33,6 +33,7 @@ export async function createTools(node: ToolNode, deps: ToolDeps): Promise<ToolS
   }
   const resolved: ResolvedDeps = {
     secrets: deps.secrets,
+    ...(deps.checkNoteWrite && { checkNoteWrite: deps.checkNoteWrite }),
     limits: { ...DEFAULT_LIMITS, ...deps.limits },
     ...(deps.network && { network: deps.network }),
   };

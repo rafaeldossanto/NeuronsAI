@@ -6,6 +6,7 @@ import { resourceScope } from "./resource-scope.js";
 import { AccountAuth } from "./account-auth.service.js";
 import { AccountsService } from "./accounts.service.js";
 import { InvalidSessionError } from "./account.errors.js";
+import { allowsLocalRequest } from "../shared/http/local-request-policy.js";
 
 /** Each WebSocket operation revalidates session/membership; long-lived sockets cannot keep stale roles. */
 @Injectable()
@@ -25,7 +26,11 @@ export class SocketAuthorization {
     write: boolean,
     action: () => T,
   ): Promise<T> {
-    if (!this.auth.browser) return action();
+    if (!this.auth.browser) {
+      if (!request || !allowsLocalRequest(request, this.auth.config))
+        throw new InvalidSessionError();
+      return action();
+    }
     if (!request || request.headers.origin !== this.auth.config.auth?.publicOrigin)
       throw new InvalidSessionError();
     const scope = await this.auth.browser.authenticate(request);

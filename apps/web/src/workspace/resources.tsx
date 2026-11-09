@@ -1,18 +1,9 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useApi, unwrap } from "@/lib/api";
-import { ConnectionsPanel } from "./connections-panel";
-import { AddMemoryPanel } from "./memory-panel";
-
-export interface MemoryItem {
-  id: string;
-  name: string;
-  storage: "local" | "server";
-  vaultPath?: string;
-  runner?: string;
-  fileCount: number;
-  createdAt: string;
-}
+import { useApi, unwrap } from "@/shared/api";
+import { ConnectionsPanel } from "@/connections/connections-panel";
+import { AddMemoryPanel } from "@/memories/memory-panel";
+import type { MemoryItem } from "@/memories/types";
 
 function useResources() {
   const api = useApi();

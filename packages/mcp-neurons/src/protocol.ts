@@ -16,6 +16,9 @@ export const BRIDGE_ROUTES = {
   hooks: {
     userPromptSubmit: "/hooks/user-prompt-submit",
     stop: "/hooks/stop",
+    preToolUse: "/hooks/pre-tool-use",
+    postToolUse: "/hooks/post-tool-use",
+    postToolUseFailure: "/hooks/post-tool-use-failure",
   },
 } as const;
 

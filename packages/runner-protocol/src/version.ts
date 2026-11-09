@@ -22,7 +22,8 @@ export const SUPPORTED_VERSIONS: readonly number[] = [PROTOCOL_VERSION];
  *       older runner never sees a frame it cannot read; a newer runner talking to an older server
  *       simply never gets one (the terminal stays at its opening size).
  */
-export const PROTOCOL_REVISION = 4;
+export const PROTOCOL_REVISION = 5;
+export const REVISION_TERMINAL_SNAPSHOT = 5;
 export const REVISION_GRAPH_TOOLS = 3;
 export const REVISION_TERMINAL_RESIZE = 4;
 

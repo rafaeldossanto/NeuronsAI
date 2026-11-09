@@ -14,5 +14,6 @@ export interface GraphVersionRecord {
   graphId: string;
   version: number;
   definition: GraphDefinition;
+  credentialsApproved?: boolean;
   createdAt: Date;
 }

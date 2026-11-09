@@ -219,6 +219,7 @@ export class DrizzleRunRepository implements RunRepository {
       .select({
         run: runs,
         definition: graphVersions.definition,
+        credentialsApproved: graphVersions.credentialsApproved,
         organizationId: graphs.organizationId,
       })
       .from(runs)
@@ -226,9 +227,10 @@ export class DrizzleRunRepository implements RunRepository {
       .innerJoin(graphs, eq(graphs.id, graphVersions.graphId))
       .where(eq(runs.status, "running"))
       .orderBy(runs.id);
-    return rows.map(({ run, definition, organizationId }) => ({
+    return rows.map(({ run, definition, organizationId, credentialsApproved }) => ({
       run: toRunRecord(run),
       graph: definition,
+      credentialsApproved,
       ...(organizationId && { organizationId }),
     }));
   }

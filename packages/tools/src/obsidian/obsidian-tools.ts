@@ -111,7 +111,7 @@ export async function createObsidianTools(
   let vault: Vault;
   try {
     if (!node.tool.vaultPath) throw new Error("A memória precisa ser resolvida pelo servidor.");
-    vault = await Vault.open(node.tool.vaultPath, deps.limits.maxNoteBytes);
+    vault = await Vault.open(node.tool.vaultPath, deps.limits.maxNoteBytes, deps.checkNoteWrite);
   } catch (cause) {
     throw new ToolSetupError(
       "INVALID_CONFIG",

@@ -88,10 +88,15 @@ export class GraphToolsService {
               "Esta operação não está autorizada para este agente.",
             );
           const start = Date.now();
-          const result = await tool.execute(input, {
-            signal: AbortSignal.timeout(30_000),
-            secrets: { resolve: (key) => this.secrets.get(key) },
-          });
+          const execute = () =>
+            tool.execute(input, {
+              signal: AbortSignal.timeout(30_000),
+              secrets: { resolve: (key) => this.secrets.get(key) },
+            });
+          const result =
+            node.tool.kind === "obsidian"
+              ? await this.memories.withNoteWrites(execute)
+              : await execute();
           await report({
             tool: name,
             inputSummary: JSON.stringify({
@@ -171,6 +176,7 @@ export class GraphToolsService {
       };
     }
     return createTools(node, {
+      checkNoteWrite: this.memories.checkNoteWrite,
       secrets: { resolve: (name) => this.secrets.get(name) },
       // Public servers keep tools away from loopback, private networks and the cloud metadata address.
       ...(this.config.outbound && { network: this.config.outbound }),

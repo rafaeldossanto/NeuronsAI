@@ -1,3 +1,4 @@
+import { RequirePermission } from "../accounts/require-permission.js";
 import { Controller, Inject } from "@nestjs/common";
 import { toIso, toIsoOrNull } from "../api/common-schemas.js";
 import { Endpoint, ValidBody, ValidParams } from "../api/endpoint.js";
@@ -43,6 +44,7 @@ export class TriggersController {
     status: 201,
     errors: [404, 503],
   })
+  @RequirePermission("manage_credentials")
   async rotateTriggerSecret(@ValidParams() { id, triggerId }: TriggerParams) {
     const { secret, view } = await this.triggers.rotateSecret(id, triggerId);
     return { secret, state: this.present(view) };

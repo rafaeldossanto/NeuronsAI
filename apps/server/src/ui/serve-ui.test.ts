@@ -105,3 +105,33 @@ describe("server with the interface", () => {
     expect(response.json()).toMatchObject({ status: "ok" });
   });
 });
+
+it("serves landing assets under their own prefix with CSP and without shadowing editor assets", async () => {
+  Logger.overrideLogger(false);
+  const root = await mkdtemp(path.join(tmpdir(), "neurons-landing-assets-"));
+  const landing = path.join(root, "landing");
+  await mkdir(path.join(landing, "assets"), { recursive: true });
+  await writeFile(path.join(root, "index.html"), "editor");
+  await writeFile(
+    path.join(landing, "index.html"),
+    '<script src="./assets/site.js"></script><link href="./assets/site.css" rel="stylesheet">',
+  );
+  await writeFile(path.join(landing, "assets", "site.js"), 'console.log("site")');
+  const app = await createApp(config, { ui: { root, landingRoot: landing } });
+  try {
+    await app.init();
+    await app.getHttpAdapter().getInstance().ready();
+    const index = await app.inject({ method: "GET", url: "/" });
+    expect(index.body).toContain("/__landing__/assets/site.js");
+    expect(index.headers["content-security-policy"]).toContain("script-src 'self'");
+    expect((await app.inject({ method: "GET", url: "/__landing__/assets/site.js" })).body).toBe(
+      'console.log("site")',
+    );
+    expect(
+      (await app.inject({ method: "GET", url: "/__landing__/assets/missing.js" })).statusCode,
+    ).toBe(404);
+    expect((await app.inject({ method: "GET", url: "/graphs" })).body).toBe("editor");
+  } finally {
+    await app.close();
+  }
+});

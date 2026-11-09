@@ -765,3 +765,15 @@ describe("T25 — API entre organizações", () => {
     expect((await publishWith(alice)).statusCode).toBe(201);
   });
 });
+
+it("requires credential management to rotate a webhook secret, independently of the graphs controller prefix", async () => {
+  await accounts.setMember(alice.userId, alice.organizationId, bob.userId, "member");
+  const member = asActor(
+    await sessions.issue(bob.userId, alice.organizationId),
+    bob.userId,
+    alice.organizationId,
+  );
+  const url = "/graphs/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/triggers/webhook/secret";
+  expect((await api(member, "POST", url)).statusCode).toBe(403);
+  expect((await api(alice, "POST", url)).statusCode).toBe(404);
+});

@@ -44,7 +44,14 @@ export function assertAllowedUserArgs(agentName: string, args: readonly string[]
   for (const arg of args) {
     if (RESERVED_FLAGS.includes(flagName(arg))) refuse(flagName(arg));
   }
-  if (valueOf(args, "--permission-mode") === "bypassPermissions") refuse("--permission-mode");
+  if (args.filter((arg) => flagName(arg) === "--permission-mode").length > 1)
+    refuse("--permission-mode");
+  const permissionMode = valueOf(args, "--permission-mode");
+  if (
+    hasFlag(args, "--permission-mode") &&
+    !["manual", "default", "acceptEdits", "plan", "dontAsk", "auto"].includes(permissionMode ?? "")
+  )
+    refuse("--permission-mode");
 }
 
 export interface ClaudeArgsInput {
@@ -69,6 +76,7 @@ export const allowedToolNames = (): string[] => COMMUNICATION_TOOLS.map(mcpToolN
  * from temporary files, only the user's project/local settings are read.
  */
 export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
+  assertAllowedUserArgs("Claude", input.userArgs);
   const args =
     input.mode === "stream-json"
       ? [

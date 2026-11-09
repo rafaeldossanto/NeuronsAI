@@ -1,3 +1,5 @@
+import { usesSecrets } from "../graphs/graph-version.service.js";
+import { RunLifecycleEvents } from "../runs/run-lifecycle-events.js";
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { GraphToolsService } from "../memories/graph-tools.service.js";
 import { resourceScope } from "../accounts/resource-scope.js";
@@ -121,8 +123,22 @@ export class Supervisor {
    * (the process died in between), starting the agents that need it.
    */
   async recover(): Promise<void> {
-    for (const { run, graph, organizationId } of await this.runs.listRunning()) {
+    for (const {
+      run,
+      graph,
+      organizationId,
+      credentialsApproved,
+    } of await this.runs.listRunning()) {
       await resourceScope.run({ organizationId: organizationId ?? null }, async () => {
+        if (organizationId && usesSecrets(graph) && !credentialsApproved) {
+          const ended = await this.runs.finish(run.id, "failed", [
+            RunLifecycleEvents.runFinished("failed", {
+              error: "Republique o grafo com aprovação de um administrador para usar credenciais.",
+            }),
+          ]);
+          if (ended) this.recorder.publish(ended.events);
+          return;
+        }
         this.registry.register(run.id, graph, run.budgetUsd ?? undefined);
         const recipients = new Set((await this.hub.unacked(run.id)).map((message) => message.to));
         for (const name of recipients) {

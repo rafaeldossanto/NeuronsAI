@@ -1,6 +1,6 @@
 ---
 tags: [neuronsai, visao, decisoes]
-atualizado: 2026-11-01
+atualizado: 2026-11-06
 fonte: E:\Notes\Cards\neuronsAI.md e E:\Notes\Cards\Graph - gestor visual de agentes.md
 ---
 
@@ -10,6 +10,19 @@ Orquestrador visual de agentes de IA. Cada bloco do grafo é um agente independe
 fornecedor (nome/papel, contexto, modelo, esforço). **Agentes ligados por uma seta conversam
 diretamente e em tempo real**, como os terminais do Orca, e tudo o que trocam fica visível
 como no Camunda: quem falou com quem, o que cada um está fazendo agora e quanto custou.
+
+## Estado da implementação — 2026-11-06
+
+A visão descreve o produto e suas decisões; o andamento detalhado está no
+[[Plano de Implementação]], seção "Estado consolidado". Editor, execução ao vivo, replay,
+templates, memórias com escrita, runners e contas já estão integrados em dev/main.
+Google real, agentes de API reais e os fluxos completos no app instalado ainda exigem
+aceitação. Release pública, landing publicada, WhatsApp, AWS e assinatura de código
+continuam pendentes.
+
+Hoje o runtime de terminal executa **Claude Code**, em PTY ou stream-json. Codex, Gemini e
+custom são possibilidades do contrato, com adaptadores ainda no backlog. Agentes de API
+usam OpenAI/Anthropic dentro do servidor, com testes simulados; `packages/providers` agora concentra adaptadores, registro e cálculo versionado de uso, validados sem chamadas pagas. Tokens são registrados; o custo de API em USD é estimado apenas para modelos do catálogo e permanece desconhecido fora dele; orçamento em USD não é um teto garantido nesses agentes nem no PTY.
 
 ## Referências e o que pegar de cada uma
 
@@ -87,7 +100,7 @@ sequenceDiagram
 | D13 | **Custos por último**: chave de API (T04, T07) e assinatura de código (T23) | Decisão do Rafael. Até lá os agentes rodam pelo Claude Code com a assinatura dele, e os instaladores saem sem assinatura (aviso do sistema na primeira abertura, como no MiniInfos) |
 | D14 | **Híbrido com runners plugáveis**: servidor central e Postgres (RDS) na AWS; os agentes rodam em *runners* que se conectam ao servidor — o app desktop (padrão), um servidor do próprio usuário ou, no futuro, runners hospedados pelo NeuronsAI na AWS (estilo Hostinger). Onde o agente roda é configuração, não código. Perfis: `local` (tudo no app, com PGlite), `hybrid` (servidor na AWS + runner no app), `hosted` (servidor e runners na AWS) — **decidido pelo Rafael em 2026-11-01** | Híbrido agora e fácil de mudar depois. O Hub fala com qualquer runner pelo mesmo protocolo versionado; o runner abre a conexão de saída para o servidor (funciona atrás de NAT). O login do Claude Code fica dentro do runner e é feito pelo próprio usuário; o servidor nunca guarda token de assinatura (termos de uso) |
 
-## Arquitetura (v1)
+## Arquitetura implementada (v1)
 
 ```mermaid
 flowchart LR
@@ -95,29 +108,29 @@ flowchart LR
     subgraph SRV["apps/server (NestJS)"]
       HUB["Hub de mensagens<br/>permissões, entrega, confirmação"]
       SUP["Supervisor de agentes<br/>sobe, entrega, para"]
-      APIRT["Runtime API<br/>ModelProvider + ferramentas"]
-      TRT["Runtime Terminal<br/>node-pty + MCP neurons"]
+      APIRT["Runtime API<br/>SDKs OpenAI e Anthropic"]
+      REMOTE["RemoteAgentRuntime<br/>protocolo de runner v1, revisão 4"]
     end
-    HUB <--> DB[("Postgres<br/>mensagens, eventos, execuções")]
+    HUB <--> DB[("PGlite local ou Postgres externo<br/>mensagens, eventos, execuções, contas")]
     SUP --> APIRT
-    SUP --> TRT
-    APIRT --> PROV["packages/providers<br/>Anthropic, OpenAI, compatíveis"]
-    TRT --> CLI["claude · codex · gemini · ..."]
+    SUP --> REMOTE
+    REMOTE <-->|"canal em memória local<br/>ou WebSocket hybrid/hosted"| RUNNER["packages/runner<br/>runtimes Claude Code + MCP neurons"]
+    RUNNER --> CLI["Claude Code<br/>PTY ou stream-json"]
     APIRT --> TOOLS["MCP · HTTP · Obsidian"]
     SCHEMA["packages/graph-schema (zod)"] -.-> WEB
     SCHEMA -.-> SRV
 ```
 
-- **Monorepo pnpm + Turborepo**: `apps/web`, `apps/server`, `apps/site` (landing),
-  `packages/graph-schema`, `packages/providers`, `packages/mcp-neurons`.
-- **Banco:** Postgres 18 nativo (5432), database `neurons_dev`, Drizzle ORM com migrations.
-- **Portas:** servidor 3100, web 5190, site 5191.
-- **Distribuição:** instaladores para Windows (NSIS), macOS (dmg arm64 e x64) e Linux (AppImage e deb), gerados no GitHub Actions e publicados no GitHub Releases, com atualização automática.
+- **Monorepo pnpm + Turborepo:** quatro apps (`server`, `web`, `desktop`, `site`) e oito pacotes (`graph-schema`, `providers`, `agent-runtimes`, `tools`, `mcp-neurons`, `runner-protocol`, `runner`, `api-client`). Contratos e ferramentas são compartilhados; os adaptadores de API ainda estão no servidor.
+- **Desktop local:** Electron incorpora servidor, runner e PGlite. A conexão remota abre a interface de outro servidor; ainda não inicia automaticamente um runner local para ele.
+- **Banco:** PGlite por padrão no app; Postgres externo opcional, com o mesmo schema e migrations Drizzle. O desenvolvimento com Postgres usa `neurons_dev` (porta 5432).
+- **Portas de desenvolvimento:** servidor 3100, web 5173, site 5191. O desktop escolhe a porta local do servidor; a porta separada de gatilhos é opcional.
+- **Distribuição:** pipeline para Windows NSIS, macOS dmg/zip arm64 e x64 e Linux AppImage/deb implementado; primeira release pública pendente. Windows e AppImage têm atualização pelo app; deb e macOS sem assinatura levam ao download manual. Assinatura/notarização e atualização automática macOS dependem da T23.
 - **Ciclo de uma execução:** o gatilho manda a primeira mensagem ao agente de entrada; cada
   agente sobe na primeira mensagem que recebe e fica vivo; a execução termina quando um agente
   chama `finish`, quando todos estão ociosos com a caixa vazia e ninguém esperando resposta,
   ou quando você para.
-- **Eventos** (append-only): `RunStarted`, `AgentStarted`, `MessageSent`, `MessageDelivered`,
+- **Eventos** (append-only): `RunStarted`, `AgentStarted`, `AgentStateChanged`, `MessageSent`, `MessageDelivered`,
   `ToolCalled`, `UsageRecorded`, `AgentIdle`, `AgentFailed`, `RunFinished`. O modelador anima um
   pulso âmbar na seta a cada `MessageSent` (o mesmo pulso do neurônio da landing).
 
@@ -134,9 +147,12 @@ flowchart LR
 - **Multiplataforma:** o `node-pty` precisa ser recompilado para a versão do Electron em cada sistema (feito no CI); encerrar a árvore de processos muda por sistema (`taskkill` no Windows, grupo de processos no macOS/Linux); caminho e login do Claude Code CLI variam por sistema.
 - **Segredos na nuvem:** com deploy na AWS, `process.env` só no módulo de config, segredos no Secrets Manager, nada de segredo em código, log, fixture ou evento; varredura de segredos no CI (gitleaks).
 
-## Já existe
+## Landing
 
-- Landing estática pronta em `E:\Notes\Design\NeuronsAI\pagina-real` (neurônio de partículas
-  grafite com pulsos âmbar, Manrope, fundo `#F7F7F4`, sem azul).
+A referência original em `E:\Notes\Design\NeuronsAI\pagina-real` já foi incorporada a
+`apps/site`: neurônio de partículas grafite com pulsos âmbar, Manrope, fundo `#F7F7F4`,
+downloads por sistema, instruções e CSP em meta. A publicação e os destinos públicos
+continuam pendentes. A hospedagem estática usa o build completo; servir junto ao NestJS
+ainda exige integrar seus assets e conferir headers, conforme a T18.
 
 Plano de execução: [[Plano de Implementação]].

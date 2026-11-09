@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { stat, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
@@ -91,15 +91,40 @@ export function registerUiRoutes(fastify: FastifyInstance, options: UiOptions): 
 
   fastify.get(`${UI_PREFIX}/*`, async (request: FastifyRequest, reply: FastifyReply) => {
     const pathname = request.url.slice(UI_PREFIX.length).split("?")[0] ?? "/";
+    if (options.landingRoot && pathname.startsWith("/__landing__/")) {
+      const landingRoot = path.resolve(options.landingRoot);
+      let relative: string;
+      try {
+        relative = decodeURIComponent(pathname.slice("/__landing__".length));
+      } catch {
+        return reply.code(404).send();
+      }
+      const file = path.resolve(landingRoot, `.${relative}`);
+      const inside = path.relative(landingRoot, file);
+      if (
+        inside.startsWith("..") ||
+        path.isAbsolute(inside) ||
+        relative.includes("\0") ||
+        !(await regularFile(file))
+      )
+        return reply.code(404).send();
+      return send(reply, file, inside.startsWith(`assets${path.sep}`));
+    }
     if (pathname === "/" && options.landingRoot) {
       const landing = path.join(path.resolve(options.landingRoot), "index.html");
       if (await regularFile(landing)) {
-        // The retained marketing page is self-contained, including its animation and fonts.
         return reply
           .header("content-type", MIME_TYPES[".html"]!)
           .header("cache-control", "no-cache")
           .header("x-content-type-options", "nosniff")
-          .send(createReadStream(landing));
+          .header("content-security-policy", CONTENT_SECURITY_POLICY)
+          .header("referrer-policy", "no-referrer")
+          .send(
+            (await readFile(landing, "utf8")).replace(
+              /((?:src|href)=["'])\.\//g,
+              "$1/__landing__/",
+            ),
+          );
       }
     }
     let relative: string;

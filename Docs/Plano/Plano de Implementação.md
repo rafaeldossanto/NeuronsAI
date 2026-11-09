@@ -1,6 +1,6 @@
 ---
 tags: [neuronsai, plano, tarefas]
-atualizado: 2026-11-04
+atualizado: 2026-11-06
 ---
 
 # Plano de Implementação
@@ -20,30 +20,48 @@ provada antes de gastar tempo com canvas.
 | Nuvem             | T24–T26 | Protocolo de runner, contas e servidor + banco na AWS                                    |
 | Depois            | Backlog | Runners hospedados (estilo Hostinger) e o que não entrou no plano                        |
 
-## Atualização de interface e memórias — 2026-11-04
+## Estado consolidado
 
-Implementação aprovada após as entregas do Claude, em `codex/modeler-connections-memories`. Veja [[Interface e memorias aprovadas]] para escopo, verificações e limites atuais. Inclui modelador em nova aba, moldura desktop, conexões por agente, memórias com escrita e integração MCP/runner. O runtime de API OpenAI/Anthropic foi implementado com testes simulados; validação paga de T04/T07 continua pendente. Esta atualização substitui as restrições antigas de memória somente leitura, protocolo revisão 2 e runtime de API indisponível nas descrições históricas abaixo.
+Atualizado em **2026-11-06**. Esta seção é a referência de andamento. As seções por tarefa preservam critérios de aceite,
+decisões e resultados datados; uma entrega de código não equivale à aceitação com serviços
+reais nem à publicação. As notas de interface/memórias e T25 mantêm o histórico das entregas.
 
-### Integração do trabalho do Codex (2026-11-04) e o que ele cobriu
+Base conferida: `25733af` (merge da dev na main, PR #13). O [CI desse commit](https://github.com/rafaeldossanto/NeuronsAI/actions/runs/42301122748) passou nos oito jobs: checagens e empacotamento desktop nos três sistemas, integração com Postgres e gitleaks. O smoke do app empacotado no Windows usa CLI simulada; isso não substitui Google, modelos ou aceitação manual reais.
 
-A branch `codex/modeler-connections-memories` foi revisada (achados em [[Interface e memorias aprovadas]], seção "Revisão") e integrada na `dev` com o merge "Merge: interface, conexões e memórias (Codex, revisado)". O que cada tarefa já tem e o que ainda falta:
+| Tarefas | Implementação e validação disponíveis | O que ainda falta |
+| --- | --- | --- |
+| T01–T03, T05–T06, T10–T13, T15, T19–T20 | Fundação, Hub, guardas, editor e anotações, histórico/replay, CI e PGlite integrados. T15 inclui total de eventos e ordenação por duração. | Nenhuma implementação dessas frentes está aguardando início; os fluxos reais restantes estão nas linhas abaixo. |
+| T04 / T07 | `ApiRuntime` OpenAI Responses/Anthropic com SDKs oficiais, comunicação, ferramentas e tokens, testado com clientes simulados. | Spike real e aceitação de `two-agents.json` e `mixed.json`. Adaptadores, registro, compatível com OpenAI, preços/cálculo e tradução de esforço foram implementados na continuação local; catálogo deliberadamente limitado e transporte validado com fetch simulado. |
+| T08 / T24 | Claude Code em PTY e stream-json, runner embutido ou separado, protocolo v1 revisão 4, reconexão e resize. Há provas reais anteriores de terminal/comunicação. | Aceitação real integrada no perfil hybrid e do fluxo misto com API. Codex, Gemini e `custom` constam do esquema, mas não executam; ficam como expansão do backlog. |
+| T09 | MCP, HTTP e Obsidian com leitura/escrita autorizada, `list_tools`/`use_tool` e `ToolCalled` integrados. Em 05/11 houve leitura do cofre do Rafael, escrita em cópia e HTTP/MCP stdio por `use_tool`; o cofre original foi preservado. | Hooks nativos implementados na continuação local e validados com eventos simulados; falta aceitação com a CLI real. |
+| T14 | Canvas ao vivo, estado, mensagens, linha do tempo, entrada e redimensionamento do terminal implementados. | Aceitação pela interface com Claude Code real, digitação/resize e agentes de API reais. |
+| T16a | Webhook assinado e agenda implementados. Demonstração no servidor validou assinatura, replay e cron em dois minutos consecutivos. Configuração da porta já existe no desktop. | Conferência manual da configuração e do cron no app desktop instalado. |
+| T16b | WhatsApp ainda não implementado. | Número de teste da Meta, gatilho e resposta pela Cloud API oficial. |
+| T17 | Três templates, prévias e criação de rascunhos integrados; criação/reabertura/publicação explícita e pesquisa/revisor validados com CLI simulada. | Executar os dois templates que usam API com chaves reais, junto da T07. |
+| T18 | Landing, downloads por sistema, instruções, CSP em meta e workflow manual do Pages implementados; formulários fictícios removidos. | Hospedagem e URL do modelador, publicação e primeira release. Lista de espera depende de destino e permanece desligada. Assets e headers da landing junto ao NestJS foram tratados na continuação local. |
+| T21 | Electron local com PGlite, IPC isolado, configurações de gatilhos e encerramento com limites de tempo. | Ordem de fechamento e clientes HTTP pendentes corrigidos nesta continuação; concluir aceitação real do app e conferir estabilidade nos demais sistemas. A conexão remota da T25 não inicia automaticamente um runner local. |
+| T22 | Pipeline de instaladores, checksums e atualizador implementados; atualização local Windows 0.0.1 → 0.0.2 registrada. | Primeira release pública e aceitação de instalação/atualização nos sistemas-alvo. macOS sem assinatura e Linux deb usam download manual. |
+| T25 | Contas, Google OIDC, sessões, organizações, convites, isolamento, runners, desktop remoto, adoção de dados e cotas revisados e integrados em dev/main. | OAuth client e origem/retorno reais; aceitação web/Electron com Google, renovação e reinício/cofre nos três sistemas. |
+| T23 / T26 | Assinatura de código e infraestrutura AWS ainda não implementadas. | Certificados/notarização; CDK, ECS/RDS, persistência, segredos, domínio/TLS e deploy. Mantidas para a etapa final com custo. |
 
-- **T07 · Runtime de API: parcial.** Feito: `ApiRuntime` em `apps/server/src/agents/api-runtime.ts`, com OpenAI (Responses API) e Anthropic pelos SDKs oficiais; ferramentas `send_message`, `ask`, `reply`, `list_peers`, `finish` mais `list_tools` e `use_tool` (as ferramentas ligadas por `uses`); retentativas com espera crescente feitas pelo SDK; uso gravado em tokens; custo desconhecido (`reportsCost = false`, nunca 0); chave escolhida por nome em `runtime.secretName`. Falta: `ModelProvider`/`ProviderRegistry`/`OpenAICompatibleProvider`; tabela de preços versionada e `UsageCalculator` em US$ (é ela que faz a guarda de custo valer para agentes de API); tradução do esforço por modelo (hoje envia sempre); rodada real do `two-agents.json`/`mixed.json` (só há testes com cliente simulado).
-- **T09 · Ferramentas: quase feita.** Feito: Obsidian com `create` e `edit` (sem exclusão), permissão do bloco **e** da ligação, memória por `memoryId` ou `vaultPath`; `list_tools`/`use_tool` no MCP do agente de terminal, no runner (protocolo revisão 3) e no agente de API; cada chamada grava `ToolCalled` (só `nodeId` e `path`). Falta: o teste manual com o cofre do Rafael; ToolCalled para as ferramentas embutidas do Claude Code (Bash, Read...), que não são reportadas; conferir na prática que MCP e HTTP também passam por `use_tool`.
-- **T14c · Estados e terminal no web: feita (2026-11-04).** Ver "T14 — Execução ao vivo"; a seção "Memórias e ferramentas" virou a linha do tempo única.
-- **T15 · Histórico e replay: feita (T15a e T15b, 2026-11-04).** Lista com filtros e replay no canvas (ver a T15).
-- **T17 · Templates: não iniciada.** Existe a tela "novo projeto" (`new-project-page.tsx`, projeto sem nome e importação de memória), mas sem escolha de template.
-- **T18 · Landing: parcial.** Feito: `apps/site` com a landing real, build pelo Vite, CTA "Criar meu projeto" abrindo `/new` e servida em `/` pelo servidor com `NEURONS_LANDING_DIR`. Falta: publicar no domínio, lista de espera com destino, botões de download por sistema, servir com CSP, e trocar os formulários de demonstração por funcionais.
-- **Novo no desktop e no servidor:** moldura própria da janela com preload/IPC, chave mestra por `safeStorage`, rotas `/connections` e `/memories`, acesso à IA por agente (assinatura do Claude Code ou chave de API).
+**Limite de custo:** o terminal PTY não informa custo em USD; APIs agora estimam custo somente para os modelos do catálogo versionado. Fora dele, o consumo
+desconhecido permanece desconhecido, nunca zero; `budgetUsd` não garante teto nesses runtimes.
+O stream-json informa custo por diferença do total acumulado da sessão.
 
-## Ordem de execução
+## Continuação local de 06/11/2026
 
-- Feito: T01, T02, T03, T05, T06, T08, T09, T10, T11, T12, T14, T16a, T19, T20, T21, T22, T24.
-- Próxima: T13–T15 → T25 → T16b–T18.
-- **Por último (têm custo):** T04 e T07 (chave de API), T26 (AWS) e T23 (assinatura de código). Até a T26, o webhook do WhatsApp (T16b) sai por túnel.
+Implementação posterior à consolidação acima: [[Entrega local sem custo]]. Foram entregues a ordem de encerramento da T21, os adaptadores/registro/cálculo de uso da T07, convites e permissões por rota da T25, telemetria nativa da T09, seleção de runner e snapshot de reconexão da T24, e assets isolados da landing na T18. A T22 segue com preparação e validação local; publicação e aceitação nos demais sistemas continuam separadas. As correções de segurança estão em [[Seguranca]].
 
-**Paralelismo possível:** T04 e T05 em paralelo com T02–T03. A Fase 2 pode começar assim que
-a T10 publicar a API (o modelador só depende do contrato da T02 e da API).
+## Próximos passos
+
+1. **Beta local:** repetir a aceitação real após corrigir a ordem de encerramento; aceitar o fluxo completo no modelador com Claude Code real, digitação/resize, memória e gatilhos; preparar a primeira release e conferir instalação/atualização. Manter separados testes com CLI simulada e aceitação real.
+2. **Contas e híbrido:** configurar o OAuth client Google (sem custo de API de modelo), origem e retorno; aceitar login/renovação/reabertura nos três sistemas e execução com runner separado. A integração automática do runner ao desktop é uma evolução de experiência, não uma entrega já pronta da T25.
+3. **Publicação e integração externa:** decidir hospedagem da landing/URL do modelador e destino opcional da lista; publicar quando autorizado. T16b depende do número de teste da Meta e pode usar túnel até a T26.
+4. **Por último, preservando a decisão de custos:** provas pagas de T04/T07, AWS (T26) e assinatura de código (T23). A abstração de provedores e os testes simulados foram entregues; expandir o catálogo e executar a aceitação real são etapas distintas.
+
+Antes da exposição pública, configurar as listas de cadastro/primeiro proprietário e `trustProxy`
+no balanceador; ver as pendências operacionais da T25. SSRF, convites, publicação de segredos
+por admin e concorrência das cotas já têm implementação, não devem ser reabertos como ausentes.
 
 ---
 
@@ -75,7 +93,7 @@ O contrato central: o modelador grava, o servidor lê. Tudo em zod, tipos export
     - `{ kind: "terminal", cli: "claude" | "codex" | "gemini" | "custom", command?, args[], cwd }`
   - `tool` — `mcp { command|url, allowedTools[] }` | `http { method, url, headers, bodySchema }`
     | `obsidian { vaultPath? | memoryId?, readOnly: boolean }` (exatamente uma referência).
-- Ligação: `{ id, from, to, kind: "talk" | "uses", bidirectional, maxMessages? }`.
+- Ligação: `{ id, from, to, kind: "talk" | "uses", bidirectional, maxMessages?, readOnly? }`.
   `talk` liga agente a agente (permissão de iniciar conversa); `uses` liga agente a ferramenta.
 - `annotations[]`: formas livres, notas, texto, grupos; nunca executam.
 - `validateGraph()`: nomes de agente únicos, um gatilho com destino, toda ligação aponta para
@@ -91,8 +109,8 @@ O contrato central: o modelador grava, o servidor lê. Tudo em zod, tipos export
 
 ### T03 — Servidor e banco
 
-- `apps/server` em NestJS 11 com adaptador Fastify. Módulos: `graphs`, `runs`, `hub`,
-  `agents` (supervisor e runtimes), `providers`, `tools`, `secrets`, `shared`.
+- `apps/server` em NestJS 12 com adaptador Fastify. Módulos de grafos, execuções, Hub,
+  agentes, contas, conexões, memórias, runners, gatilhos, segredos e infraestrutura compartilhada.
   O `hub` não conhece HTTP nem runtime concreto; depende de interfaces.
 - Postgres 18 nativo: `db/setup-local.sql` cria o usuário `neurons` e o database `neurons_dev`
   (senha por `psql -v`, nunca em arquivo, depois em `NEURONS_DB_PASSWORD`).
@@ -111,6 +129,9 @@ O contrato central: o modelador grava, o servidor lê. Tudo em zod, tipos export
 
 ### T04 — Spike dos fornecedores (agentes de API)
 
+**Pendente.** O runtime OpenAI/Anthropic já existe na T07 com clientes simulados; o spike
+comparativo com chaves reais e a nota de fornecedores abaixo ainda não foram entregues.
+
 - Script em `packages/providers/spike/` mandando o mesmo pedido com uma ferramenta para
   Anthropic, OpenAI e um compatível com OpenAI (Ollama ou OpenRouter). Chaves por variável de
   ambiente; **não colar chave no chat**.
@@ -126,7 +147,7 @@ O contrato central: o modelador grava, o servidor lê. Tudo em zod, tipos export
 
 O maior risco técnico. Provar no Windows antes de construir.
 
-- Script em `apps/server/spike/terminal/` que, com `node-pty`:
+- Script em `spikes/terminal/` que, com `node-pty`:
   1. Sobe o `claude` (e o `codex`, se instalado) num pseudo-terminal com `cwd` definido.
   2. Detecta quando a CLI está **ociosa** (esperando entrada). Testar heurísticas: silêncio de
      saída por N ms, padrão do prompt, e se a CLI oferece algo melhor (hooks do Claude Code,
@@ -169,7 +190,9 @@ ocupado, `ask`/`reply`, timeout do `ask`, reentrega após restart e as três for
 
 ### T07 — Runtime de API
 
-- `ModelProvider.run(request): AsyncIterable<ModelEvent>` com tipos próprios
+**Implementação local ampliada em 06–07/11/2026.** `ApiRuntime` mantém o ciclo e as ferramentas; `packages/providers` agora concentra os adaptadores oficiais, o registro de provedores e o cliente compatível com OpenAI. Sessões mantêm mensagens e resultados correlacionados; os eventos são normalizados por resposta completa. A tabela versionada calcula estimativas somente para modelos conhecidos, preservando custo desconhecido quando falta preço ou uso. A tradução de esforço omite opções desconhecidas ou sem suporte. Contratos dos SDKs foram testados com fetch interceptado; aceitação paga permanece pendente da T04/T07.
+
+- Sessões `ModelProvider.createSession`, `ProviderRegistry` e `runModelTurn(): AsyncIterable<ModelEvent>` com tipos próprios
   (`text | toolCall | usage | done | error`); adaptadores com o **SDK oficial** de cada
   fornecedor: `AnthropicProvider`, `OpenAIProvider`, `OpenAICompatibleProvider`. `ProviderRegistry`
   por `provider`. Esforço traduzido pela tabela da T04.
@@ -185,12 +208,12 @@ gravadas.
 ### T08 — Runtime de terminal
 
 - `packages/mcp-neurons`: servidor MCP (SDK oficial) com `send_message`, `ask`, `reply`,
-  `list_peers`, `finish`, autenticado por um token por agente e por execução, falando com o Hub
+  `list_peers`, `finish`, `list_tools` e `use_tool`, autenticado por um token por agente e por execução, falando com o Hub
   por HTTP local.
-- `TerminalAgentRuntime` (resultado do spike T05, `Docs/Spikes/Terminal.md`): `node-pty` 1.1.0 (binário pronto para Windows, sem compilador) + `@xterm/headless` para ler a tela; **fim de turno pelo hook `Stop`** do Claude Code configurado na sessão, com o rodapé da TUI (`esc to interrupt` = ocupado, `? for shortcuts` = livre) e 1,5 s de silêncio só como confirmação; **injeção** = digitar o texto, esperar o eco na tela + 400 ms, Enter, confirmar pelo hook `UserPromptSubmit`; saída transmitida ao WebSocket.
-- `StreamJsonAgentRuntime`: segundo runtime, para agentes sem tela, com `claude -p --input-format stream-json --output-format stream-json` como sessão persistente (fim de turno, uso e custo explícitos; turno quente ~5 s). Decidir aqui se vira opção do bloco no `graph-schema`.
+- `ClaudeTerminalRuntime` (resultado do spike T05, `Docs/Spikes/Terminal.md`): `node-pty` 1.1.0 (binário pronto para Windows, sem compilador) + `@xterm/headless` para ler a tela; **fim de turno pelo hook `Stop`** do Claude Code configurado na sessão, com o rodapé da TUI (`esc to interrupt` = ocupado, `? for shortcuts` = livre) e 1,5 s de silêncio só como confirmação; **injeção** = digitar o texto, esperar o eco na tela + 400 ms, Enter, confirmar pelo hook `UserPromptSubmit`; saída transmitida ao WebSocket.
+- `ClaudeStreamJsonRuntime`: segundo runtime, para agentes sem tela, com `claude -p --input-format stream-json --output-format stream-json` como sessão persistente (fim de turno, uso e custo explícitos; turno quente ~5 s no spike). A opção já existe no bloco: `runtime.mode` aceita `pty` (padrão) e `stream-json`.
 - Os dois implementam a mesma `AgentRuntime` (injetar, ocioso/ocupado, saída, encerrar).
-- Encerrar com `taskkill /T /F` no Windows (`pty.kill()` trava); matar órfãos no restart; fixar a versão suportada da CLI (os textos de tela mudam entre versões); testar prompt multilinha (o spike não cobriu).
+- Encerramento da árvore de processos por sistema; no Windows, `taskkill /T /F`. A reconexão do runner trata agentes órfãos. Prompt multilinha já usa bracketed paste e tem teste com CLI simulada; a conferência da CLI real no modelador continua na T14. Mudanças de versão da CLI exigem conferir os textos de tela usados pela detecção do PTY.
 - Esforço e modelo passados por flag/config da CLI quando ela tiver; senão, ignorados com aviso.
 
 **Pronto quando:** `mixed.json`: um agente de API manda uma tarefa ao Claude Code no terminal,
@@ -198,11 +221,19 @@ o Claude Code pergunta algo com `ask`, recebe a resposta e avisa com `send_messa
 
 ### T09 — Ferramentas: MCP, HTTP e Obsidian
 
+**Implementada e com validação manual controlada em 2026-11-05.** Leitura de nota do cofre
+do Rafael, criação/edição em cópia temporária e HTTP/MCP stdio por `use_tool` produziram seis
+`ToolCalled` bem-sucedidos; a nota original preservou o hash. Detalhes em
+[[T25 - Contas e isolamento]], seção "Outras validações desta leva". A escrita direta no
+cofre original e o registro de ferramentas nativas da CLI não foram validados.
+
 - Cliente MCP (SDK oficial), stdio e HTTP; só as ferramentas de `allowedTools` chegam ao agente.
 - Ferramenta HTTP valida o corpo pelo `bodySchema`; segredos por nome (`{{secret:X}}`), nunca no grafo.
-- Obsidian: `search`, `read`, `listLinks` restritos ao `vaultPath` (bloquear `..`, links para fora,
-  `.obsidian/`). Só leitura na v1.
-- Agente de terminal recebe as mesmas ferramentas pela configuração MCP da sessão.
+- Obsidian: busca, leitura e links, com criação/edição quando bloco e ligação permitem escrita;
+  sem exclusão. A origem é `memoryId` ou `vaultPath`, com proteção de caminhos e pastas reservadas.
+- Agentes de API e terminal acessam as ferramentas autorizadas por `list_tools`/`use_tool`;
+  o terminal passa pelo MCP `neurons` e pelo runner. Em contexto de organização, MCP stdio
+  no servidor compartilhado é recusado; MCP HTTP continua disponível.
 - Cada chamada grava `ToolCalled` (ferramenta, entrada resumida, duração, erro).
 
 **Pronto quando:** um agente responde uma pergunta lendo um cofre do Rafael (teste manual) e os
@@ -245,10 +276,12 @@ os eventos chegando pelo WebSocket.
 - **Cliente: `openapi-typescript` + `openapi-fetch`** em `packages/api-client`. O OpenAPI é montado
   dos contratos zod dos controllers (`@Endpoint`), sem `@nestjs/swagger` (que gira em torno de DTO
   de classe). `pnpm api:generate` regenera; `pnpm api:check` (CI) falha se o commitado ficou velho.
-- **Sem login:** escuta em `127.0.0.1`; outro endereço exige `NEURONS_HOST` **e**
-  `NEURONS_ALLOW_REMOTE=true`.
-- **Demo:** `pnpm --filter @neurons/server demo` usa o `two-terminals.json` (e não o `mixed.json`,
-  cujo agente de API ainda não roda) com o CLI de mentira; `-- --real-claude` usa o Claude Code real.
+- **Modo local sem login:** escuta em `127.0.0.1`; outro endereço exige `NEURONS_HOST` **e**
+  `NEURONS_ALLOW_REMOTE=true`. A T25 acrescentou contas opcionais em hybrid/hosted;
+  liberar o endereço remoto, sozinho, não ativa autenticação.
+- **Demo:** `pnpm --filter @neurons/server demo` usa o `two-terminals.json` com o CLI de mentira;
+  `-- --real-claude` usa o Claude Code real. O runtime de API já existe, mas a aceitação real
+  do `mixed.json` permanece na T04/T07.
   Uma rodada real (haiku, 2026-11-02, custo ≈ US$ 0,005): os dois agentes conversaram, o `finish`
   veio no meio do turno do Pesquisador e o `UsageRecorded` dele entrou no log **antes** do
   `RunFinished`, que é o que a descarga do uso corrige.
@@ -296,7 +329,7 @@ nada de azul.
 
 **Feito (2026-11-04)** — detalhes em `apps/web/README.md`.
 
-- `@xyflow/react` 12.12.1 em `apps/web/src/editor/`. O estado é o próprio JSON do grafo num reducer
+- `@xyflow/react` 12.12.1 em `apps/web/src/graphs/editor/`. O estado é o próprio JSON do grafo num reducer
   puro com histórico (`model.ts`): desfazer/refazer, com digitação e arrasto contando como um passo.
   Tudo que o canvas não edita (`annotations[]`, chaves desconhecidas) volta intacto no salvar.
 - Validação ao vivo com `validateGraph`: erro no bloco, no inspetor e numa lista clicável; "Publicar
@@ -353,7 +386,7 @@ digitar no terminal do Claude Code.
 **Feito (2026-11-04)** — as três partes (T14a, T14b e T14c) estão abaixo; a rodada com o Claude
 Code real, que o "Pronto quando" cita, ainda não foi feita (cota).
 
-Dividida em três partes. **T14a (feita): dados ao vivo**, sem canvas, em `apps/web/src/live/`
+Dividida em três partes. **T14a (feita): dados ao vivo**, sem canvas, em `apps/web/src/runs/live/`
 (contrato em `live/README.md`):
 
 - Cliente do `/ws` na mesma origem (proxy `ws: true` no Vite). O histórico vem do próprio
@@ -385,10 +418,11 @@ Decisões:
   `@neurons/tools`) e, no runner, pelo `call` `report_tool_call`. O resumo nunca leva segredo: o
   `{{secret:NOME}}` do que o agente mandou aparece só como o nome, chaves sensíveis viram
   `[oculto]`, textos e o resumo são cortados, e os valores que a chamada resolveu são removidos
-  como segunda trava (testado explicitamente). **Falta ligar quem chama:** nenhum runtime usa
-  ferramentas de `@neurons/tools` hoje (o runtime de API é a T07 e a configuração MCP da sessão
-  de terminal é da T09); as ferramentas do Hub continuam aparecendo como mensagens e como o fim,
-  e as ferramentas embutidas do Claude Code (Bash, Read...) não são reportadas.
+  como segunda trava (testado explicitamente). **Integração concluída depois na T09:** agentes
+  de API e terminal usam `list_tools`/`use_tool`; `GraphToolsService` executa as ferramentas e
+  registra `ToolCalled`, com resumo de `nodeId` e `path`, sem conteúdo de nota. As ferramentas
+  do Hub aparecem como mensagens/fim; as ferramentas nativas do Claude Code (Bash, Read...)
+  continuam sem esse registro.
 - **`terminal.input { runId, agent, data }` no `/ws`**, nos perfis `local` e `hybrid` (neste, o
   `agent.input` que já existia no protocolo). Valida: execução em andamento, agente do grafo,
   terminal PTY, terminal já aberto; limita o tamanho (`NEURONS_TERMINAL_INPUT_MAX_CHARS`, 4096) e
@@ -397,10 +431,11 @@ Decisões:
   nem na mensagem de erro); também não há evento "alguém digitou" (uma tecla por mensagem encheria
   o log). Sem conexão com o runner, recusa com `terminal_unavailable` em vez de perder a tecla em
   silêncio.
-- **Protocolo do runner: revisão 2 dentro da versão 1** (`PROTOCOL_REVISION`). Só o `call`
-  `report_tool_call` é novo; cada ponta anuncia a sua revisão no `register`/`registered` (campo
+- **Protocolo do runner na entrega T14b: revisão 2 dentro da versão 1.** O `call`
+  `report_tool_call` foi acrescentado nessa etapa; cada ponta anuncia a sua revisão no `register`/`registered` (campo
   opcional, ausente = 1) e só usa o recurso novo quando a outra o tem. Servidor antigo + runner
-  novo e o contrário continuam funcionando.
+  novo e o contrário continuam funcionando. **Estado atual: revisão 4** (`PROTOCOL_REVISION`):
+  a revisão 3 acrescentou ferramentas do grafo/credenciais por agente, e a 4, resize do terminal.
 - **Saída do terminal na reconexão: o resumo (`replay: true`, ~200 mil caracteres por terminal)
   basta para o xterm.js** e ficou como está: a TUI repinta a tela, e o resumo inclui o que passou
   durante a queda. Só uniformizei o runner remoto para guardar chunks inteiros (como o local),
@@ -412,7 +447,7 @@ Decisões:
   Revisor). Sem rodada com o Claude Code real (cota).
 
 **T14c (feita, 2026-11-04): execução sobre o desenho, painel do agente e terminal.** Detalhes e
-como a T15b reaproveita em `apps/web/src/live/README.md` (seção "Execução sobre o desenho").
+como a T15b reaproveita em `apps/web/src/runs/live/README.md` (seção "Execução sobre o desenho").
 Decisões:
 
 - **Reducer:** `AgentStateChanged` passa a ser a fonte do estado do agente (`stateSource: "event"`);
@@ -457,7 +492,7 @@ Dividida em duas:
   - **Tempo:** horários reais dos eventos ÷ velocidade (0,5× a 8×); **esperas acima de 2 s em 1× viram 2 s** e há piso de 150 ms. A tela diz isso (trechos encurtados, duração do replay contra a real).
   - **Pulsos:** só um passo para frente (um evento) desenha o pulso, na seta e no sentido certos; voltar e arrastar mostram o estado parado. Lista própria no player em vez de `useActivePulses`, que não repetiria um pulso depois de voltar.
   - **Terminal:** não é reproduzido (a saída não fica no log); a tela e o painel do agente avisam.
-  - **Falta/anotado:** ordenação por duração na lista continua opcional; a API não informa o total de eventos, então o progresso é "N carregados". *(Resolvido em 2026-11-05, abaixo.)*
+  - **Complementado pela T15c em 2026-11-05:** a lista já ordena por duração e a API informa o total de eventos para exibir o progresso do replay.
 - **T15c · Pendências fechadas (2026-11-05).** `GET /runs/{id}/events` agora devolve também `total` (contagem de eventos da execução inteira, por chave primária `(run_id, seq)`, independente de `fromSeq`/`limit`; quem só lia `items` não muda), e o carregamento do replay mostra "N de M (X%)". `GET /runs` aceita `sort=durationMs` (`finishedAt - startedAt`); **execuções sem fim ou sem início ficam no fim da lista nos dois sentidos** (`asc` e `desc`), e a tela `/runs` ganhou "Mais demoradas" e "Mais rápidas". Testes nos dois bancos.
 
 **Pronto quando (T15a):** com execuções de grafos e versões diferentes, cada filtro e as combinações dão o conjunto certo, na API e na tela (testes de integração nos dois bancos e da tela).
@@ -481,7 +516,7 @@ Dividida em duas:
   - **Estado fora do grafo:** ativo/desativado (padrão desativado), segredo e última/próxima execução em `graph_triggers` (migration `0005`); ativar não publica versão. API: `GET /graphs/{id}/triggers/{triggerId}`, `POST …/secret`, `PUT …/enabled`.
   - **Tela:** o inspetor do gatilho mostra URL, "Gerar/Trocar segredo" (uma vez, com aviso), `curl` assinado, cron com explicação em português, as próximas 3 execuções e o fuso.
   - **Desktop:** o agendador e a porta dos webhooks só funcionam com o app aberto.
-  - **Falta/anotado:** rodar manualmente um `* * * * *` por 1–2 minutos no app real; a porta dos gatilhos no app desktop só liga por variável de ambiente (sem tela de configuração).
+  - **Validação e configuração posteriores:** em 05/11, `demo:triggers` validou cron em dois minutos consecutivos no servidor, com banco temporário e CLI simulada. Desde 06/11, o desktop tem Configurações → Gatilhos externos para ligar/desligar e escolher a porta (T21). Falta conferir esse caminho e o cron no app desktop instalado.
   - **Segredo órfão: resolvido (2026-11-05).** O `SecretsService` ganhou `delete`. Apagar um grafo (só os nunca publicados podem ser apagados) remove, **na mesma transação**, os segredos de webhook dos gatilhos dele (`webhook.<hookId>`); trocar o segredo já o substitui no mesmo nome (o antigo deixa de valer na hora). Para os órfãos que já existiam, a rotina `OrphanWebhookSecrets` roda na partida do servidor, é idempotente e só apaga nomes **exatamente** `webhook.` + id gerado (22 caracteres base64url) sem linha em `graph_triggers` (um segredo com nome escolhido à mão nunca é tocado); registra quantos removeu. Sem migration.
 - **T16b · WhatsApp: pendente.** Depende do número de teste da Meta que o Rafael vai criar. **WhatsApp Cloud API** oficial como gatilho e como ferramenta de resposta; validar `X-Hub-Signature-256` (reaproveita a porta dos gatilhos da T16a); agente que lê mensagem de cliente começa sem ferramenta de escrita.
 
@@ -518,7 +553,8 @@ A tela `/new` oferece projeto em branco e os três templates, com prévia por `G
 **Estado (revisado e integrado na `dev`):**
 
 - Feito: seção "Baixar" com detecção do sistema e links vindos de `releases/latest` (API pública, sem token, cache em `sessionStorage` tolerante a falha, "Primeira versão em breve" sem release/erro/limite); "Como instalar" (SmartScreen, Gatekeeper, Linux, conferência do `SHA256SUMS.txt`); lista de espera desligada por padrão (destino em `src/config.ts`); CSP estrita sem script/estilo inline; `.github/workflows/pages.yml` só com `workflow_dispatch`, `pages: write`/`id-token: write` só no deploy; SEO e acessibilidade.
-- Nada foi publicado: o `pages.yml` não foi executado, não há tag nem release.
+- **Consulta em 2026-11-06:** nenhuma release encontrada no GitHub; a consulta ao site do GitHub Pages retornou 404. Publicação em hospedagem externa não foi verificada. O workflow do Pages continua manual.
+- **Hospedagem junto ao servidor:** a T18 externalizou CSS, JavaScript, fontes e dados. O caminho `landingRoot` em `apps/server/src/ui/serve-ui.ts` ainda entrega apenas o HTML da landing e usa a raiz web para os demais arquivos. Antes de usar `NEURONS_LANDING_DIR` em produção, integrar a entrega de assets da landing e conferir os headers/CSP. A hospedagem estática separada usa o build completo de `apps/site/dist`.
 - Depende do Rafael: (1) onde hospedar (GitHub Pages ou domínio próprio) e ativar o Pages; (2) o destino da lista de espera (`VITE_WAITLIST_URL` + `VITE_WAITLIST_ENABLED=true`); (3) a URL pública do modelador para o `pages.yml`; (4) a primeira release, para os botões de download ficarem ativos.
 
 **Pronto quando:** landing publicada no domínio escolhido.
@@ -558,7 +594,7 @@ A tela `/new` oferece projeto em branco e os três templates, com prévia por `G
 
 **Pronto quando:** o app abre no Windows com o modelador e roda uma execução com agente de terminal; o build local (`electron-builder --dir`) passa nos três sistemas pelo CI.
 
-**Feito (2026-11-04)** — como rodar e empacotar em `apps/desktop/README.md`. Decisões:
+**Implementação entregue (2026-11-04); aceitação real e estabilidade sob carga pendentes.** Como rodar e empacotar em `apps/desktop/README.md`. Decisões:
 
 - **Electron 45.2.2 e electron-builder 26.18.0**, versões exatas. O servidor roda no processo principal (perfil `local`, runner embutido) por `@neurons/server` (novo ponto de entrada `embed`, sem subir nada ao importar), escutando em `127.0.0.1` na porta 0 (o sistema escolhe, sem janela entre "está livre?" e escutar).
 - **Uma origem só.** O próprio servidor serve o `apps/web/dist` (`createApp(config, { ui })`): a interface em `/`, a API em `/api` (o prefixo é tirado por `rewriteUrl`, sem mexer em controller) e o WebSocket em `/ws`. Sem preload, sem CORS e sem segundo servidor.
@@ -573,7 +609,7 @@ A tela `/new` oferece projeto em branco e os três templates, com prévia por `G
 **Pendências resolvidas (2026-11-06).**
 
 - **Porta dos webhooks no app:** item **Configurações** (só no app para computador) com **Gatilhos externos**: liga/desliga e porta (1024–65535, padrão 3101, **desligado por padrão**). A escolha fica em `<pasta de dados>/desktop-settings.json` e vai ao servidor embutido quando ele inicia (`NEURONS_HOOKS_PORT` no ambiente, se existir, manda); mudar pede reiniciar, e a tela avisa e oferece o botão. Mostra o endereço local e o link do túnel da Cloudflare. Porta ocupada: o app abre com os gatilhos desligados e diz o porquê. IPC com três ações validadas (`settings-controls.ts`).
-- **Encerramento:** o `before-quit` agora fecha contas e servidor com limite de tempo por etapa (3 s e 12 s) e **sai sempre** (`shutdown.ts`, testado com tempo falso: etapa que falha ou trava não segura a saída; `process.exit` de reserva em 4 s). Uma etapa lenta é registrada com os tipos de recurso ainda abertos. Revisados e descartados como causa: o agendador (só `setTimeout`, limpo em `onModuleDestroy`), a porta dos webhooks (fechada em `onModuleDestroy`), o timer do `electron-updater` (`unref`) e o node-pty (terminal fechado com a execução). Medição: com 4 apps em paralelo a saída leva de 1 s a ~15 s (sem carga, ~2 s) e **ainda falha 1 em ~12** quando o `app.close()` do servidor passa do limite; a causa dentro do fechamento do servidor sob carga **não foi achada**, e o smoke agora imprime o tempo de saída e o que estava aberto para a próxima rodada no CI.
+- **Encerramento:** o `before-quit` agora fecha contas e servidor com limite de tempo por etapa (3 s e 12 s) e **sai sempre** (`shutdown.ts`, testado com tempo falso: etapa que falha ou trava não segura a saída; `process.exit` de reserva em 4 s). Uma etapa lenta é registrada com os tipos de recurso ainda abertos. Revisados e descartados como causa: o agendador (só `setTimeout`, limpo em `onModuleDestroy`), a porta dos webhooks (fechada em `onModuleDestroy`), o timer do `electron-updater` (`unref`) e o node-pty (terminal fechado com a execução). Medição inicial, antes da continuação de 06–07/11: com 4 apps em paralelo a saída levava de 1 s a ~15 s (sem carga, ~2 s) e **falhava 1 em ~12** quando o `app.close()` do servidor passa do limite; a causa então permanecia em investigação, e o smoke passou a imprimir o tempo de saída e o que estava aberto para a próxima rodada no CI.
 
 ### T22 — Release multiplataforma
 
@@ -584,7 +620,7 @@ A tela `/new` oferece projeto em branco e os três templates, com prévia por `G
 
 **Pronto quando:** uma tag gera os instaladores dos três sistemas e o app instalado se atualiza sozinho para a versão seguinte.
 
-**Feito (2026-11-04)** — detalhes em `apps/desktop/README.md` (seções "Instaladores e release" e "Atualização automática"). Decisões:
+**Pipeline implementado (2026-11-04); publicação e aceitação final pendentes.** Detalhes em `apps/desktop/README.md` (seções "Instaladores e release" e "Atualização automática"). Decisões:
 
 - **`release.yml`:** tag `v*` ou execução manual com `publish` (padrão `false`). Matriz Windows (NSIS), macOS (dmg + zip, arm64 e x64) e Linux (AppImage + deb). Com `publish: false` só sobem artefatos do workflow; com tag (ou `publish: true`) um job final, o único com `contents: write` e `GITHUB_TOKEN`, cria um **rascunho** de release com instaladores, `latest*.yml`, blockmaps e `SHA256SUMS.txt`. Nenhum segredo novo.
 - **Versão = tag.** O job `version` falha se `vX.Y.Z` não bater com `apps/desktop/package.json`.
@@ -619,15 +655,15 @@ A tela `/new` oferece projeto em branco e os três templates, com prévia por `G
 
 **Feito (2026-11-02)** — detalhes em `packages/runner-protocol/README.md`, `packages/runner/README.md` e `apps/server/README.md` (seção "Runners e perfis"). Decisões:
 
-- **Prova com o `two-terminals.json`, não com o `mixed.json`** (o agente de API, T07, ficou para o fim por ter custo). `pnpm --filter @neurons/server demo` roda a execução com o runner embutido (perfil `local`); `demo -- --profile=hybrid` roda a mesma execução com o runner **em outro processo**, conectado por WebSocket. Mesmos 11 eventos, mesmo resultado; só o perfil muda. O `mixed.json` entra quando a T07 existir.
+- **Prova da entrega com o `two-terminals.json`.** `pnpm --filter @neurons/server demo` roda a execução com o runner embutido (perfil `local`); `demo -- --profile=hybrid` roda a mesma execução com o runner **em outro processo**, conectado por WebSocket. Mesmos 11 eventos, mesmo resultado; só o perfil muda. O runtime de API da T07 já existe com testes simulados; a prova real do `mixed.json` continua pendente por depender de chaves/modelos reais.
 - **Protocolo v1, em zod** (`packages/runner-protocol`, fonte única). Todo frame é JSON com `v` e `type`; um `v` desconhecido é recusado antes de qualquer outra leitura. Runner → servidor: `register`, `heartbeat`, `agent.state`, `agent.output`, `call`, `response`. Servidor → runner: `registered`, `reject`, `heartbeat`, `agent.start`, `agent.deliver`, `agent.stop`, `agent.input`, `call.result`. Além dos oito itens do plano, entraram `call`/`call.result` (as ferramentas do agente — `send_message`, `ask`, `reply`, `list_peers`, `finish`, `report_usage` — precisam chegar ao Hub, que fica no servidor) e `agent.input` (o usuário digita no terminal do agente). `AgentCommunication.listPeers` passou a poder devolver uma promessa.
 - **Reconexão sem perder mensagem.** Tudo que cruza a conexão é idempotente por id: o servidor reenvia o pedido que o runner não respondeu (`agent.start`, `agent.deliver`, `agent.stop`), o runner responde a repetição com o que já fez (um `message.id` já entregue não é entregue de novo) e o runner reenvia o `call` sem resultado (o servidor responde com o desfecho da primeira execução, sem enviar a mensagem duas vezes; guarda os últimos 2000). O `register` de cada conexão lista os agentes vivos do runner: o servidor atualiza os estados perdidos (um `idle` perdido volta a acionar a entrega da caixa de entrada) e responde com `keep`, a lista que ainda quer; o runner para os demais (órfãos de um servidor que reiniciou).
 - **Carência de 60 s** (`NEURONS_RUNNER_GRACE_SEC`): a conexão que cai não falha os agentes; só se o runner não voltar nesse prazo é que viram `AgentFailed` ("não voltou"). Um runner que volta sem o agente (reiniciou) também o falha ("perdeu o agente"). Heartbeat nos dois sentidos a cada 15 s; 3 batidas perdidas fecham a conexão. O runner reconecta com espera crescente (0,5 s até 15 s) e desiste só se o servidor o recusar.
 - **Perfis** (`NEURONS_PROFILE`): `local` (padrão) hospeda os agentes num **runner embutido** que fala o mesmo protocolo por um canal em memória; `hybrid` não hospeda nada e aceita runners em `/runner`; `hosted` se comporta como `hybrid` até a T26. Um agente novo vai ao runner conectado com menos agentes, esperando até 30 s por um (`NEURONS_RUNNER_WAIT_SEC`) antes de falhar com "Nenhum runner conectado".
-- **Token por runner.** Emitido pelo servidor (`pnpm --filter @neurons/server runner:token create <nome>`), mostrado **uma única vez** e guardado só como SHA-256 (tabela `runners`, migration `0003_runners`; o token é longo e aleatório, 256 bits, `nrn_...`, então hash rápido basta). Vai no cabeçalho `Authorization: Bearer` do upgrade do WebSocket, nunca no endereço, em log ou em frame. Revogar (`runner:token revoke <nome>`) recusa o runner e derruba o conectado na próxima checagem (a cada batida). O runner se recusa a mandar o token em `ws://` para outra máquina (precisa de `wss://` ou `NEURONS_RUNNER_ALLOW_INSECURE=true`). Sem REST de emissão por enquanto: a API ainda não tem login, e emitir token por ela entregaria o acesso a qualquer um que alcance a porta; a T25 vincula o runner a uma conta.
+- **Token por runner.** Emitido pelo servidor (`pnpm --filter @neurons/server runner:token create <nome>`), mostrado **uma única vez** e guardado só como SHA-256 (tabela `runners`, migration `0003_runners`; o token é longo e aleatório, 256 bits, `nrn_...`, então hash rápido basta). Vai no cabeçalho `Authorization: Bearer` do upgrade do WebSocket, nunca no endereço, em log ou em frame. Revogar (`runner:token revoke <nome>`) recusa o runner e derruba o conectado na próxima checagem (a cada batida). O runner se recusa a mandar o token em `ws://` para outra máquina (precisa de `wss://` ou `NEURONS_RUNNER_ALLOW_INSECURE=true`). A T25 acrescentou emissão/revogação autenticadas por REST e pelo painel `/runners`, com escopo por organização; o CLI continua disponível para administração.
 - **Código.** `packages/runner-protocol` (frames, codec, canais, canal em memória), `packages/runner` (`RunnerHost`, que hospeda os runtimes da T08; `RunnerConnection`, o cliente WebSocket que reconecta; programa `neurons-runner`) e, no servidor, `src/runners/` (`RemoteAgentRuntime`, `RunnerLink`, `RunnerRegistry`, `RunnerGateway`, `EmbeddedRunner`, tokens). O Hub e o Supervisor não mudaram: o `RemoteAgentRuntime` implementa a mesma `AgentRuntime`.
 - **`total_cost_usd` é acumulado na sessão** (resposta à pergunta da T10). Medido com o Claude Code 2.1.309 e Haiku, em sessões stream-json: com turnos de 586, 4 e 4 tokens de saída os totais foram 0,00099 → 0,00155 → 0,00200 (crescem mesmo com um turno minúsculo no meio) e `modelUsage` soma os tokens dos turnos (586 → 590 → 594), enquanto `usage` é por turno. Antes o orçamento contava o custo em dobro (ou mais) a cada turno. O `ClaudeStreamJsonRuntime` agora reporta a diferença para o total anterior (`costOfTurn`); o CLI falso passou a acumular como o real. Custo das duas rodadas reais: ≈ US$ 0,004 no total. O `--max-budget-usd` do CLI compara com esse mesmo total acumulado, então continua coerente.
-- **Adiado:** a demo real (`--real-claude`) no perfil `hybrid` (a cota das rodadas reais foi usada na medição do custo); REST/UI para emitir e revogar tokens (T25); escolher o runner de cada agente no grafo (hoje o menos carregado); reenviar a saída do terminal perdida durante uma queda (o servidor guarda só o que chegou); o runtime de API (T07) rodando num runner.
+- **Pendências:** demo real (`--real-claude`) no perfil `hybrid` e runtime de API rodando num runner (hoje roda no servidor). Seleção por `runtime.runnerId` e recuperação da cauda recente do terminal via snapshot na revisão 5 foram implementadas na continuação de 06–07/11; o modo automático continua usando o menos carregado da organização. REST/UI de emissão e revogação já foram entregues na T25. A conexão remota do desktop não inicia o runner automaticamente.
 
 ### T25 — Contas e multiusuário
 
@@ -641,12 +677,14 @@ A tela `/new` oferece projeto em branco e os três templates, com prévia por `G
 - **Segredos — resolvido pelo modelo "admin publica".** Publicar versão com `{{secret:...}}` em qualquer string exige `admin`/`owner` (`403 secret_publish_forbidden`); `member` publica o resto. Lista de hosts permitidos por segredo ficou fora (seria coluna nova em `secrets` e UI): continua sendo a evolução natural.
 - **Sem contas, fora do loopback:** `NEURONS_ALLOW_REMOTE=true` sem as variáveis do Google deixa a API aberta (inclui MCP stdio no servidor). É o comportamento anterior, agora documentado nos comentários. Continua valendo: **não** exponha o servidor sem contas.
 
-**Dados locais, cotas e limpeza (2026-11-05).**
+**Dados locais, cotas e limpeza (2026-11-05; concorrência revisada em 06/11).**
 - **Adoção dos dados locais.** Servidor com contas começa vazio para cada organização; os dados antigos (`organization_id` NULL) ficam fora de todas. `GET /auth/organizations/{id}/local-data` mostra o que há e `POST /auth/organizations/{id}/adopt-local-data` (`{ "confirm": true }`) move tudo para a organização. **Só `owner` daquela organização, só com contas ligadas, ação única e confirmada, nunca automática.** Numa transação: grafos (com versões, execuções e gatilhos, que acompanham o grafo) e segredos, que são **recriptografados** porque a organização faz parte do que o AES-GCM autentica; depois as pastas de memórias vão para a pasta da organização, uma a uma (uma segunda chamada termina o que uma queda deixou e, sem nada, não faz nada). Recusa com 409 se há execução local em andamento ou se a organização já tem segredo com o mesmo nome; sem a chave mestra certa nada é movido. Gatilhos com agenda ficam **desligados** (o temporizador em memória é do escopo local) e o dono liga de novo. Runners e conexões do Claude (que são do computador, não do banco) não mudam. Na tela, painel de organizações > "Dados locais deste servidor", só para o `owner` e só quando há o que mover, com aviso e confirmação. O perfil `local` sem conta não muda.
-- **Cotas por organização** (só onde há organização; o perfil `local` sem conta não tem cotas; `0` desliga). Estourar responde **429** com mensagem em pt-BR. Variáveis `NEURONS_QUOTA_ORGANIZATIONS_PER_USER` (5; organizações de que a conta é proprietária, contando o espaço pessoal), `NEURONS_QUOTA_MEMORIES_PER_ORG` (50), `NEURONS_QUOTA_MEMORY_MB_PER_ORG` (512), `NEURONS_QUOTA_CONCURRENT_RUNS_PER_ORG` (5) e `NEURONS_QUOTA_RUNS_PER_DAY_PER_ORG` (500, janela móvel de 24 h). As de memória e execução são conferências "leitura e depois escrita": duas chamadas no mesmo instante podem passar por uma; a de organizações trava a linha da conta.
+- **Cotas por organização** (só onde há organização; o perfil `local` sem conta não tem cotas; `0` desliga). Estourar responde **429** com mensagem em pt-BR. Variáveis `NEURONS_QUOTA_ORGANIZATIONS_PER_USER` (5; organizações de que a conta é proprietária, contando o espaço pessoal), `NEURONS_QUOTA_MEMORIES_PER_ORG` (50), `NEURONS_QUOTA_MEMORY_MB_PER_ORG` (512), `NEURONS_QUOTA_CONCURRENT_RUNS_PER_ORG` (5) e `NEURONS_QUOTA_RUNS_PER_DAY_PER_ORG` (500, janela móvel de 24 h). Organizações travam a linha da conta. A contagem e criação de execução ocorrem na mesma transação com trava por organização; duas partidas concorrentes não ocupam a mesma vaga. Criação/importação de memória confere a cota e grava em fila por organização **neste processo de servidor**; essa fila não é uma trava distribuída para múltiplas réplicas.
 - **Teste instável de `graphs`:** a causa era `updatedAt` carimbado pelo relógio do host (`$onUpdate`) contra `createdAt` do relógio do banco (`now()`); o repositório agora carimba o `updatedAt` também com `now()` do banco, então `updatedAt >= createdAt` não depende mais de dois relógios.
 
-**Dívidas menores:** ~~quem entra pode criar organizações novas sem cota;~~ gatilhos/rotação do segredo de webhook pedem só papel `write` (mapa de papéis no interceptor depende do prefixo do controller; trocar por decorator por rota); tokens de runner antigos (escopo `NULL`) continuam valendo e não são adotados; `/ws` não fecha upgrade sem sessão (cada operação já exige); HTTP em loopback aceito também no app empacotado; `Retry-After`/limite de tentativas usa `request.ip` (atrás de proxy é preciso configurar `trustProxy`).
+**Atualização 07/11:** permissões por rota/controller, rotação de webhook restrita a gerenciamento de credenciais, limite de corpo comum de 1 MiB e painel de convites foram entregues.
+
+**Dívidas menores:** tokens de runner antigos (escopo `NULL`) continuam valendo e não são adotados; `/ws` não fecha upgrade sem sessão (cada operação já exige); HTTP em loopback aceito também no app empacotado; `Retry-After`/limite de tentativas usa `request.ip` (atrás de proxy é preciso configurar `trustProxy`). A importação de memórias mantém 30 MiB; os demais endpoints usam 1 MiB. Convites podem ser gerenciados pela interface e pela API.
 
 **Depende do Rafael:** criar o OAuth client no Google Cloud (tipo "Aplicativo da Web"; URI de redirecionamento exata `<origem>/api/auth/google/callback` com a interface servida junto, ou `/auth/google/callback` sem ela; HTTP só em loopback), configurar `NEURONS_PUBLIC_ORIGIN`, `NEURONS_GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI`, `NEURONS_MASTER_KEY` e perfil `hybrid`/`hosted` fora do Git, e aceitar o login real no Electron (reinício com o cofre) nos três sistemas.
 

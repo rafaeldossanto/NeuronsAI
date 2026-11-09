@@ -190,7 +190,12 @@ export class InMemoryRunLog implements RunEventLog, RunRepository, RunEventHisto
     for (const run of this.runs.values()) {
       if (run.status !== "running") continue;
       const version = await this.versions.findById(run.graphVersionId);
-      if (version) active.push({ run, graph: version.definition });
+      if (version)
+        active.push({
+          run,
+          graph: version.definition,
+          credentialsApproved: version.credentialsApproved,
+        });
     }
     return active;
   }

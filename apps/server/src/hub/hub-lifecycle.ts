@@ -3,7 +3,7 @@ import {
   Injectable,
   Logger,
   type OnApplicationBootstrap,
-  type OnApplicationShutdown,
+  type BeforeApplicationShutdown,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import { Hub } from "./hub.js";
@@ -11,7 +11,7 @@ import { Supervisor } from "./supervisor.js";
 
 /** Ties the Hub to the server's life: recover on boot, stop the sessions on shutdown. */
 @Injectable()
-export class HubLifecycle implements OnApplicationBootstrap, OnApplicationShutdown {
+export class HubLifecycle implements OnApplicationBootstrap, BeforeApplicationShutdown {
   private readonly logger = new Logger(HubLifecycle.name);
 
   constructor(
@@ -33,7 +33,7 @@ export class HubLifecycle implements OnApplicationBootstrap, OnApplicationShutdo
     }
   }
 
-  async onApplicationShutdown(): Promise<void> {
+  async beforeApplicationShutdown(): Promise<void> {
     this.hub.cancelAllAsks();
     await this.supervisor.stopAll();
   }
