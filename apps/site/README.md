@@ -2,6 +2,13 @@
 
 Landing do NeuronsAI com Vite, Manrope, fundo #F7F7F4, grafite e âmbar #E9A15C. Preserva o neurônio animado e o modelador de demonstração. O CTA **Criar meu projeto** abre o modelador real em outra aba; a demonstração não executa agentes nem grava projetos.
 
+**Estado em 2026-11-06:** implementação revisada e integrada; publicação, hospedagem/URL
+do modelador, destino opcional da lista e primeira release pública continuam pendentes.
+Para hospedar junto ao NestJS, ainda é preciso integrar os assets da landing na entrega de
+`landingRoot` e conferir headers/CSP; o caminho atual entrega só seu HTML. Hospedagem
+estática deve publicar todo o `dist`. Andamento no
+[plano consolidado](../../Docs/Plano/Plano%20de%20Implementação.md#estado-consolidado).
+
 ## Entrega T18
 
 - Seção **Baixar** com detecção de Windows, macOS e Linux. O sistema detectado aparece primeiro e recebe destaque. No macOS, Apple Silicon e Intel ficam sempre disponíveis para escolha; não se infere a arquitetura pelo navegador. Linux oferece AppImage e deb x64.

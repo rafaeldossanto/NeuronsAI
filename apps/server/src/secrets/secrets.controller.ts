@@ -1,3 +1,4 @@
+import { RequirePermission } from "../accounts/require-permission.js";
 import { Controller, Inject } from "@nestjs/common";
 import { Endpoint, ValidBody, ValidParams } from "../api/endpoint.js";
 import {
@@ -12,6 +13,7 @@ import { SecretsService } from "./secrets.service.js";
 import { webhookSecretName } from "../triggers/webhook-secret-name.js";
 
 /** Secrets can be written and listed by name. Reading a value is for the server's own tools only. */
+@RequirePermission("manage_credentials")
 @Controller("secrets")
 export class SecretsController {
   constructor(@Inject(SecretsService) private readonly secrets: SecretsService) {}

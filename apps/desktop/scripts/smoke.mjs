@@ -12,6 +12,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyPackage } from "./verify-package.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..", "..", "..");
@@ -25,9 +26,10 @@ const FAKE_CLAUDE = path.join(
 );
 const DEBUG_PORT = 9333 + Math.floor(Math.random() * 500);
 const packagedExecutable = process.argv.slice(2).find((argument) => !argument.startsWith("--"));
+const startupTimeout = process.argv.includes("--inspect-startup") ? 180_000 : 60_000;
 
 const log = (line) => console.log(`[smoke] ${line}`);
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms).unref());
 
 async function inspectPage(page, inspect) {
   const WebSocket = createRequire(path.join(root, "apps", "server", "package.json"))("ws");
@@ -85,6 +87,16 @@ async function until(label, probe, timeoutMs) {
 }
 
 async function main() {
+  if (packagedExecutable) {
+    const executable = path.resolve(packagedExecutable);
+    const resources =
+      process.platform === "darwin"
+        ? path.resolve(path.dirname(executable), "../Resources")
+        : path.join(path.dirname(executable), "resources");
+    log(
+      `integridade do pacote: ${JSON.stringify(verifyPackage(path.join(resources, "app.asar")))}`,
+    );
+  }
   const scratch = await mkdtemp(path.join(os.tmpdir(), "neurons-smoke-"));
   const dataDir = path.join(scratch, "data");
   const workdir = path.join(scratch, "work");
@@ -94,6 +106,8 @@ async function main() {
   const args = [
     ...(packagedExecutable ? [] : [path.resolve(here, "..")]),
     "--smoke-hidden",
+    "--enable-logging=file",
+    `--log-file=${path.join(scratch, "electron.log")}`,
     `--remote-debugging-port=${DEBUG_PORT}`,
   ];
   const env = {
@@ -113,16 +127,21 @@ async function main() {
   const exited = new Promise((resolve) => app.once("exit", (code) => resolve(code)));
 
   try {
-    const page = await until(
-      "a janela abrir",
-      async () => {
-        const targets = await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json`)).json();
-        return targets.find(
-          (target) => target.type === "page" && target.url.startsWith("http://127.0.0.1:"),
-        );
-      },
-      60_000,
-    );
+    const page = await Promise.race([
+      until(
+        "a janela abrir",
+        async () => {
+          const targets = await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json`)).json();
+          return targets.find(
+            (target) => target.type === "page" && target.url.startsWith("http://127.0.0.1:"),
+          );
+        },
+        startupTimeout,
+      ),
+      exited.then((code) => {
+        throw new Error(`O aplicativo encerrou antes de abrir a janela (código ${String(code)}).`);
+      }),
+    ]);
     const origin = new URL(page.url).origin;
     log(`janela em ${origin}`);
 
@@ -236,6 +255,8 @@ async function main() {
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     console.error(`--- saída do app ---\n${output.slice(-3000)}`);
+    const diagnostic = await readFile(path.join(scratch, "electron.log"), "utf8").catch(() => "");
+    if (diagnostic) console.error(`--- diagnóstico Electron ---\n${diagnostic.slice(-5000)}`);
     return { scratch, app, exited, ok: false, output: () => output };
   }
 }

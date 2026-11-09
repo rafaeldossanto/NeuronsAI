@@ -19,8 +19,13 @@ export async function createApp(
   options: CreateAppOptions = {},
 ): Promise<NestFastifyApplication> {
   const adapter = new FastifyAdapter({
+    forceCloseConnections: true,
     bodyLimit: 30 * 1024 * 1024,
     ...(options.ui ? { rewriteUrl: (req: { url?: string }) => rewriteForUi(req.url ?? "/") } : {}),
+  });
+  adapter.getInstance().addHook("onRoute", (route) => {
+    route.bodyLimit =
+      route.method === "POST" && route.url === "/memories" ? 30 * 1024 * 1024 : 1024 * 1024;
   });
   // abortOnError: false makes a failure while booting (a data folder in use, say) reject instead of
   // exiting the process, so whoever embeds the server (the desktop app) can show it to the user.
@@ -31,7 +36,7 @@ export async function createApp(
       abortOnError: false,
     },
   );
-  configureApp(app);
+  configureApp(app, config);
   if (options.ui) registerUiRoutes(adapter.getInstance(), options.ui);
   return app;
 }

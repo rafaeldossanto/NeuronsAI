@@ -28,6 +28,39 @@ describe("RunService", () => {
   const finishedEvent = (runId: string) => persistence.runLog.eventsOf(runId, "RunFinished")[0];
   const statusOf = async (runId: string) => (await persistence.runLog.findById(runId))?.status;
 
+  it("refuses historical credentials until an authorized publication approves the version", async () => {
+    const graph = buildTestGraph();
+    const definition = {
+      ...graph,
+      nodes: graph.nodes.map((node) =>
+        node.type === "agent"
+          ? {
+              ...node,
+              runtime: {
+                kind: "api" as const,
+                provider: "openai",
+                model: "test",
+                secretName: "audit-key",
+              },
+            }
+          : node,
+      ),
+    };
+    const old = await persistence.versions.appendNext(graph.id, definition);
+    const { runService } = harnessWith();
+    await expect(
+      resourceScope.run({ organizationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }, () =>
+        runService.start(old.id, "audit"),
+      ),
+    ).rejects.toMatchObject({ code: "secret_publish_forbidden" });
+    const approved = await persistence.versions.appendNext(graph.id, definition, true);
+    await expect(
+      resourceScope.run({ organizationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }, () =>
+        runService.start(approved.id, "audit"),
+      ),
+    ).resolves.toHaveProperty("id");
+  });
+
   describe("quotas", () => {
     const ORG = "0b000000-0000-4000-8000-000000000001";
     const inOrganization = <T>(action: () => T): T =>

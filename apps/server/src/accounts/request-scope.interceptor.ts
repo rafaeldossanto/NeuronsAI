@@ -13,6 +13,7 @@ import { AuthController } from "./auth.controller.js";
 import { resourceScope } from "./resource-scope.js";
 import { HealthController } from "../health/health.controller.js";
 import { OpenApiController } from "../api/openapi/openapi.controller.js";
+import { permissionOf } from "./require-permission.js";
 
 @Injectable()
 export class RequestScopeInterceptor implements NestInterceptor {
@@ -36,11 +37,8 @@ export class RequestScopeInterceptor implements NestInterceptor {
     const scope = await this.auth.browser.authenticate(request);
     const writes = !["GET", "HEAD", "OPTIONS"].includes(request.method);
     if (writes) this.auth.browser.requireMutation(request);
-    const controllerPath = Reflect.getMetadata("path", context.getClass()) as string;
     const permission = writes
-      ? ["secrets", "runners", "connections"].includes(controllerPath)
-        ? "manage_credentials"
-        : "write"
+      ? (permissionOf(context.getHandler()) ?? permissionOf(context.getClass()) ?? "write")
       : "read";
     const access = await this.accounts.requireAccess(
       scope.userId,

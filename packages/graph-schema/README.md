@@ -14,11 +14,17 @@ Todo bloco tem `id` e `position: { x, y }`. Os blocos (`GraphNode`) são uma uni
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `trigger` | `kind` (`manual`, `webhook`, `schedule`), `target` (id de um agente), `cron` (obrigatório em `schedule`: 5 campos, validado), `timezone?` (nome IANA; sem ele, o fuso do servidor) |
 | `agent`   | `name` (endereço do `send_message`, `^[A-Za-z][A-Za-z0-9_-]{0,39}$`), `role`, `instructions`, `effort` (`low`…`max`), `budgetUsd?`, `idleTimeoutSec?`, `runtime`                   |
-| `tool`    | `name` e `tool`: `mcp` (`stdio` ou `http`, com `allowedTools`), `http` (`method`, `url`, `headers`, `bodySchema?`) ou `obsidian` (`vaultPath`, `readOnly: true`)                   |
+| `tool`    | `name` e `tool`: `mcp` (`stdio` ou `http`, com `allowedTools`), `http` (`method`, `url`, `headers`, `bodySchema?`) ou `obsidian` (`memoryId` ou `vaultPath`, `readOnly: boolean`)  |
 
-`runtime` do agente: `{ kind: "api", provider, model }` ou `{ kind: "terminal", cli, mode, command?, args, cwd }` (`cli`: `claude`, `codex`, `gemini` ou `custom`; `mode`: `pty` (padrão, a tela da CLI que o usuário vê e digita) ou `stream-json` (sessão estruturada, sem tela); `command` é obrigatório em `custom`; `cwd` é um caminho absoluto, Windows ou POSIX).
+`runtime` do agente: `{ kind: "api", provider, model, access?, secretName? }` ou `{ kind: "terminal", cli, mode, model?, command?, args, cwd, access?, secretName? }` (`cli`: `claude`, `codex`, `gemini` ou `custom`; `mode`: `pty` (padrão, a tela da CLI que o usuário vê e digita) ou `stream-json` (sessão estruturada, sem tela); `command` é obrigatório em `custom`; `cwd` é um caminho absoluto, Windows ou POSIX). O contrato aceita essas CLIs, mas o runtime atual só executa `claude`. API executa `openai`/`anthropic` por chave; assinatura ChatGPT permanece indisponível.
 
-**Ligações (`Link`)**: `{ id, from, to, kind, bidirectional (padrão false), maxMessages? }`.
+Obsidian exige exatamente uma origem (`memoryId` ou `vaultPath`). A memória por ID é
+resolvida pelo servidor; o caminho bruto só é permitido no contexto local. Leitura/escrita
+preserva os grafos antigos somente leitura; criar/editar exige `readOnly: false` no bloco,
+e `readOnly: true` na ligação `uses` veta a escrita desse agente. O campo da ligação é
+opcional; ausente ou `false` não acrescenta restrição. Não existe exclusão de notas.
+
+**Ligações (`Link`)**: `{ id, from, to, kind, bidirectional (padrão false), maxMessages?, readOnly? }`.
 
 - `talk`: agente → agente; dá permissão de **iniciar** a conversa. Quem recebe sempre pode responder; `bidirectional` deixa os dois lados iniciarem.
 - `uses`: agente → ferramenta.

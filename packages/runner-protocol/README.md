@@ -10,15 +10,15 @@ Todo frame é um objeto JSON com `v` (versão, hoje **1**) e `type`. Um frame de
 
 Runner → servidor:
 
-| `type`          | Para quê                                                                                                                                                                                                                                 |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `register`      | Primeiro frame de toda conexão: nome do runner, capacidades e **os agentes que ele ainda hospeda** (como o servidor se atualiza após uma reconexão).                                                                                     |
-| `heartbeat`     | Sinal de vida.                                                                                                                                                                                                                           |
-| `agent.state`   | Mudança de estado de um agente (`starting`, `busy`, `idle`, `waiting_reply`, `stopped`, `failed`).                                                                                                                                       |
-| `agent.output`  | Saída bruta do terminal (efêmera: não é reenviada se a conexão cair).                                                                                                                                                                    |
-| `agent.resized` | (Revisão 4.) O terminal foi redimensionado, com o tamanho que o runner aplicou. Vem depois do redimensionamento e antes de qualquer saída desenhada para o tamanho novo: o servidor recomeça o buffer do terminal exatamente ali.        |
-| `call`          | O agente usa uma ferramenta do Hub (`send_message`, `ask`, `reply`, `list_peers`, `finish`, `report_usage` e, desde a revisão 2, `report_tool_call`: uma chamada de ferramenta do agente, que vira o evento `ToolCalled`). Tem `callId`. |
-| `response`      | Resposta a um pedido do servidor (`agent.start`, `agent.deliver`, `agent.stop`).                                                                                                                                                         |
+| `type`          | Para quê                                                                                                                                                                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `register`      | Primeiro frame de toda conexão: nome do runner, capacidades e **os agentes que ele ainda hospeda** (como o servidor se atualiza após uma reconexão).                                                                                                   |
+| `heartbeat`     | Sinal de vida.                                                                                                                                                                                                                                         |
+| `agent.state`   | Mudança de estado de um agente (`starting`, `busy`, `idle`, `waiting_reply`, `stopped`, `failed`).                                                                                                                                                     |
+| `agent.output`  | Saída bruta do terminal (efêmera: não é reenviada se a conexão cair).                                                                                                                                                                                  |
+| `agent.resized` | (Revisão 4.) O terminal foi redimensionado, com o tamanho que o runner aplicou. Vem depois do redimensionamento e antes de qualquer saída desenhada para o tamanho novo: o servidor recomeça o buffer do terminal exatamente ali.                      |
+| `call`          | O agente usa comunicação (`send_message`, `ask`, `reply`, `list_peers`, `finish`), informa uso (`report_usage`), reporta ferramenta (`report_tool_call`, revisão 2) ou acessa ferramentas do grafo (`list_tools`/`use_tool`, revisão 3). Tem `callId`. |
+| `response`      | Resposta a um pedido do servidor (`agent.start`, `agent.deliver`, `agent.stop`).                                                                                                                                                                       |
 
 Servidor → runner:
 

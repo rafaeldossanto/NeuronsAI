@@ -103,6 +103,44 @@ describe("Supervisor", () => {
   });
 
   describe("recover", () => {
+    it("ends an unapproved historical credential run without starting its agents", async () => {
+      const graph = buildTestGraph();
+      const definition = {
+        ...graph,
+        nodes: graph.nodes.map((node) =>
+          node.type === "agent"
+            ? {
+                ...node,
+                runtime: {
+                  kind: "api" as const,
+                  provider: "openai",
+                  model: "test",
+                  secretName: "audit-key",
+                },
+              }
+            : node,
+        ),
+      };
+      const before = createHubHarness(persistence);
+      const id = await before.openRun(definition);
+      const run = await persistence.runs.findById(id);
+      if (!run) throw new Error("Missing test run");
+      persistence.runs.listRunning = () =>
+        Promise.resolve([
+          {
+            run,
+            graph: definition,
+            organizationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            credentialsApproved: false,
+          },
+        ]);
+      const after = createHubHarness(persistence);
+      await after.supervisor.recover();
+      expect(after.runtimes.created).toEqual([]);
+      expect((await persistence.runs.findById(id))?.status).toBe("failed");
+      expect(persistence.runLog.eventsOf(id, "RunFinished")).toHaveLength(1);
+    });
+
     it("hands over again what was delivered but never acknowledged, in order, after a restart", async () => {
       const before = createHubHarness(persistence, {
         runtimeOptions: { Beta: { neverAck: true } },

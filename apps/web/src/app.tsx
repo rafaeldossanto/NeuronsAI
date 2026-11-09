@@ -2,18 +2,18 @@ import type { ApiClient } from "@neurons/api-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { Navigate, Route, Routes } from "react-router";
-import { Layout } from "@/components/layout";
+import { Layout } from "@/shell/layout";
 import { WorkspaceProvider } from "@/workspace/resources";
-import { NewProjectPage } from "@/routes/new-project-page";
-import { EmptyState } from "@/components/states";
-import { ApiProvider } from "@/lib/api";
-import { GraphEditorPage } from "@/routes/graph-editor-page";
-import { GraphsPage } from "@/routes/graphs-page";
-import { RunDetailPage } from "@/routes/run-detail-page";
-import { RunsPage } from "@/routes/runs-page";
-import { OrganizationsPage } from "@/routes/organizations-page";
-import { RunnersPage } from "@/routes/runners-page";
-import { SettingsPage } from "@/routes/settings-page";
+import { NewProjectPage } from "@/graphs/new-project-page";
+import { EmptyState } from "@/shared/states";
+import { ApiProvider } from "@/shared/api";
+import { GraphEditorPage } from "@/graphs/graph-editor-page";
+import { GraphsPage } from "@/graphs/graphs-page";
+import { RunDetailPage } from "@/runs/run-detail-page";
+import { RunsPage } from "@/runs/runs-page";
+import { OrganizationsPage } from "@/accounts/organizations-page";
+import { RunnersPage } from "@/runners/runners-page";
+import { SettingsPage } from "@/settings/settings-page";
 
 export function createQueryClient() {
   return new QueryClient({

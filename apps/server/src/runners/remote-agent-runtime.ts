@@ -41,7 +41,7 @@ export interface RunnerEndpoint {
 /** Where the runtimes find the runner that will host them. */
 export interface RunnerPool {
   /** @throws NoRunnerAvailableError when none shows up in time. */
-  acquire(): Promise<RunnerEndpoint>;
+  acquire(runnerId?: string): Promise<RunnerEndpoint>;
 }
 
 export interface RemoteRuntimeOptions {
@@ -93,7 +93,9 @@ export class RemoteAgentRuntime implements AgentRuntime {
 
   async start(briefing: string): Promise<void> {
     try {
-      const endpoint = await this.pool.acquire();
+      const endpoint = await this.pool.acquire(
+        this.agent.runtime.kind === "terminal" ? this.agent.runtime.runnerId : undefined,
+      );
       if (this.closed) return; // stopped while waiting for a runner
       this.endpoint = endpoint;
       endpoint.bind(this);
@@ -165,6 +167,12 @@ export class RemoteAgentRuntime implements AgentRuntime {
   }
 
   /** Raw terminal output; only terminal runtimes keep it. */
+  applySnapshot(_data: string, _cols: number, _rows: number): void {
+    void _data;
+    void _cols;
+    void _rows;
+  }
+
   applyOutput(data: string): void {
     void data;
   }
@@ -254,6 +262,14 @@ export class RemoteTerminalRuntime extends RemoteAgentRuntime implements Termina
 
   private currentSize: TerminalSize = { ...DEFAULT_TERMINAL_SIZE };
   private readonly resizes = new Signal<TerminalSize>();
+
+  override applySnapshot(data: string, cols: number, rows: number): void {
+    this.currentSize = { cols, rows };
+    this.tail.clear();
+    this.tail.push(data);
+    this.resizes.emit({ cols, rows });
+    this.outputs.emit("\x1bc" + data);
+  }
 
   override applyOutput(data: string): void {
     this.tail.push(data);

@@ -220,6 +220,21 @@ export class RunnerHost {
         void this.stopInstance(instance);
       }
     }
+    if (this.serverRevision >= 5) {
+      for (const id of this.snapshotIds) {
+        const instance = this.instances.get(id);
+        if (instance && wanted.has(id) && isTerminalRuntime(instance.runtime)) {
+          const runtime = instance.runtime;
+          this.send({
+            v: PROTOCOL_VERSION,
+            type: "agent.snapshot",
+            instanceId: id,
+            data: runtime.outputSnapshot(),
+            ...runtime.size,
+          });
+        }
+      }
+    }
     for (const call of this.pendingCalls.values()) this.send(call.frame);
 
     clearInterval(this.heartbeat);

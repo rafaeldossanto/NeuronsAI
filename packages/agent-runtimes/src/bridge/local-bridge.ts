@@ -9,7 +9,7 @@ import {
   sendMessageRequest,
   useToolRequest,
 } from "@neurons/mcp-neurons";
-import type { z } from "zod";
+import { z } from "zod";
 import type { AgentCommunication } from "../contract/agent-communication.js";
 import { silentLogger, type RuntimeLogger } from "../contract/logger.js";
 
@@ -86,6 +86,36 @@ export class LocalBridge {
 
     this.hook(BRIDGE_ROUTES.hooks.userPromptSubmit, () => hooks?.onUserPromptSubmit?.());
     this.hook(BRIDGE_ROUTES.hooks.stop, () => hooks?.onStop?.());
+    const pending = new Map<string, number>();
+    const event = z.object({
+      tool_name: z.string().regex(/^[A-Za-z][A-Za-z0-9_.:-]{0,199}$/),
+      tool_use_id: z.string().min(1).max(200),
+    });
+    this.tool(BRIDGE_ROUTES.hooks.preToolUse, event, (input) => {
+      if (!input.tool_name.startsWith("mcp__neurons__")) {
+        if (pending.size >= 512) pending.delete(pending.keys().next().value!);
+        pending.set(input.tool_use_id, Date.now());
+      }
+      return Promise.resolve({});
+    });
+    for (const [route, ok] of [
+      [BRIDGE_ROUTES.hooks.postToolUse, true],
+      [BRIDGE_ROUTES.hooks.postToolUseFailure, false],
+    ] as const) {
+      this.tool(route, event, async (input) => {
+        if (input.tool_name.startsWith("mcp__neurons__")) return {};
+        const started = pending.get(input.tool_use_id);
+        pending.delete(input.tool_use_id);
+        await communication.reportToolCall({
+          tool: input.tool_name,
+          inputSummary: "[argumentos omitidos]",
+          durationMs: started === undefined ? 0 : Math.max(0, Date.now() - started),
+          ok,
+          ...(!ok && { errorCode: "CLI_TOOL_FAILED" }),
+        });
+        return {};
+      });
+    }
   }
 
   /** `http://127.0.0.1:<port>`; only valid after {@link start}. */

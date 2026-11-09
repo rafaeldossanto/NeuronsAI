@@ -166,26 +166,32 @@ function sendOnce(
         ...(signal ? { signal } : {}),
       },
       (res) => {
-        const responseHeaders = new Headers();
-        for (const [name, value] of Object.entries(res.headers)) {
-          for (const item of Array.isArray(value) ? value : value === undefined ? [] : [value]) {
-            responseHeaders.append(name, item);
+        try {
+          const responseHeaders = new Headers();
+          for (const [name, value] of Object.entries(res.headers)) {
+            for (const item of Array.isArray(value) ? value : value === undefined ? [] : [value]) {
+              responseHeaders.append(name, item);
+            }
           }
+          if (res.headers["content-encoding"]) {
+            responseHeaders.delete("content-encoding");
+            responseHeaders.delete("content-length");
+          }
+          const status = res.statusCode ?? 502;
+          if (status < 200 || status > 599) throw new Error("Invalid upstream HTTP status");
+          const emptyBody = EMPTY_BODY_STATUSES.has(status) || method === "HEAD";
+          if (emptyBody) res.resume();
+          resolve(
+            new Response(emptyBody ? null : Readable.toWeb(decoded(res)), {
+              status,
+              statusText: res.statusMessage ?? "",
+              headers: responseHeaders,
+            }),
+          );
+        } catch (error) {
+          res.destroy();
+          reject(error instanceof Error ? error : new Error("Invalid upstream HTTP response"));
         }
-        if (res.headers["content-encoding"]) {
-          responseHeaders.delete("content-encoding");
-          responseHeaders.delete("content-length");
-        }
-        const status = res.statusCode ?? 502;
-        const emptyBody = EMPTY_BODY_STATUSES.has(status) || method === "HEAD";
-        if (emptyBody) res.resume();
-        resolve(
-          new Response(emptyBody ? null : Readable.toWeb(decoded(res)), {
-            status,
-            statusText: res.statusMessage ?? "",
-            headers: responseHeaders,
-          }),
-        );
       },
     );
     request.on("error", reject);

@@ -1,11 +1,17 @@
 ---
-atualizado: 2026-11-05
-status: implementado em branch; revisão e aceitação real pendentes
+atualizado: 2026-11-06
+status: implementação revisada e integrada em dev/main; aceitação Google real pendente
 ---
 
 # T25 — Google e recursos por organização
 
-Continuação autorizada por Rafael em 2026-11-05: avançar nas partes que não dependem de credenciais reais, preservando as etapas com custo para o fim. Branch `codex/t25-accounts-foundation`, worktree `C:\Users\rafae\Work\NeuronsAI-codex-t25`.
+**Estado atual:** implementação revisada e integrada na dev em 05/11 e presente na main,
+incluindo a continuação do desktop remoto. Google real ainda não foi aceito. O estado
+consolidado e a evidência de CI estão em [[Plano de Implementação]].
+
+**Origem histórica:** continuação autorizada por Rafael em 2026-11-05, na branch
+`codex/t25-accounts-foundation`, worktree `C:\Users\rafae\Work\NeuronsAI-codex-t25`,
+preservando as etapas com custo para o fim.
 
 ## O que mudou
 
@@ -17,9 +23,16 @@ Continuação autorizada por Rafael em 2026-11-05: avançar nas partes que não 
 - **WebSocket:** origem, sessão, papel e propriedade verificados em subscribe e terminal.input. A entrega de eventos/histórico/saída também revalida a sessão; revogação/expiração fecha a conexão antes de novos dados.
 - **Runners:** nomes únicos por organização, emissão/revogação autenticada com papel apropriado, token mostrado uma vez e omitido da lista. Upgrade continua autenticado por token; a identidade inclui a organização armazenada no servidor. Seleção e espera aceitam somente runners do mesmo namespace; embedded permanece local.
 - **Interface web:** tela de entrada Google, estado de carregamento, falhas com nova tentativa, sessão expirada e sair. Cliente envia CSRF apenas à mesma origem e compartilha uma renovação entre chamadas concorrentes. Sem conta configurada, abre o workspace local normalmente.
-- **Painéis administrativos:** `/organizations` permite criar e trocar espaços, copiar o ID da conta, adicionar contas existentes, alterar papéis e remover membros com confirmação. Proprietários gerenciam todos os papéis; administradores apenas membros/leitores; o último proprietário fica protegido. `/runners` lista conexão real e agentes vinculados, cadastra token mostrado uma única vez e revoga com confirmação. Token fica apenas no estado efêmero do painel, fora do cache de consultas e armazenamento do navegador. Membros/leitores consultam sem controles administrativos. Não há convite por email nesta etapa.
+- **Painéis administrativos:** `/organizations` permite criar e trocar espaços, copiar o ID da conta, adicionar contas existentes, alterar papéis e remover membros com confirmação. Proprietários gerenciam todos os papéis; administradores apenas membros/leitores; o último proprietário fica protegido. `/runners` lista conexão real e agentes vinculados, cadastra token mostrado uma única vez e revoga com confirmação. Token fica apenas no estado efêmero do painel, fora do cache de consultas e armazenamento do navegador. Membros/leitores consultam sem controles administrativos. A continuação acrescentou convites por e-mail verificado na API; o convite é aceito no login, sem serviço de envio de e-mail. O painel atual adiciona contas existentes e ainda não oferece gestão desses convites.
 - **Troca de espaço:** remonta o workspace por usuário/organização/papel, descartando caches e assinaturas anteriores. Respostas de requisições antigas são ignoradas e não podem ser repetidas sob a nova organização. Aguarda renovação em curso antes de mudar cookies; BroadcastChannel sincroniza outras abas, com revalidação ao focar a janela.
-- **Desktop:** espaço local sem conta preservado. Continuação na branch `codex/t25-desktop-remote`: seleção do servidor, login pelo navegador do sistema com retorno em loopback/PKCE, cookies HttpOnly em partição de memória e renovação no safeStorage, sem tokens no renderer. Ver [[T25 - Desktop remoto]] para protocolo, testes e limites; revisão e aceitação real continuam pendentes.
+- **Desktop:** espaço local sem conta preservado. A continuação de `codex/t25-desktop-remote` já foi revisada e integrada: seleção do servidor, login pelo navegador do sistema com retorno em loopback/PKCE, cookies HttpOnly em partição de memória e renovação no safeStorage, sem tokens no renderer. Ver [[T25 - Desktop remoto]] para protocolo, testes e limites; a aceitação com Google real continua pendente.
+
+Após a entrega inicial, foram integradas a guarda de saída HTTP/MCP contra SSRF, o cadastro
+fechado com convites, a publicação de segredos restrita a admin/owner, a adoção explícita de
+dados locais e as cotas. Em 06/11, partidas de execução passaram a contar/gravar na mesma
+transação com trava por organização; importações de memória passaram a conferir/gravar em
+fila por organização no processo. Configuração e limites atuais estão no
+[README do servidor](../../apps/server/README.md#servidor-público-guardas-t25).
 
 MCP por stdio em contexto de organização é recusado no servidor compartilhado; use MCP por HTTP. Processos locais pertencem ao computador do runner. O modo local existente preserva MCP stdio.
 
@@ -40,7 +53,10 @@ Com a interface servida pelo próprio servidor, o retorno é `/api/auth/google/c
 
 Rotas: `/auth/session`, `/auth/google`, `/auth/google/callback`, `/auth/refresh`, `/auth/logout`, `/auth/organizations`, `/auth/organization`, `/auth/organizations/:id/members`, `/auth/organizations/:id/members/:userId` e `/runners`. Com a interface, acrescente `/api`. O OpenAPI e o cliente tipado foram regenerados.
 
-## Verificação sem contas reais
+## Verificação da entrega inicial sem contas reais — 2026-11-05
+
+As contagens abaixo são os resultados da entrega descrita, não o total atual do repositório.
+A revisão posterior e o CI do commit consolidado estão registrados no plano central.
 
 - Suíte completa do servidor atual: **558 testes passaram**. Na continuação dos painéis, as suítes de contas e isolamento passaram com **39 testes em Postgres 18**; a seleção de runners também foi verificada em PGlite. O arquivo de isolamento agora tem 14 cenários, incluindo conta inexistente sem revelar dados a atores sem permissão e conexão real de runners por organização.
 - Web: **183 testes**. Desktop: **33 testes** na etapa anterior, incluindo o cofre protegido. Lint, tipagem e build dos pacotes afetados passaram.
@@ -54,9 +70,9 @@ Rotas: `/auth/session`, `/auth/google`, `/auth/google/callback`, `/auth/refresh`
 
 ## O que ainda falta na T25
 
-1. Revisão e integração da branch na dev, com CI multiplataforma.
-2. OAuth client Google e domínio/retorno reais para aceitação do login e renovação no navegador.
-3. Revisar a continuação do desktop remoto e aceitar o fluxo completo no Electron com OAuth real, reinício/cofre e os três sistemas. Implementação e limites em [[T25 - Desktop remoto]].
+1. Configurar OAuth client Google e origem/retorno reais para aceitar login, renovação e logout no navegador.
+2. Aceitar o fluxo completo no Electron com OAuth real, reinício/cofre e os três sistemas. Implementação e limites em [[T25 - Desktop remoto]].
+3. Antes da exposição pública, configurar cadastro/primeiro proprietário e `trustProxy` atrás do balanceador; manter persistentes os dados e a chave mestra. Revisão, integração e CI multiplataforma já foram concluídos; a infraestrutura AWS continua na T26.
 
 T25 permanece em andamento até a aceitação integrada. Não marcar a tarefa completa apenas porque os testes simulados passaram.
 

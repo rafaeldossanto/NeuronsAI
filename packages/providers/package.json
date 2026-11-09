@@ -9,6 +9,11 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vitest run"
+    "test": "vitest run",
+    "spike:offline": "node spike/offline.mjs"
+  },
+  "dependencies": {
+    "openai": "7.47.0",
+    "@anthropic-ai/sdk": "1.4.0"
   }
 }

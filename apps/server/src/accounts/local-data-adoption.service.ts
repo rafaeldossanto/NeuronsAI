@@ -1,4 +1,4 @@
-import { mkdir, readdir, rename, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile, rename, stat } from "node:fs/promises";
 import path from "node:path";
 import { Inject, Injectable } from "@nestjs/common";
 import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -76,7 +76,7 @@ export class LocalDataAdoption {
 
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
-    @Inject(APP_CONFIG) config: AppConfig,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {
     this.memoriesRoot = path.join(config.dataDir, "memories");
     if (config.masterKey) this.cipher = new AesGcmSecretCipher(config.masterKey);
@@ -84,6 +84,7 @@ export class LocalDataAdoption {
 
   /** @throws OrganizationAccessError unless `userId` is an owner of the organization. */
   async summary(userId: string, organizationId: string): Promise<LocalDataSummary> {
+    await this.requireDestination(organizationId);
     await requireOwner(this.database.db, userId, organizationId);
     return this.summarize(this.database.db);
   }
@@ -93,6 +94,16 @@ export class LocalDataAdoption {
    * @throws OrganizationAccessError, LocalRunsActiveError, LocalSecretsConflictError
    */
   async adopt(userId: string, organizationId: string): Promise<LocalDataSummary> {
+    await this.requireDestination(organizationId);
+    await requireOwner(this.database.db, userId, organizationId);
+    const binding = path.join(this.config.dataDir, "local-data-adoption.json");
+    await mkdir(this.config.dataDir, { recursive: true });
+    await writeFile(binding, JSON.stringify({ organizationId }), { flag: "wx", mode: 0o600 }).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code !== "EEXIST") throw error;
+      },
+    );
+    await this.requireDestination(organizationId);
     const moved = await this.database.db.transaction(async (tx) => {
       // There is one local workspace and many organizations that could claim it: two adoptions at
       // once (into different organizations) would each read the same local rows, and the second
@@ -136,6 +147,18 @@ export class LocalDataAdoption {
     // organization, so a failure here leaves memories that the next call moves.
     const memories = await this.moveMemories(organizationId);
     return { ...moved, memories };
+  }
+
+  private async requireDestination(organizationId: string): Promise<void> {
+    if (this.config.localDataOrganizationId !== organizationId) throw new OrganizationAccessError();
+    try {
+      const binding = JSON.parse(
+        await readFile(path.join(this.config.dataDir, "local-data-adoption.json"), "utf8"),
+      ) as { organizationId?: string };
+      if (binding.organizationId !== organizationId) throw new OrganizationAccessError();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }
 
   private async summarize(db: Database | DatabaseTransaction): Promise<LocalDataSummary> {

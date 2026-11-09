@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { stat, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
@@ -25,6 +25,23 @@ export const CONTENT_SECURITY_POLICY = [
   "img-src 'self' data:",
   "font-src 'self' data:",
   "connect-src 'self' ws://127.0.0.1:* ws://localhost:*",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+/**
+ * The landing page looks up the latest release on GitHub (apps/site/src/downloads.ts), so it needs
+ * that one origin in `connect-src`; it has no inline style, no WebSocket and no frame.
+ */
+export const LANDING_CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self' https://api.github.com",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
@@ -91,15 +108,40 @@ export function registerUiRoutes(fastify: FastifyInstance, options: UiOptions): 
 
   fastify.get(`${UI_PREFIX}/*`, async (request: FastifyRequest, reply: FastifyReply) => {
     const pathname = request.url.slice(UI_PREFIX.length).split("?")[0] ?? "/";
+    if (options.landingRoot && pathname.startsWith("/__landing__/")) {
+      const landingRoot = path.resolve(options.landingRoot);
+      let relative: string;
+      try {
+        relative = decodeURIComponent(pathname.slice("/__landing__".length));
+      } catch {
+        return reply.code(404).send();
+      }
+      const file = path.resolve(landingRoot, `.${relative}`);
+      const inside = path.relative(landingRoot, file);
+      if (
+        inside.startsWith("..") ||
+        path.isAbsolute(inside) ||
+        relative.includes("\0") ||
+        !(await regularFile(file))
+      )
+        return reply.code(404).send();
+      return send(reply, file, inside.startsWith(`assets${path.sep}`));
+    }
     if (pathname === "/" && options.landingRoot) {
       const landing = path.join(path.resolve(options.landingRoot), "index.html");
       if (await regularFile(landing)) {
-        // The retained marketing page is self-contained, including its animation and fonts.
         return reply
           .header("content-type", MIME_TYPES[".html"]!)
           .header("cache-control", "no-cache")
           .header("x-content-type-options", "nosniff")
-          .send(createReadStream(landing));
+          .header("content-security-policy", LANDING_CONTENT_SECURITY_POLICY)
+          .header("referrer-policy", "no-referrer")
+          .send(
+            (await readFile(landing, "utf8")).replace(
+              /((?:src|href)=["'])\.\//g,
+              "$1/__landing__/",
+            ),
+          );
       }
     }
     let relative: string;

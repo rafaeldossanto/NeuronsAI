@@ -2,7 +2,7 @@
 
 Servidor do NeuronsAI: NestJS 12 com adaptador Fastify, Drizzle ORM sobre PGlite ou Postgres e WebSocket. Escuta em endereços locais por padrão; sair do loopback continua exigindo `NEURONS_ALLOW_REMOTE=true`. O workspace local funciona sem conta. Contas Google opcionais nos perfis hybrid/hosted autenticam os recursos por organização; configuração e limites em [T25 — Google e recursos por organização](../../Docs/Plano/T25%20-%20Google%20e%20recursos%20por%20organizacao.md).
 
-O Hub de mensagens (T06), os runtimes de terminal do Claude Code (T08, pacote `@neurons/agent-runtimes`), as guardas e a API REST (T10) e o protocolo de runner (T24, os agentes rodam num runner embutido ou separado) estão prontos; o runtime de API chega na T07.
+O Hub de mensagens (T06), os runtimes de terminal do Claude Code (T08, pacote `@neurons/agent-runtimes`), as guardas e a API REST (T10), o protocolo de runner (T24) e as contas por organização (T25) estão integrados. O `ApiRuntime` OpenAI/Anthropic também existe, com testes simulados; abstração de provedores, preços/custo USD e aceitação com modelos reais permanecem na T04/T07. O andamento consolidado está no [plano](../../Docs/Plano/Plano%20de%20Implementação.md#estado-consolidado).
 
 ## Variáveis de ambiente
 
@@ -463,3 +463,11 @@ O editor abre em `/new` e cria um projeto vazio. Para servir landing e aplicativ
 - Agentes de API registram tokens, mas o custo USD é desconhecido: os SDKs não devolvem a fatura e ainda não há catálogo versionado de preços. As guardas mantêm o aviso de custo desconhecido; não tratar limite em USD como teto garantido nesses agentes.
 
 Detalhes e verificações em [Interface e memórias aprovadas](../../Docs/Plano/Interface%20e%20memorias%20aprovadas.md).
+
+### Autorização da migração local
+
+A migração do workspace sem conta fica bloqueada por padrão. O operador deve definir `NEURONS_LOCAL_DATA_ORGANIZATION_ID` com o UUID da organização de destino e reiniciar o servidor. Somente o proprietário dessa organização pode consultar e confirmar a migração. O primeiro pedido autorizado grava `local-data-adoption.json` no diretório de dados; o arquivo vincula também a retomada das memórias ao mesmo destino. Alterar a variável não transfere essa autorização a outra organização. Preserve esse arquivo junto ao backup do diretório de dados.
+
+A API sem contas confere Host e Origin, inclusive no WebSocket (com `NEURONS_ALLOW_REMOTE`, qualquer IP vale como Host; nomes só `localhost` e o `NEURONS_HOST`). A porta dos webhooks é outro servidor e não passa por essa checagem. Clientes de linha de comando podem omitir Origin; interfaces de navegador usam a origem do próprio servidor. O proxy de desenvolvimento traduz apenas a origem da interface local na porta 5173.
+
+A migração `0013_credential_approval` marca versões anteriores como não aprovadas para uso de credenciais em organizações. Grafos antigos que referenciam segredos precisam ser republicados por owner/admin; versões novas aprovadas podem ser executadas pelos membros como antes. O workspace sem conta continua funcionando com suas versões existentes.

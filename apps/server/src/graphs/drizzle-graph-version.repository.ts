@@ -16,7 +16,11 @@ export class DrizzleGraphVersionRepository implements GraphVersionRepository {
    * Locks the graph row so concurrent publishers of the same graph take turns; the number is then
    * computed in the INSERT itself. The unique (graph_id, version) constraint remains the safety net.
    */
-  appendNext(graphId: string, definition: GraphDefinition): Promise<GraphVersionRecord> {
+  appendNext(
+    graphId: string,
+    definition: GraphDefinition,
+    credentialsApproved = false,
+  ): Promise<GraphVersionRecord> {
     return this.database.db.transaction(async (tx) => {
       const [owned] = await tx
         .select({ id: graphs.id })
@@ -29,6 +33,7 @@ export class DrizzleGraphVersionRepository implements GraphVersionRepository {
         .values({
           graphId,
           definition,
+          credentialsApproved,
           version: sql`(select coalesce(max(${graphVersions.version}), 0) + 1 from ${graphVersions} where ${graphVersions.graphId} = ${graphId})`,
         })
         .returning();

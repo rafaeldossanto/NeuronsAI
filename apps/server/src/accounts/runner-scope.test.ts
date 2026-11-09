@@ -61,3 +61,15 @@ describe("seleção de runner por organização", () => {
     expect(resourceScope.current().organizationId).toBeNull();
   });
 });
+
+it("selects the requested runner without crossing organization boundaries", async () => {
+  const own = connect(alice),
+    other = connect(bob);
+  connect(alice);
+  expect(await resourceScope.run({ organizationId: alice }, () => registry.acquire(own))).toBe(
+    registry.find(own),
+  );
+  await expect(
+    resourceScope.run({ organizationId: alice }, () => registry.acquire(other)),
+  ).rejects.toThrow("Nenhum runner");
+});

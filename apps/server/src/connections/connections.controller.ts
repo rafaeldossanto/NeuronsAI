@@ -1,3 +1,4 @@
+import { RequirePermission } from "../accounts/require-permission.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { Controller, Inject, Injectable, type OnApplicationShutdown } from "@nestjs/common";
 import { ClaudeCli } from "@neurons/agent-runtimes/claude";
@@ -115,6 +116,7 @@ export class ConnectionsService implements OnApplicationShutdown {
   }
 }
 
+@RequirePermission("manage_credentials")
 @Controller("connections")
 export class ConnectionsController {
   constructor(@Inject(ConnectionsService) private readonly service: ConnectionsService) {}

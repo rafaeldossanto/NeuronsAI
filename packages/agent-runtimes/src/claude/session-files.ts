@@ -102,6 +102,9 @@ function settings(input: SessionFilesInput): unknown {
     hooks: {
       UserPromptSubmit: hook(BRIDGE_ROUTES.hooks.userPromptSubmit),
       Stop: hook(BRIDGE_ROUTES.hooks.stop),
+      PreToolUse: hook(BRIDGE_ROUTES.hooks.preToolUse),
+      PostToolUse: hook(BRIDGE_ROUTES.hooks.postToolUse),
+      PostToolUseFailure: hook(BRIDGE_ROUTES.hooks.postToolUseFailure),
     },
   };
 }

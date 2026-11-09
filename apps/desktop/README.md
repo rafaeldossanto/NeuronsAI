@@ -2,7 +2,24 @@
 
 App desktop do NeuronsAI (Electron 45) para Windows, macOS e Linux. O servidor NestJS roda **dentro do processo principal do app** (perfil `local`: o runner dos agentes também é embutido), com o banco PGlite embutido, e a interface do [`@neurons/web`](../web/README.md) abre na janela. Nada para instalar além do app (e do Claude Code CLI, para agentes de terminal reais).
 
+## Estado atual — 2026-11-06
+
+Modo local, moldura/IPC, configurações de gatilhos, conexão remota e pipeline de distribuição
+estão integrados. **Conectar servidor** abre a interface remota e oferece login Google pelo
+navegador do sistema, com sessão protegida por `safeStorage`; o runner desse servidor ainda
+precisa ser cadastrado e iniciado separadamente. Ver [T25 — Desktop remoto](../../Docs/Plano/T25%20-%20Desktop%20remoto.md).
+
+A aceitação com Google real e reinício/cofre nos três sistemas, a investigação do fechamento
+sob carga e a primeira release pública permanecem pendentes. Os comandos de distribuição
+abaixo descrevem o pipeline implementado. O [plano consolidado](../../Docs/Plano/Plano%20de%20Implementação.md#estado-consolidado)
+separa código entregue, aceitação real e publicação.
+
 ## Como funciona
+
+O código em `src/` está separado em `accounts/`, `settings/`, `updates/`, `shell/`,
+`security/`, `server/` e `lifecycle/`, com testes junto às implementações. `main.ts`,
+`preload.cts` e `config.ts` compõem a aplicação e preservam os pontos de entrada.
+Veja o [mapa de pastas por domínio](../../Docs/Estrutura%20do%20projeto.md).
 
 ```
 Electron (processo principal)
@@ -15,14 +32,14 @@ Electron (processo principal)
 ```
 
 - **Gatilhos externos (T16a):** o agendador (`schedule`) e a porta dos webhooks rodam dentro deste processo, então **só funcionam com o app aberto**. Com o app fechado nada dispara, e o que passou nesse tempo não é recuperado: ao abrir, os agendamentos seguem a partir de agora. A porta dos webhooks vem **desligada** e se liga na tela **Configurações** do app (próxima seção). Detalhes e o túnel em [`apps/server`](../server/README.md#gatilhos-externos-t16a).
-- **Configurações (porta dos webhooks):** o item **Configurações** do menu do app (só no app para computador, nunca numa página de servidor remoto) tem **Gatilhos externos**: liga ou desliga a porta e escolhe o número (1024 a 65535; padrão 3101). A escolha fica em `<pasta de dados>/desktop-settings.json` (o perfil do app, junto do banco; um arquivo ilegível vale como "desligado") e é passada ao servidor embutido **quando ele inicia**; por isso mudar pede reiniciar, e a tela avisa e oferece **Reiniciar o NeuronsAI agora** (que antes pergunta se houver execuções rodando). A tela mostra o endereço local resultante (`http://127.0.0.1:<porta>`, sempre só no endereço local; o túnel conecta daqui) e um link para o passo a passo do túnel da Cloudflare no README do servidor. Se `NEURONS_HOOKS_PORT` estiver no ambiente, ele manda e a tela só informa. Se a porta escolhida estiver ocupada, o app **abre mesmo assim** com os gatilhos desligados e a tela diz o porquê. A ponte do preload (`window.neuronsDesktop.settings`) tem só três ações (`getTriggers`, `setTriggers({ enabled, port })`, `restart`), validadas no processo principal (`settings-controls.ts`: formato exato, porta inteira na faixa, nada de endereço, comando ou caminho vindo da página) e só atende a página do app local.
+- **Configurações (porta dos webhooks):** o item **Configurações** do menu do app (só no app para computador, nunca numa página de servidor remoto) tem **Gatilhos externos**: liga ou desliga a porta e escolhe o número (1024 a 65535; padrão 3101). A escolha fica em `<pasta de dados>/desktop-settings.json` (o perfil do app, junto do banco; um arquivo ilegível vale como "desligado") e é passada ao servidor embutido **quando ele inicia**; por isso mudar pede reiniciar, e a tela avisa e oferece **Reiniciar o NeuronsAI agora** (que antes pergunta se houver execuções rodando). A tela mostra o endereço local resultante (`http://127.0.0.1:<porta>`, sempre só no endereço local; o túnel conecta daqui) e um link para o passo a passo do túnel da Cloudflare no README do servidor. Se `NEURONS_HOOKS_PORT` estiver no ambiente, ele manda e a tela só informa. Se a porta escolhida estiver ocupada, o app **abre mesmo assim** com os gatilhos desligados e a tela diz o porquê. A ponte do preload (`window.neuronsDesktop.settings`) tem só três ações (`getTriggers`, `setTriggers({ enabled, port })`, `restart`), validadas no processo principal (`settings/settings-controls.ts`: formato exato, porta inteira na faixa, nada de endereço, comando ou caminho vindo da página) e só atende a página do app local.
 - **Pasta de dados e CLI do Claude:** vêm da configuração do servidor ([`apps/server`](../server/README.md): `NEURONS_DATA_DIR`, `NEURONS_CLAUDE_BIN`, ...). Padrão: `%APPDATA%\NeuronsAI`, `~/Library/Application Support/NeuronsAI` ou `~/.local/share/neuronsai`. O banco fica em `<pasta>/db` e os arquivos do próprio Electron em `<pasta>/electron`.
 - **Duas travas:** só uma instância do app (`requestSingleInstanceLock`; abrir de novo traz a janela para a frente) e uma trava por arquivo (`<pasta>/db.lock`, com o PID) que impede dois processos de abrirem o mesmo banco, inclusive o servidor avulso. Uma trava deixada por um processo que morreu é retomada sozinha.
-- **Encerramento (`shutdown.ts`):** ao sair, o app fecha as contas e depois o servidor embutido (agentes, terminais, banco), cada etapa com limite de tempo (3 s e 12 s; o smoke empacotado dá 20 s ao app inteiro), e **sai de qualquer jeito**: uma etapa que falha ou não responde é registrada ("Encerramento: … passou de … ms … Ainda aberto: …", só tipos de recurso, nunca conteúdo) e deixada para trás, para que um fechamento travado nunca mantenha o processo vivo. Se o `app.exit` não encerrar o processo em 4 s, `process.exit` encerra.
+- **Encerramento (`lifecycle/shutdown.ts`):** ao sair, o app fecha as contas e depois o servidor embutido (agentes, terminais, banco), cada etapa com limite de tempo (3 s e 12 s; o smoke empacotado dá 20 s ao app inteiro), e **sai de qualquer jeito**: uma etapa que falha ou não responde é registrada ("Encerramento: … passou de … ms … Ainda aberto: …", só tipos de recurso, nunca conteúdo) e deixada para trás, para que um fechamento travado nunca mantenha o processo vivo. Se o `app.exit` não encerrar o processo em 4 s, `process.exit` encerra.
 - **Segurança:** `contextIsolation`, `sandbox`, sem `nodeIntegration` e preload com ponte limitada a minimizar, maximizar, fechar, selecionar pasta, o aviso de atualização e as configurações dos gatilhos; CSP restritiva (enviada pelo servidor); todo pedido da janela que não vá ao servidor local é cancelado; permissões negadas; `window.open` e navegação para fora são bloqueados (links `http(s)` abrem no navegador do sistema).
 - **Moldura:** janela transparente com cantos de 12 px, barra compacta, título central e controles à esquerda. O preload CJS roda no sandbox e valida origem/frame em cada chamada. Maximizar remove os cantos; restaurar repõe a moldura.
 - **Chaves de API:** chave mestra gerada no primeiro uso e cifrada pelo `safeStorage` do sistema em `<pasta>/secrets-key.enc`. Se o sistema não oferece proteção adequada, o armazenamento fica desabilitado; `NEURONS_MASTER_KEY` explícita continua suportada.
-- **Menu e atalhos** (`src/menu.ts`) em pt-BR, com a diferença de cada sistema num lugar só. Ferramentas do desenvolvedor só fora do build empacotado.
+- **Menu e atalhos** (`src/shell/menu.ts`) em pt-BR, com a diferença de cada sistema num lugar só. Ferramentas do desenvolvedor só fora do build empacotado.
 - O servidor MCP `neurons` (que o Claude Code inicia) roda com o próprio executável do app como Node (`ELECTRON_RUN_AS_NODE=1`).
 
 ## Rodar em desenvolvimento
@@ -124,3 +141,15 @@ Só `src/config.ts` lê o ambiente (exceção no lint, como `packages/runner/src
 
 O desenho continua provisório;
 `build/icon.png` é provisório (neurônio âmbar `#E9A15C` sobre grafite), gerado por `pnpm --filter @neurons/desktop icon`. Os três saem do mesmo desenho; para o definitivo, troque o desenho em `make-icon.mjs` (ou os arquivos) e rode de novo.
+
+## Verificação do pacote e aceite local de 07/11/2026
+
+Antes de executar um pacote, o smoke confere os hashes do ASAR e se as dependências obrigatórias estão presentes em versões compatíveis. O desktop declara `croner` explicitamente para impedir sua omissão pelo coletor de dependências do workspace. Também é possível verificar sem abrir o app:
+
+```powershell
+node scripts/verify-package.mjs release/win-unpacked/resources/app.asar
+```
+
+Execute build e empacotamento em sequência. Recompilar ou formatar arquivos de entrada enquanto o empacotador os lê pode produzir um ASAR inconsistente.
+
+Nesta máquina, sem Visual Studio Build Tools, o pacote Windows de teste foi gerado com `pnpm dist:dir --win --x64 --config.npmRebuild=false`, usando os binários pré-compilados existentes. O CI mantém o rebuild normal. PTY e stream-json, comunicação, memória e encerramento foram exercitados no pacote, inclusive em quatro instâncias simultâneas. É um pacote local 0.0.0, sem assinatura e sem publicação, não um instalador de release. Ver [Entrega local sem custo](../../Docs/Plano/Entrega%20local%20sem%20custo.md).

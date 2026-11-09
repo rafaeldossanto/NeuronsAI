@@ -2371,6 +2371,10 @@
                                             "custom"
                                           ]
                                         },
+                                        "runnerId": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
                                         "model": {
                                           "type": "string",
                                           "minLength": 1
@@ -4518,6 +4522,10 @@
                                     "gemini",
                                     "custom"
                                   ]
+                                },
+                                "runnerId": {
+                                  "type": "string",
+                                  "minLength": 1
                                 },
                                 "model": {
                                   "type": "string",

@@ -74,10 +74,10 @@ export class MemoriesService {
    * workspace has no limits.
    * @throws QuotaExceededError
    */
-  private async assertWithinQuotas(incomingBytes: number): Promise<void> {
+  private async assertWithinQuotas(incomingBytes: number, creating = true): Promise<void> {
     if (resourceScope.current().organizationId === null) return;
     const limits = this.config.quotas ?? DEFAULT_QUOTAS;
-    if (limits.memoriesPerOrganization > 0) {
+    if (creating && limits.memoriesPerOrganization > 0) {
       const existing = (await this.list()).length;
       if (existing >= limits.memoriesPerOrganization) {
         throw new QuotaExceededError(
@@ -86,7 +86,7 @@ export class MemoriesService {
         );
       }
     }
-    if (limits.memoryBytesPerOrganization > 0) {
+    if (incomingBytes > 0 && limits.memoryBytesPerOrganization > 0) {
       const used = await directorySize(this.root);
       if (used + incomingBytes > limits.memoryBytesPerOrganization) {
         const megabytes = Math.floor(limits.memoryBytesPerOrganization / (1024 * 1024));
@@ -213,6 +213,13 @@ export class MemoriesService {
       await this.assertWithinQuotas(bytes);
       return this.write(body, files, vaultPath);
     });
+  }
+
+  checkNoteWrite = (deltaBytes: number): Promise<void> =>
+    this.assertWithinQuotas(deltaBytes, false);
+
+  withNoteWrites<T>(action: () => Promise<T>): Promise<T> {
+    return this.exclusively(action);
   }
 
   /** Runs `action` after the ones already queued for the same organization (this server process). */

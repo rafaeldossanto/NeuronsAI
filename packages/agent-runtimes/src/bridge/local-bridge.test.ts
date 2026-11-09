@@ -117,4 +117,33 @@ describe("LocalBridge", () => {
     await bridge.stop();
     await expect(fetch(`${url}${BRIDGE_ROUTES.listPeers}`, { method: "POST" })).rejects.toThrow();
   });
+  it("reports native tool outcomes without exposing tool arguments or responses", async () => {
+    const reports: unknown[] = [];
+    communication.reportToolCall = (report) => {
+      reports.push(report);
+      return Promise.resolve();
+    };
+    const input = {
+      tool_use_id: "native-1",
+      tool_name: "Bash",
+      tool_input: { command: "private-canary" },
+      tool_response: "private-result",
+    };
+    await post(BRIDGE_ROUTES.hooks.preToolUse, input);
+    expect((await post(BRIDGE_ROUTES.hooks.postToolUse, input)).status).toBe(200);
+    await post(BRIDGE_ROUTES.hooks.postToolUseFailure, {
+      ...input,
+      tool_use_id: "native-2",
+      tool_name: "Read",
+    });
+    await post(BRIDGE_ROUTES.hooks.postToolUse, { ...input, tool_name: "mcp__neurons__use_tool" });
+    expect(reports).toHaveLength(2);
+    expect(reports[0]).toMatchObject({
+      tool: "Bash",
+      ok: true,
+      inputSummary: "[argumentos omitidos]",
+    });
+    expect(reports[1]).toMatchObject({ tool: "Read", ok: false, errorCode: "CLI_TOOL_FAILED" });
+    expect(JSON.stringify(reports)).not.toContain("private");
+  });
 });

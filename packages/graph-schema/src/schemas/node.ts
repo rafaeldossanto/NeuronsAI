@@ -70,6 +70,7 @@ const terminalRuntimeSchema = z
   .object({
     kind: z.literal("terminal"),
     cli: z.enum(["claude", "codex", "gemini", "custom"]),
+    runnerId: z.string().min(1).optional(),
     model: z.string().min(1).optional(),
     // Graphs saved before the field existed have no `mode`: they keep running on the PTY.
     mode: z.enum(TERMINAL_MODES).default("pty"),

@@ -2,32 +2,32 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BrowserWindow, app, dialog, session, shell, type Session } from "electron";
 import { createHash } from "node:crypto";
-import { DesktopAccountManager } from "./account-manager.js";
-import { DesktopAccountStore } from "./account-store.js";
-import { installAccountControls } from "./account-controls.js";
-import { cookiePrefix } from "./remote-origin.js";
+import { DesktopAccountManager } from "./accounts/account-manager.js";
+import { DesktopAccountStore } from "./accounts/account-store.js";
+import { installAccountControls } from "./accounts/account-controls.js";
+import { cookiePrefix } from "./accounts/remote-origin.js";
 import { DesktopConfigError, loadDesktopConfig } from "./config.js";
-import { installMenu } from "./menu.js";
-import { installWindowControls } from "./window-controls.js";
-import { desktopMasterKey } from "./master-key.js";
-import { SECURE_WEB_PREFERENCES, lockDownSession, lockDownWindow } from "./security.js";
-import { installUpdater } from "./updater.js";
-import { hasActiveRuns, updateMode } from "./update-policy.js";
+import { installMenu } from "./shell/menu.js";
+import { installWindowControls } from "./shell/window-controls.js";
+import { desktopMasterKey } from "./security/master-key.js";
+import { SECURE_WEB_PREFERENCES, lockDownSession, lockDownWindow } from "./security/security.js";
+import { installUpdater } from "./updates/updater.js";
+import { hasActiveRuns, updateMode } from "./updates/update-policy.js";
 import {
   type RunningServer,
   serverConfigFor,
   startServer,
   webRoot,
   withTriggers,
-} from "./server.js";
-import { installSettingsControls } from "./settings-controls.js";
-import { DesktopSettingsStore } from "./settings-store.js";
+} from "./server/server.js";
+import { installSettingsControls } from "./settings/settings-controls.js";
+import { DesktopSettingsStore } from "./settings/settings-store.js";
 import {
   appliedFrom,
   startWithTriggersFallback,
   type AppliedTriggers,
-} from "./triggers-settings.js";
-import { createShutdown } from "./shutdown.js";
+} from "./settings/triggers-settings.js";
+import { createShutdown } from "./lifecycle/shutdown.js";
 
 const APP_NAME = "NeuronsAI";
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -229,6 +229,7 @@ app.on("before-quit", (event) => {
   if (stopping || !server) return;
   event.preventDefault();
   stopping = true;
+  console.warn("[desktop] Encerramento: solicitado.");
   const running = server;
   server = undefined;
   void createShutdown({
@@ -237,6 +238,7 @@ app.on("before-quit", (event) => {
       { name: "servidor embutido", run: () => running.close(), timeoutMs: SERVER_CLOSE_MS },
     ],
     exit: () => {
+      console.warn("[desktop] Encerramento: etapas concluídas; saindo.");
       setTimeout(() => process.exit(0), HARD_EXIT_MS).unref();
       app.exit(0);
     },

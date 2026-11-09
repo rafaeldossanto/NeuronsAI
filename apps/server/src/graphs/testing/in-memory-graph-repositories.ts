@@ -49,12 +49,17 @@ export class InMemoryGraphRepository implements GraphRepository {
 export class InMemoryGraphVersionRepository implements GraphVersionRepository {
   private readonly records: GraphVersionRecord[] = [];
 
-  appendNext(graphId: string, definition: GraphDefinition): Promise<GraphVersionRecord> {
+  appendNext(
+    graphId: string,
+    definition: GraphDefinition,
+    credentialsApproved = false,
+  ): Promise<GraphVersionRecord> {
     const record: GraphVersionRecord = {
       id: randomUUID(),
       graphId,
       version: this.versionsOf(graphId).length + 1,
       definition,
+      credentialsApproved,
       createdAt: new Date(),
     };
     this.records.push(record);

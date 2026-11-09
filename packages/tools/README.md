@@ -1,8 +1,10 @@
 # @neurons/tools
 
-Ferramentas que os agentes podem usar (T09). Sem dependência de NestJS nem de `apps/server`:
-os agentes de API (T07) chamam `execute` direto no loop; os de terminal (T08) recebem as mesmas
-ferramentas pela configuração MCP da sessão.
+Ferramentas que os agentes podem usar (T09), sem dependência de NestJS nem de `apps/server`.
+No produto, agentes de API e terminal descobrem e usam as ferramentas autorizadas por
+`list_tools`/`use_tool`; o servidor resolve memória/segredos e executa este pacote em
+`GraphToolsService`. No terminal, as chamadas passam pelo MCP `neurons` e pelo runner.
+O exemplo abaixo mostra o uso direto do pacote.
 
 ## Uso
 
@@ -23,14 +25,20 @@ Falhas ao _montar_ o conjunto (`createTools`) lançam `ToolSetupError` com `code
 
 ## Tipos de ferramenta (`kind`)
 
-| kind       | O que expõe                                                                                                   |
-| ---------- | ------------------------------------------------------------------------------------------------------------- |
-| `mcp`      | Só as ferramentas de `allowedTools` do servidor MCP (stdio ou HTTP). Falha se o servidor não oferecer alguma. |
-| `http`     | Uma ferramenta com o nome do bloco; o agente envia `{ body }`, validado pelo `bodySchema` (Ajv).              |
-| `obsidian` | `obsidian_search`, `obsidian_read` e `obsidian_list_links`, somente leitura.                                  |
+| kind       | O que expõe                                                                                                                          |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `mcp`      | Só as ferramentas de `allowedTools` do servidor MCP (stdio ou HTTP). Falha se o servidor não oferecer alguma.                        |
+| `http`     | Uma ferramenta com o nome do bloco; o agente envia `{ body }`, validado pelo `bodySchema` (Ajv).                                     |
+| `obsidian` | `obsidian_search`, `obsidian_read`, `obsidian_list_links` e, com escrita permitida, `obsidian_create`/`obsidian_edit`. Sem exclusão. |
 
 Para um novo `kind`: criar a fábrica (`ToolFactory<K>`) e registrá-la em `defaultToolFactories`
 (`src/create-tools.ts`), ou passá-la em `deps.factories`.
+
+Memórias referenciadas por `memoryId` são resolvidas pelo servidor antes de chamar a fábrica;
+o uso direto exige `vaultPath`. O bloco precisa de `readOnly: false` para escrever;
+`readOnly: true` na ligação `uses` restringe esse agente à leitura. O campo da ligação é
+opcional: ausente ou `false` não acrescenta restrição. O servidor combina essas permissões.
+MCP stdio no servidor compartilhado é recusado em contexto de organização; use MCP HTTP.
 
 ## Decisões
 
@@ -40,8 +48,9 @@ Para um novo `kind`: criar a fábrica (`ToolFactory<K>`) e registrá-la em `defa
   entrada que o agente mandou, que só _nomeia_ o segredo: `{{secret:API_KEY}}` aparece como está, só o
   nome. Chaves como `token`, `password`, `authorization` viram `[oculto]`, cada texto é cortado em 100
   caracteres, listas em 10 itens e o resumo inteiro em 300. Como segunda trava, os valores que a chamada
-  resolveu são removidos do resumo mesmo que o agente os tenha escrito por extenso. O servidor grava o
-  resumo como `ToolCalled` (`communication.reportToolCall(record)`).
+  resolveu são removidos do resumo mesmo que o agente os tenha escrito por extenso. O callback
+  `onCall` expõe esse resumo ao consumidor direto. No produto, `GraphToolsService` grava
+  `ToolCalled` com `nodeId` e, quando existir, `path`, sem conteúdo da nota ou corpo da chamada.
 - **Ambiente**: o pacote não lê `process.env`; config e segredos chegam por parâmetro e pelo
   `SecretResolver`. O processo MCP stdio recebe só o `env` do `ToolNode` (com `{{secret:NOME}}`
   resolvido) mais as variáveis mínimas de sistema que o SDK herda por conta própria: no Windows
