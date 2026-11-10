@@ -1,4 +1,5 @@
 import { Controller, Inject } from "@nestjs/common";
+import { RequirePermission } from "../accounts/require-permission.js";
 import { Endpoint, ValidBody, ValidParams } from "../api/endpoint.js";
 import {
   createMemoryBody,
@@ -9,6 +10,7 @@ import {
 } from "./memories.contract.js";
 import { MemoriesService } from "./memories.service.js";
 
+@RequirePermission("write")
 @Controller("memories")
 export class MemoriesController {
   constructor(@Inject(MemoriesService) private readonly memories: MemoriesService) {}

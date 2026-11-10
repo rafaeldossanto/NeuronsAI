@@ -60,6 +60,7 @@ export class TriggersController {
     response: triggerStateSchema,
     errors: [404, 409],
   })
+  @RequirePermission("write")
   async setTriggerEnabled(
     @ValidParams() { id, triggerId }: TriggerParams,
     @ValidBody() body: SetEnabledBody,

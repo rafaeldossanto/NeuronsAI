@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, writeFile, rename, stat } from "node:fs/promises";
 import path from "node:path";
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -47,6 +47,17 @@ export class LocalSecretsConflictError extends DomainError {
   }
 }
 
+/** `local-data-adoption.json` exists but cannot be read as a binding; the adoption never proceeds. */
+export class LocalAdoptionBindingCorruptError extends DomainError {
+  readonly kind = "conflict" as const;
+  constructor() {
+    super(
+      "local_adoption_binding_corrupt",
+      "O arquivo local-data-adoption.json está corrompido e a adoção foi recusada. Restaure-o de um backup do diretório de dados ou peça ao operador do servidor para conferi-lo.",
+    );
+  }
+}
+
 export class LocalSecretsUnreadableError extends DomainError {
   readonly kind = "unavailable" as const;
   constructor() {
@@ -71,6 +82,7 @@ export class LocalSecretsUnreadableError extends DomainError {
  */
 @Injectable()
 export class LocalDataAdoption {
+  private readonly logger = new Logger(LocalDataAdoption.name);
   private readonly cipher?: AesGcmSecretCipher;
   private readonly memoriesRoot: string;
 
@@ -151,14 +163,20 @@ export class LocalDataAdoption {
 
   private async requireDestination(organizationId: string): Promise<void> {
     if (this.config.localDataOrganizationId !== organizationId) throw new OrganizationAccessError();
+    let raw: string;
     try {
-      const binding = JSON.parse(
-        await readFile(path.join(this.config.dataDir, "local-data-adoption.json"), "utf8"),
-      ) as { organizationId?: string };
-      if (binding.organizationId !== organizationId) throw new OrganizationAccessError();
+      raw = await readFile(path.join(this.config.dataDir, "local-data-adoption.json"), "utf8");
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
     }
+    const bound = parseBinding(raw);
+    if (bound === undefined) {
+      // Never the file's content: only that it could not be read as a binding.
+      this.logger.error("local-data-adoption.json ilegível: adoção recusada");
+      throw new LocalAdoptionBindingCorruptError();
+    }
+    if (bound !== organizationId) throw new OrganizationAccessError();
   }
 
   private async summarize(db: Database | DatabaseTransaction): Promise<LocalDataSummary> {
@@ -264,5 +282,16 @@ async function exists(file: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** The organization the binding file names, or `undefined` when it is not a valid binding. */
+function parseBinding(raw: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const result = z.object({ organizationId: z.string().min(1) }).safeParse(parsed);
+    return result.success ? result.data.organizationId : undefined;
+  } catch {
+    return undefined;
   }
 }
