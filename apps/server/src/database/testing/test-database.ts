@@ -1,9 +1,15 @@
 import { randomUUID } from "node:crypto";
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { migrate as migratePg } from "drizzle-orm/node-postgres/migrator";
+import { migrate as migratePglite } from "drizzle-orm/pglite/migrator";
 import pg from "pg";
 import { inject } from "vitest";
 import type { DatabaseKind } from "../../shared/config/app-config.js";
 import type { DatabaseProvider } from "../database.provider.js";
 import { DatabaseService } from "../database.service.js";
+import { MIGRATIONS_FOLDER } from "../migrations-folder.js";
 import { PgliteDatabaseProvider } from "../pglite-database.provider.js";
 import { PostgresDatabaseProvider } from "../postgres-database.provider.js";
 
@@ -68,14 +74,47 @@ async function startPostgres(): Promise<RunningProvider> {
 }
 
 /**
+ * Applies only the first `count` migrations (a database as an older release left it), through the
+ * real migrator so a later `migrate()` applies just the rest. Used to test upgrades with old data.
+ */
+async function migrateFirst(
+  kind: DatabaseKind,
+  provider: DatabaseProvider,
+  count: number,
+): Promise<void> {
+  const journalPath = path.join(MIGRATIONS_FOLDER, "meta", "_journal.json");
+  const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
+    entries: { tag: string }[];
+  };
+  const entries = journal.entries.slice(0, count);
+  const folder = await mkdtemp(path.join(os.tmpdir(), "neurons-migrations-"));
+  try {
+    await mkdir(path.join(folder, "meta"));
+    await writeFile(
+      path.join(folder, "meta", "_journal.json"),
+      JSON.stringify({ ...journal, entries }),
+    );
+    for (const { tag } of entries)
+      await copyFile(path.join(MIGRATIONS_FOLDER, `${tag}.sql`), path.join(folder, `${tag}.sql`));
+    const config = { migrationsFolder: folder };
+    if (kind === "embedded") await migratePglite(provider.db as never, config);
+    else await migratePg(provider.db as never, config);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+}
+
+/**
  * Starts a throwaway database of the kind the current vitest project asks for (an in-memory PGlite,
  * or a database on the Postgres 18 of the Docker run) and applies every migration to it.
  */
 export async function startTestDatabase(
   kind: DatabaseKind = inject("databaseKind"),
+  options: { migrationsUpTo?: number } = {},
 ): Promise<TestDatabase> {
   const { provider, teardown } = await startProvider(kind);
-  await provider.migrate();
+  if (options.migrationsUpTo === undefined) await provider.migrate();
+  else await migrateFirst(kind, provider, options.migrationsUpTo);
   const database = new DatabaseService(kind, provider);
 
   return {
