@@ -10,6 +10,7 @@ export function isBrokenPipe(error: unknown): boolean {
 
 interface ErrorSource {
   on?: (event: "error", listener: (error: unknown) => void) => unknown;
+  listenerCount?: (event: "error") => number;
 }
 
 interface WindowsPtyInternals {
@@ -37,14 +38,20 @@ export function releasePtyHandles(pty: IPty): void {
  * node-pty writes through a socket and reports a write after the child exited (or after a kill) as
  * an asynchronous `error` event on that socket. Nobody listens, so Node turns it into an uncaught
  * `EPIPE` that takes the whole process (or the test run) down. This listens and drops only the
- * broken-pipe errors; any other error is rethrown as before. Same guarded look at the internals as
+ * broken-pipe errors; any other error is left to whoever handled it before, and rethrown when nobody did. Same guarded look at the internals as
  * `releasePtyHandles`: where a socket is absent nothing happens.
  */
 export function guardPtyWrites(pty: IPty): void {
   const internals = pty as unknown as WindowsPtyInternals;
-  const onError = (error: unknown): void => {
-    if (!isBrokenPipe(error)) throw error;
+  const guard = (source: ErrorSource | undefined): void => {
+    source?.on?.("error", (error: unknown) => {
+      if (isBrokenPipe(error)) return;
+      // node-pty's own listener (Unix: `_socket`, which ignores the EIO of a closed terminal) owns
+      // every other error; only when this one is alone does the error stay as unhandled as before.
+      if ((source.listenerCount?.("error") ?? 1) > 1) return;
+      throw error;
+    });
   };
-  internals._socket?.on?.("error", onError);
-  internals._agent?.inSocket?.on?.("error", onError);
+  guard(internals._socket);
+  guard(internals._agent?.inSocket);
 }

@@ -75,4 +75,4 @@ it("T25a acrescenta as contas a uma base T17 sem mudar projetos, versões, execu
   } finally {
     await provider.close();
   }
-}, 60_000);
+});

@@ -41,6 +41,8 @@ export interface AppConfig {
   /** Optional OIDC settings for hybrid/hosted. Absent: account-free local workspace. */
   auth?: AuthConfig;
   compatibleBaseUrl?: string;
+  /** Cap on one model reply for OpenAI and Anthropic API agents; absent: the adapters' default. */
+  modelMaxOutputTokens?: number;
   /** Operator-authorized destination for importing the legacy local workspace. */
   localDataOrganizationId?: string;
   /**
@@ -99,6 +101,9 @@ const envSchema = z.object({
       .url()
       .refine((value) => ["http:", "https:"].includes(new URL(value).protocol))
       .optional(),
+  ),
+  NEURONS_MODEL_MAX_OUTPUT_TOKENS: unlessEmpty(
+    z.coerce.number().int().min(256).max(200_000).optional(),
   ),
   NEURONS_LOCAL_DATA_ORGANIZATION_ID: unlessEmpty(z.uuid().optional()),
   ...outboundEnvShape,
@@ -167,6 +172,9 @@ export function loadConfig(
     ...(auth && { auth }),
     ...(values.NEURONS_OPENAI_COMPATIBLE_BASE_URL && {
       compatibleBaseUrl: values.NEURONS_OPENAI_COMPATIBLE_BASE_URL,
+    }),
+    ...(values.NEURONS_MODEL_MAX_OUTPUT_TOKENS && {
+      modelMaxOutputTokens: values.NEURONS_MODEL_MAX_OUTPUT_TOKENS,
     }),
     ...(values.NEURONS_LOCAL_DATA_ORGANIZATION_ID && {
       localDataOrganizationId: values.NEURONS_LOCAL_DATA_ORGANIZATION_ID,

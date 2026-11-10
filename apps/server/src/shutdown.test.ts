@@ -41,4 +41,4 @@ it("drains agents before closing the database and closes unfinished HTTP clients
   } finally {
     socket.destroy();
   }
-}, 60000);
+});
