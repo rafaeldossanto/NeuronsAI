@@ -1,4 +1,5 @@
 import { OpenAITurnClient, AnthropicTurnClient } from "./sdk-clients.js";
+export { DEFAULT_MAX_OUTPUT_TOKENS } from "./sdk-clients.js";
 import { OpenAICompatibleTurnClient } from "./compatible.js";
 import type { Effort, ModelProvider, TurnClient, ModelEvent, FunctionTool } from "./types.js";
 export * from "./types.js";
@@ -27,18 +28,20 @@ export function defaultProviders(
     compatibleBaseUrl?: string;
     fetcher?: typeof fetch;
     compatibleFetch?: typeof fetch;
+    /** Cap on one reply of the OpenAI and Anthropic adapters; raise it for reasoning models. */
+    maxOutputTokens?: number;
   } = {},
 ): ProviderRegistry {
   const registry = new ProviderRegistry()
     .register({
       name: "openai",
       createSession: (model, key, effort) =>
-        new OpenAITurnClient(model, key, effort, options.fetcher),
+        new OpenAITurnClient(model, key, effort, options.fetcher, options.maxOutputTokens),
     })
     .register({
       name: "anthropic",
       createSession: (model, key, effort) =>
-        new AnthropicTurnClient(model, key, effort, options.fetcher),
+        new AnthropicTurnClient(model, key, effort, options.fetcher, options.maxOutputTokens),
     });
   if (options.compatibleBaseUrl)
     registry.register({

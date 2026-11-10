@@ -91,6 +91,17 @@ describe("loadConfig", () => {
     expect(loadConfig({ NEURONS_CLAUDE_BIN: "" })).not.toHaveProperty("claudeBin");
   });
 
+  it("reads the cap on a model reply, which is optional and bounded", () => {
+    expect(loadConfig({ NEURONS_MODEL_MAX_OUTPUT_TOKENS: "32000" }).modelMaxOutputTokens).toBe(
+      32_000,
+    );
+    expect(loadConfig({ NEURONS_MODEL_MAX_OUTPUT_TOKENS: "" })).not.toHaveProperty(
+      "modelMaxOutputTokens",
+    );
+    expect(() => loadConfig({ NEURONS_MODEL_MAX_OUTPUT_TOKENS: "10" })).toThrow(ConfigError);
+    expect(() => loadConfig({ NEURONS_MODEL_MAX_OUTPUT_TOKENS: "muito" })).toThrow(ConfigError);
+  });
+
   it("reads the ask timeout in seconds", () => {
     expect(loadConfig({ NEURONS_ASK_TIMEOUT_SEC: "30" }).askTimeoutMs).toBe(30_000);
   });

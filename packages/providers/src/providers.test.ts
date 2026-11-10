@@ -208,3 +208,21 @@ it("calculates cache charges once and preserves unknown prices", () => {
   expect(supportedEffort("openai", "gpt-4.1-mini", "max")).toBeUndefined();
   expect(supportedEffort("openai", "gpt-6.1-sol", "xhigh")).toBe("xhigh");
 });
+
+it("lets the operator change the cap on a reply, keeping 8192 by default", async () => {
+  const caps: unknown[] = [];
+  const fetcher: typeof fetch = async (_url, init) => {
+    const body = JSON.parse(init?.body as string) as { max_output_tokens?: number };
+    caps.push(body.max_output_tokens);
+    await Promise.resolve();
+    return Response.json({ id: "r", model: "m", output: [], output_text: "", usage: null });
+  };
+  for (const maxOutputTokens of [undefined, 32_000]) {
+    const client = defaultProviders({
+      fetcher,
+      ...(maxOutputTokens && { maxOutputTokens }),
+    }).createSession("openai", "gpt-4.1-mini", "key", "low");
+    await client.respond("briefing", [], AbortSignal.timeout(2000));
+  }
+  expect(caps).toEqual([8192, 32_000]);
+});
