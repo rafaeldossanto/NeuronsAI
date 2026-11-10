@@ -47,7 +47,7 @@ it("keeps the compatible endpoint away from loopback on public profiles", async 
   } finally {
     await target.close();
   }
-}, 30000);
+});
 
 it("reaches a local endpoint on the local profile, which has no outbound policy", async () => {
   const target = await listening();
@@ -57,4 +57,4 @@ it("reaches a local endpoint on the local profile, which has no outbound policy"
   } finally {
     await target.close();
   }
-}, 30000);
+});

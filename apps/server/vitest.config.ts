@@ -15,9 +15,11 @@ export default defineConfig({
     },
   },
   test: {
-    // Booting PGlite (WASM + initdb) takes seconds, more on a busy machine.
-    testTimeout: 60_000,
-    hookTimeout: 60_000,
+    // Booting PGlite (WASM + initdb) takes seconds, several times that on a busy machine (turbo runs
+    // suites side by side), and a full run (memory-execution) boots a runner and a child process too.
+    // The budget lives here, not in each test: it only decides when to give up, never what is asserted.
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
     projects: [
       {
         extends: true,
