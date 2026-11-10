@@ -254,6 +254,12 @@ describe("ClaudeTerminalRuntime (fake CLI in a PTY)", () => {
     });
   });
 
+  it("ignores input written after the session ended instead of breaking the pipe", async () => {
+    const { runtime } = await started();
+    await runtime.stop();
+    expect(() => runtime.writeInput("ainda aqui?\r")).not.toThrow();
+  });
+
   it("fails when the CLI dies", async () => {
     const { runtime } = await started();
     await runtime.deliver(message("!crash")).catch(() => undefined);
