@@ -1,7 +1,11 @@
 import { Logger } from "@nestjs/common";
 import type { FakeTerminalRuntime } from "../agents/testing/fake-agent-runtime.js";
 import { TerminalUnavailableError } from "../realtime/terminal-errors.js";
-import { PROTOCOL_VERSION, createMemoryChannelPair } from "@neurons/runner-protocol";
+import {
+  PROTOCOL_REVISION,
+  PROTOCOL_VERSION,
+  createMemoryChannelPair,
+} from "@neurons/runner-protocol";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { HUMAN } from "../hub/addresses.js";
 import { delay, eventually } from "../hub/testing/async-helpers.js";
@@ -567,6 +571,70 @@ describe("what the dashboard shows, through the protocol", () => {
     await delay(50);
 
     expect(frames.filter((frame) => frame.type === "agent.resize")).toEqual([]);
+    expect(rig.link?.connected).toBe(true);
+  });
+});
+
+describe("a runner of another protocol revision than the server's", () => {
+  /** Plays a runner that announces `revision`, answers every start, and records what it receives. */
+  async function connectRunnerOfRevision(revision: number, extra: Record<string, unknown> = {}) {
+    rig = createRunnerRig({ runtimeOptions: { Beta: { terminal: true } } });
+    const { server, runner } = createMemoryChannelPair();
+    const frames: { type: string; revision?: number }[] = [];
+    runner.onFrame((frame) => {
+      frames.push(frame);
+      if (frame.type === "agent.start") {
+        runner.send({
+          v: PROTOCOL_VERSION,
+          type: "response",
+          requestId: frame.requestId,
+          ok: true,
+        });
+      }
+    });
+    rig.registry.accept(rig.identity, server);
+    runner.send({
+      v: PROTOCOL_VERSION,
+      type: "register",
+      runner: { name: `revisao-${revision}` },
+      capabilities: { terminal: true, streamJson: true },
+      agents: [],
+      revision,
+      ...extra,
+    } as never);
+    await eventually(() => expect(rig.link?.connected).toBe(true));
+    const wiring = createHubWiring(persistence, rig.factory);
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+    await eventually(() => expect(frames.some((frame) => frame.type === "agent.start")).toBe(true));
+    await eventually(() => expect(wiring.terminals.activeGraph(runId)).toBeDefined());
+    return { wiring, runId, frames };
+  }
+
+  it("works with a runner of revision 4 (the one before this server): answers it with its own revision and sends the resize that revision knows", async () => {
+    const { wiring, runId, frames } = await connectRunnerOfRevision(4);
+    expect(frames.find((frame) => frame.type === "registered")?.revision).toBe(PROTOCOL_REVISION);
+    expect(rig.link?.revision).toBe(4);
+
+    wiring.terminals.reportSize({}, runId, "Beta", 100, 30);
+
+    await eventually(() =>
+      expect(frames.some((frame) => frame.type === "agent.resize")).toBe(true),
+    );
+    expect(rig.link?.connected).toBe(true);
+  });
+
+  it("works with a runner of a newer revision, ignoring what it adds, and uses only what both know", async () => {
+    const { wiring, runId, frames } = await connectRunnerOfRevision(PROTOCOL_REVISION + 1, {
+      campoDoFuturo: true,
+    });
+    expect(rig.link?.revision).toBe(PROTOCOL_REVISION + 1);
+
+    wiring.terminals.reportSize({}, runId, "Beta", 100, 30);
+
+    await eventually(() =>
+      expect(frames.some((frame) => frame.type === "agent.resize")).toBe(true),
+    );
     expect(rig.link?.connected).toBe(true);
   });
 });

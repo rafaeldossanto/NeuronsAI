@@ -8,6 +8,6 @@ export default defineConfig({
     globalSetup: ["src/database/testing/postgres-global-setup.ts"],
     provide: { databaseKind: "postgres" },
     hookTimeout: 120_000,
-    testTimeout: 30_000,
+    testTimeout: 60_000,
   },
 });

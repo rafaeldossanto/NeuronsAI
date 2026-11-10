@@ -58,19 +58,12 @@ it("leaves no writing route without a declaration", () => {
   expect(writeRoutes().filter((route) => route.endsWith("UNDECLARED"))).toEqual([]);
 });
 
-class Declared {
-  handle() {
-    return undefined;
-  }
-}
-class Undeclared {
-  handle() {
-    return undefined;
-  }
-}
-Reflect.defineMetadata("neurons:permission", "write", Declared.prototype.handle);
+class FakeController {}
+const declaredHandler = (): undefined => undefined;
+const undeclaredHandler = (): undefined => undefined;
+Reflect.defineMetadata("neurons:permission", "write", declaredHandler);
 
-function interceptorFor(method: string, target: { new (): { handle(): undefined } }) {
+function interceptorFor(method: string, handler: () => undefined) {
   const requireAccess = vi.fn().mockResolvedValue({ role: "member" });
   const auth = {
     browser: {
@@ -84,29 +77,33 @@ function interceptorFor(method: string, target: { new (): { handle(): undefined 
   const header = vi.fn();
   const context = {
     getType: () => "http",
-    getClass: () => target,
-    getHandler: () => target.prototype.handle,
+    getClass: () => FakeController,
+    getHandler: () => handler,
     switchToHttp: () => ({ getResponse: () => ({ header }), getRequest: () => ({ method }) }),
   } as unknown as ExecutionContext;
-  const next: CallHandler = { handle: vi.fn() as never };
-  return { interceptor, context, next, requireAccess };
+  const handle = vi.fn();
+  const next: CallHandler = { handle };
+  return { interceptor, context, next, handle, requireAccess };
 }
 
 it("refuses a writing request on a route that declares no permission, before any access check", async () => {
-  const { interceptor, context, next, requireAccess } = interceptorFor("POST", Undeclared);
+  const { interceptor, context, next, handle, requireAccess } = interceptorFor(
+    "POST",
+    undeclaredHandler,
+  );
   await expect(interceptor.intercept(context, next)).rejects.toBeInstanceOf(
     RoutePermissionUndeclaredError,
   );
   expect(requireAccess).not.toHaveBeenCalled();
-  expect(next.handle).not.toHaveBeenCalled();
+  expect(handle).not.toHaveBeenCalled();
 });
 
 it("checks the declared permission on a writing request and plain read on a GET", async () => {
-  const write = interceptorFor("POST", Declared);
+  const write = interceptorFor("POST", declaredHandler);
   await write.interceptor.intercept(write.context, write.next);
   expect(write.requireAccess).toHaveBeenCalledWith("u1", "o1", "write");
 
-  const read = interceptorFor("GET", Undeclared);
+  const read = interceptorFor("GET", undeclaredHandler);
   await read.interceptor.intercept(read.context, read.next);
   expect(read.requireAccess).toHaveBeenCalledWith("u1", "o1", "read");
 });

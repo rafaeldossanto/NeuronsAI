@@ -2,6 +2,9 @@ import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Effort, FunctionTool, ToolCall, ModelTurn, TurnClient } from "./types.js";
 import { supportedEffort } from "./capabilities.js";
+/** What a reply may hold when the operator sets nothing (`NEURONS_MODEL_MAX_OUTPUT_TOKENS`). */
+export const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
+
 export class OpenAITurnClient implements TurnClient {
   private readonly messages: OpenAI.Responses.ResponseInputItem[] = [];
   private readonly client: OpenAI;
@@ -10,6 +13,7 @@ export class OpenAITurnClient implements TurnClient {
     key: string,
     private readonly effort: Effort,
     fetcher?: typeof fetch,
+    private readonly maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS,
   ) {
     this.client = new OpenAI({
       apiKey: key,
@@ -31,7 +35,7 @@ export class OpenAITurnClient implements TurnClient {
         store: false,
         // Without storage, reasoning items only round-trip when their encrypted content comes along.
         include: ["reasoning.encrypted_content"],
-        max_output_tokens: 8192,
+        max_output_tokens: this.maxOutputTokens,
         ...(effort && { reasoning: { effort } }),
         tools: tools.map((tool) => ({ type: "function" as const, ...tool, strict: false })),
       },
@@ -68,6 +72,7 @@ export class AnthropicTurnClient implements TurnClient {
     key: string,
     private readonly effort: Effort,
     fetcher?: typeof fetch,
+    private readonly maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS,
   ) {
     this.client = new Anthropic({
       apiKey: key,
@@ -84,7 +89,7 @@ export class AnthropicTurnClient implements TurnClient {
     const response = await this.client.messages.create(
       {
         model: this.model,
-        max_tokens: 8192,
+        max_tokens: this.maxOutputTokens,
         system: briefing,
         messages: this.messages,
         ...(effort && { output_config: { effort } }),
