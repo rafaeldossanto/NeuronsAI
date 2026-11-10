@@ -35,7 +35,14 @@ describe("guardPtyWrites", () => {
     expect(() => socket.emit("error", errno("ECONNRESET"))).not.toThrow();
   });
 
-  it("still surfaces any other error", () => {
+  it("leaves other errors to node-pty's own listener when there is one (EIO of a closed Unix terminal)", () => {
+    const { pty, socket } = fakePty();
+    socket.on("error", () => undefined); // what node-pty registers itself
+    guardPtyWrites(pty);
+    expect(() => socket.emit("error", errno("EIO"))).not.toThrow();
+  });
+
+  it("still surfaces any other error when nobody else handles it", () => {
     const { pty, inSocket } = fakePty();
     guardPtyWrites(pty);
     expect(() => inSocket.emit("error", errno("EACCES"))).toThrow("EACCES");
