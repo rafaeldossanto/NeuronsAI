@@ -32,7 +32,24 @@ export class OpenAICompatibleTurnClient implements TurnClient {
     );
     const message = response.choices[0]?.message;
     if (!message) throw new Error("Empty model response");
-    this.messages.push(message);
+    // Only the fields of the Chat Completions contract go back: compatible servers add their own
+    // (`reasoning_content`, `refusal`, `annotations`...) and some reject a request that echoes them.
+    const calls = (message.tool_calls ?? []).flatMap((call) =>
+      call.type === "function"
+        ? [
+            {
+              id: call.id,
+              type: "function" as const,
+              function: { name: call.function.name, arguments: call.function.arguments },
+            },
+          ]
+        : [],
+    );
+    this.messages.push({
+      role: "assistant",
+      content: message.content ?? null,
+      ...(calls.length > 0 && { tool_calls: calls }),
+    });
     return {
       text: message.content ?? "",
       calls: (message.tool_calls ?? []).flatMap((call) =>

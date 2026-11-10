@@ -136,6 +136,61 @@ describe("SDK adapters without paid calls", () => {
   });
 });
 
+it("sends back to a compatible server only the fields of the Chat Completions contract", async () => {
+  const bodies: { messages: Record<string, unknown>[] }[] = [];
+  const fetcher: typeof fetch = async (_url, init) => {
+    bodies.push(JSON.parse(init?.body as string) as { messages: Record<string, unknown>[] });
+    await Promise.resolve();
+    return Response.json({
+      id: "test",
+      model: "local-model",
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: "pensando",
+            reasoning_content: "passo a passo",
+            refusal: null,
+            annotations: [],
+            audio: null,
+            tool_calls: [
+              {
+                type: "function",
+                id: "local_1",
+                index: 0,
+                extra: true,
+                function: { name: "finish", arguments: "{}" },
+              },
+            ],
+          },
+        },
+      ],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    });
+  };
+  const client = defaultProviders({
+    compatibleBaseUrl: "http://127.0.0.1:11434/v1",
+    fetcher,
+  }).createSession("openai-compatible", "local-model", "local", "high");
+  const turn = await client.respond("briefing", [], AbortSignal.timeout(2000));
+  client.result(turn.calls[0]!, "ok");
+  await client.respond("briefing", [], AbortSignal.timeout(2000));
+
+  const echoed = bodies[1]!.messages.find((message) => message.role === "assistant");
+  expect(echoed).toEqual({
+    role: "assistant",
+    content: "pensando",
+    tool_calls: [
+      { id: "local_1", type: "function", function: { name: "finish", arguments: "{}" } },
+    ],
+  });
+  expect(bodies[1]!.messages.at(-1)).toEqual({
+    role: "tool",
+    tool_call_id: "local_1",
+    content: "ok",
+  });
+});
+
 it("calculates cache charges once and preserves unknown prices", () => {
   const calculator = new UsageCalculator();
   const usage = { inputTokens: 100, outputTokens: 10, cacheReadTokens: 20, cacheCreationTokens: 0 };
