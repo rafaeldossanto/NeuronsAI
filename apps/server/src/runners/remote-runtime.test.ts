@@ -582,7 +582,7 @@ describe("a runner of another protocol revision than the server's", () => {
     const { server, runner } = createMemoryChannelPair();
     const frames: { type: string; revision?: number }[] = [];
     runner.onFrame((frame) => {
-      frames.push(frame as { type: string; revision?: number });
+      frames.push(frame);
       if (frame.type === "agent.start") {
         runner.send({
           v: PROTOCOL_VERSION,
