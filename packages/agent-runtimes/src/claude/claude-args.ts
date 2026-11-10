@@ -32,6 +32,20 @@ function valueOf(args: readonly string[], flag: string): string | undefined {
 }
 
 /**
+ * The `--permission-mode` values the Claude Code CLI lists in `claude --help`, checked against
+ * version 2.1.321 (choices: acceptEdits, auto, bypassPermissions, manual, dontAsk, plan). Left out
+ * on purpose: `bypassPermissions` (turns the permission model off) and `default`, which older CLIs
+ * accepted but 2.1.321 no longer lists (it is `manual` now). Recheck when the CLI is upgraded.
+ */
+const ALLOWED_PERMISSION_MODES: readonly string[] = [
+  "manual",
+  "acceptEdits",
+  "plan",
+  "dontAsk",
+  "auto",
+];
+
+/**
  * The agent's own `args` (from the graph) are passed to the CLI after ours. Anything that would
  * undo what the runtime sets up, or bypass permissions, is refused before the agent starts.
  */
@@ -49,7 +63,7 @@ export function assertAllowedUserArgs(agentName: string, args: readonly string[]
   const permissionMode = valueOf(args, "--permission-mode");
   if (
     hasFlag(args, "--permission-mode") &&
-    !["manual", "default", "acceptEdits", "plan", "dontAsk", "auto"].includes(permissionMode ?? "")
+    !ALLOWED_PERMISSION_MODES.includes(permissionMode ?? "")
   )
     refuse("--permission-mode");
 }
