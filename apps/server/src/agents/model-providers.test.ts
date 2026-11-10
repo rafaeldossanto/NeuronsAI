@@ -26,7 +26,10 @@ const ask = (config: ReturnType<typeof testConfig>) =>
 it("registers openai-compatible only when the operator configured an endpoint", () => {
   expect(() =>
     modelProviders(testConfig()).createSession("openai-compatible", "m", "k", "low"),
-  ).toThrow("Unsupported provider");
+  ).toThrow("NEURONS_OPENAI_COMPATIBLE_BASE_URL");
+  expect(() => modelProviders(testConfig()).createSession("nenhum", "m", "k", "low")).toThrow(
+    "Unsupported provider",
+  );
 });
 
 it("keeps the compatible endpoint away from loopback on public profiles", async () => {

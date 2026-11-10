@@ -8,6 +8,6 @@ Adaptadores de sessão OpenAI Responses, Anthropic Messages e OpenAI Chat Comple
 
 `UsageCalculator` usa a tabela versionada em `pricing.ts`. Os preços são estimativas de texto padrão, sem adicionais. Cache OpenAI já faz parte de input; cache Anthropic vem separado. A calculadora evita contagem dupla. Modelos sem preço e contagens inválidas retornam `undefined`, preservando custo desconhecido. Não é uma cotação de fatura nem uma promessa de teto absoluto.
 
-O endpoint compatível é configurado pelo operador no servidor via `NEURONS_OPENAI_COMPATIBLE_BASE_URL`; a URL nunca vem do grafo. Perfis compartilhados também aplicam a política de rede de saída. Para endpoint local sem autenticação, o runtime aceita não selecionar um segredo e usa uma credencial fictícia.
+O endpoint compatível é configurado pelo operador no servidor via `NEURONS_OPENAI_COMPATIBLE_BASE_URL`; a URL nunca vem do grafo. Perfis compartilhados também aplicam a política de rede de saída. Para endpoint local sem autenticação, o runtime aceita não selecionar um segredo e usa uma credencial fictícia. Sem a variável, um agente com `openai-compatible` falha ao iniciar a execução com uma mensagem que cita `NEURONS_OPENAI_COMPATIBLE_BASE_URL`.
 
 Testes usam o fetch injetado dos SDKs, sem rede e sem chaves reais. Referências e limites da aceitação estão em [Entrega local sem custo](../../Docs/Plano/Entrega%20local%20sem%20custo.md).

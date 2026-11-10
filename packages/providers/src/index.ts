@@ -14,6 +14,10 @@ export class ProviderRegistry {
   }
   createSession(provider: string, model: string, key: string, effort: Effort): TurnClient {
     const found = this.providers.get(provider);
+    if (!found && provider === "openai-compatible")
+      throw new Error(
+        "O provedor openai-compatible não está configurado neste servidor: defina NEURONS_OPENAI_COMPATIBLE_BASE_URL com o endereço do servidor compatível (por exemplo http://127.0.0.1:11434/v1) e reinicie.",
+      );
     if (!found) throw new Error("Unsupported provider");
     return found.createSession(model, key, effort);
   }
