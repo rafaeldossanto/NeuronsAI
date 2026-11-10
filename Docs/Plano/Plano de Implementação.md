@@ -704,6 +704,8 @@ A tela `/new` oferece projeto em branco e os três templates, com prévia por `G
 
 **Pronto quando:** dois usuários no mesmo servidor não enxergam nada um do outro (testes de isolamento).
 
+**Melhorias da revisão (10/11/2026).** Rota de escrita sem `@RequirePermission` passa a ser recusada (negação por padrão; as de membro declaram `write`); `local-data-adoption.json` corrompido responde 409 em pt-BR sem liberar a adoção; modos de `--permission-mode` conferidos com a CLI 2.1.321 (sai o `default`; `manual` existe); `EPIPE` do PTY tratado no runtime do terminal; teste da migration `0013_credential_approval` sobre dados antigos (Postgres e PGlite); servidor da revisão 5 testado com runners das revisões 4 e 6; `openai-compatible` sem `NEURONS_OPENAI_COMPATIBLE_BASE_URL` diz qual variável falta; limite de saída dos modelos em `NEURONS_MODEL_MAX_OUTPUT_TOKENS` (padrão 8192); o cliente compatível devolve só os campos do contrato de Chat Completions; `.gitattributes` marca os binários (o repositório já estava em LF); orçamento de tempo dos testes do PGlite na config do vitest.
+
 ### T26 — Infra na AWS (tem custo)
 
 - Infraestrutura como código com AWS CDK em TypeScript: servidor em contêiner (ECS Fargate), Postgres gerenciado (RDS), segredos no Secrets Manager, domínio e TLS.
