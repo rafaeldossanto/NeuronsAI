@@ -536,6 +536,24 @@ describe("what the dashboard shows, through the protocol", () => {
     });
   });
 
+  it("applies a resize asked while the runner was away once it is back, instead of losing it", async () => {
+    const wiring = start({ runtimeOptions: { Beta: { terminal: true } } });
+    const runId = await wiring.openRun();
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
+    await eventually(() => expect(received("Beta")).toEqual(["oi"]));
+    const terminal = rig.fakes.runtimeOf("Beta") as FakeTerminalRuntime;
+
+    rig.sever();
+    await eventually(() => expect(rig.link?.connected).toBe(false));
+    // The viewer narrows its window while the connection is down: the frame has nowhere to go.
+    wiring.terminals.reportSize({}, runId, "Beta", 90, 25);
+    expect(terminal.resized).toEqual([]);
+
+    rig.connect();
+
+    await eventually(() => expect(terminal.resized).toEqual([{ cols: 90, rows: 25 }]));
+  });
+
   it("does not send the resize to a runner that predates revision 4, which would drop the connection", async () => {
     rig = createRunnerRig({ runtimeOptions: { Beta: { terminal: true } } });
     const { server, runner } = createMemoryChannelPair();
