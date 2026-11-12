@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
 import { MemoriesModule } from "../memories/memories.module.js";
-import { GraphToolsService } from "../memories/graph-tools.service.js";
+import { GraphToolsService, WHATSAPP_GRAPH_BASE_URL } from "../memories/graph-tools.service.js";
 import { SecretsModule } from "../secrets/secrets.module.js";
 import { WhatsAppMessagesModule } from "../triggers/whatsapp-messages.module.js";
 import { AgentsModule } from "../agents/agents.module.js";
@@ -33,6 +33,8 @@ import { Supervisor } from "./supervisor.js";
   providers: [
     RunRegistry,
     GraphToolsService,
+    // Meta's real address unless a test points the reply tool at a fake one.
+    { provide: WHATSAPP_GRAPH_BASE_URL, useValue: undefined },
     PermissionPolicy,
     // New rules are added to this list, in the order they apply: permission first, then the guards.
     {
