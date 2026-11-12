@@ -62,9 +62,9 @@ export function TemplateCard({
         variant="outline"
         disabled={disabled}
         onClick={() => onChoose(template)}
-        aria-label={`Usar template ${template.name}`}
+        aria-label={`Usar modelo ${template.name}`}
       >
-        Usar template
+        Usar modelo
       </Button>
     </Card>
   );

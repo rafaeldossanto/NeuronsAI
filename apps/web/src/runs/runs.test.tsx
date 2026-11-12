@@ -143,7 +143,7 @@ describe("execuções", () => {
     expect(screen.getByLabelText("Custo mínimo (US$)")).toHaveValue("0.5");
     expect(screen.getByLabelText("Início de")).toHaveValue("2026-11-01");
     expect(screen.getByLabelText("Ordenar por")).toHaveValue("costly");
-    await waitFor(() => expect(screen.getByLabelText("Grafo")).toHaveValue(graphId));
+    await waitFor(() => expect(screen.getByLabelText("Projeto")).toHaveValue(graphId));
     await waitFor(() => expect(screen.getByLabelText("Versão")).toHaveValue(versionId));
   });
 
@@ -179,14 +179,14 @@ describe("execuções", () => {
     await waitFor(() => expect(last(queries).get("status")).toBe("failed"));
     expect(last(queries).get("offset")).toBe("0"); // voltou à primeira página
 
-    await user.selectOptions(screen.getByLabelText("Grafo"), "Revisão de código");
+    await user.selectOptions(screen.getByLabelText("Projeto"), "Revisão de código");
     await waitFor(() => expect(last(queries).get("graphId")).toBe(graphId));
     await waitFor(() => expect(screen.getByRole("option", { name: "v2" })).toBeInTheDocument());
     await user.selectOptions(screen.getByLabelText("Versão"), "v1");
     await waitFor(() => expect(last(queries).get("graphVersionId")).toBe(otherVersionId));
 
-    // trocar o grafo solta a versão
-    await user.selectOptions(screen.getByLabelText("Grafo"), "Pesquisa");
+    // trocar o projeto solta a versão
+    await user.selectOptions(screen.getByLabelText("Projeto"), "Pesquisa");
     await waitFor(() => expect(last(queries).get("graphId")).toBe(otherGraphId));
     expect(last(queries).has("graphVersionId")).toBe(false);
 

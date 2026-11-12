@@ -1,7 +1,8 @@
 import type { ApiClient } from "@neurons/api-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
-import { Navigate, Route, Routes } from "react-router";
+import { Link, Navigate, Route, Routes } from "react-router";
+import { Button } from "@/shared/ui/button";
 import { Layout } from "@/shell/layout";
 import { WorkspaceProvider } from "@/workspace/resources";
 import { NewProjectPage } from "@/graphs/new-project-page";
@@ -39,7 +40,20 @@ export function App({ api, queryClient }: { api: ApiClient; queryClient?: QueryC
               <Route path="organizations" element={<OrganizationsPage />} />
               <Route path="runners" element={<RunnersPage />} />
               <Route path="settings" element={<SettingsPage />} />
-              <Route path="*" element={<EmptyState title="Página não encontrada" />} />
+              <Route
+                path="*"
+                element={
+                  <EmptyState
+                    title="Página não encontrada"
+                    hint="O endereço não existe ou foi movido."
+                    action={
+                      <Button asChild variant="outline">
+                        <Link to="/graphs">Ir para Meus projetos</Link>
+                      </Button>
+                    }
+                  />
+                }
+              />
             </Route>
           </Routes>
         </WorkspaceProvider>

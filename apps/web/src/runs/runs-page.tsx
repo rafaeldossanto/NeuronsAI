@@ -37,7 +37,7 @@ export function RunsPage() {
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight">Execuções</h1>
         <p className="mt-1 text-muted-foreground">
-          As rodadas de cada grafo. O custo soma só os turnos que informaram preço.
+          Cada vez que um projeto rodou. O custo soma só os turnos que informaram preço.
         </p>
       </div>
 
@@ -48,7 +48,7 @@ export function RunsPage() {
       {runs.isSuccess && total === 0 && !hasActiveFilters(filters) && (
         <EmptyState
           title="Nenhuma execução ainda"
-          hint="Elas aparecem aqui quando um grafo for executado."
+          hint="Elas aparecem aqui quando um projeto for executado."
         />
       )}
       {runs.isSuccess && total === 0 && hasActiveFilters(filters) && (

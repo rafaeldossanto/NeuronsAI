@@ -267,7 +267,7 @@ function RunScreen({
         <p className="mt-1 text-sm text-muted-foreground">
           Início {formatDateTime(data.startedAt)} · fim {formatDateTime(data.finishedAt)} ·{" "}
           <Link to={`/graphs/${data.graphId}`} className="underline">
-            ver grafo
+            ver projeto
           </Link>
         </p>
         {notice}

@@ -32,7 +32,7 @@ describe("editor: carregar", () => {
   it("mostra os dados, o canvas com os blocos do rascunho e as versões", async () => {
     open(mixed);
 
-    expect(screen.getByRole("status", { name: "Carregando grafo" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Carregando projeto" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Revisão de código" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Canvas do grafo" })).toBeInTheDocument();
     expect(screen.getByTestId("block-agente-principal")).toHaveTextContent("Principal");

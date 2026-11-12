@@ -72,7 +72,7 @@ describe("organizações e membros", () => {
     });
 
     expect(
-      await screen.findByText(/2 grafos, 5 execuções, 1 segredo e 4 memórias/),
+      await screen.findByText(/2 projetos, 5 execuções, 1 segredo e 4 memórias/),
     ).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: "Mover dados locais para esta organização" }),
