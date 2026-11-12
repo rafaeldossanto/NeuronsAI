@@ -9,6 +9,9 @@ import { DatabaseService } from "../database/database.service.js";
 import { Hub } from "./hub.js";
 import { Supervisor } from "./supervisor.js";
 
+/** A close step slower than this is said in the log. */
+const SLOW_CLOSE_MS = 1_000;
+
 /** Ties the Hub to the server's life: recover on boot, stop the sessions on shutdown. */
 @Injectable()
 export class HubLifecycle implements OnApplicationBootstrap, BeforeApplicationShutdown {
@@ -35,6 +38,12 @@ export class HubLifecycle implements OnApplicationBootstrap, BeforeApplicationSh
 
   async beforeApplicationShutdown(): Promise<void> {
     this.hub.cancelAllAsks();
+    const startedAt = Date.now();
     await this.supervisor.stopAll();
+    const tookMs = Date.now() - startedAt;
+    // Said when slow, so a slow quit shows who was slow (the desktop app logs its own steps too).
+    if (tookMs >= SLOW_CLOSE_MS) {
+      this.logger.warn(`Encerramento: parar os agentes levou ${String(tookMs)} ms.`);
+    }
   }
 }

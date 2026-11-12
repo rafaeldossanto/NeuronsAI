@@ -46,6 +46,8 @@ export interface FakeRuntimeOptions {
   neverAck?: boolean;
   /** Fails to start with this message. */
   failOnStart?: string;
+  /** Never finishes booting by itself (a CLI at a dialog nobody answers); `stop` ends the boot. */
+  hangOnStart?: boolean;
   /** Whether the runtime reports what its turns cost (like stream-json); default true. */
   reportsCost?: boolean;
   /** Reports a turn with this cost while stopping, like a closing turn whose `result` arrives late. */
@@ -64,6 +66,7 @@ export class FakeAgentRuntime implements AgentRuntime {
 
   private currentState: AgentRuntimeState = "starting";
   private readonly changes = new Signal<AgentRuntimeState>();
+  private endBoot: (() => void) | undefined;
 
   constructor(
     readonly name: string,
@@ -85,6 +88,10 @@ export class FakeAgentRuntime implements AgentRuntime {
   async start(briefing: string): Promise<void> {
     this.briefing = briefing;
     await Promise.resolve();
+    if (this.options.hangOnStart) {
+      await new Promise<void>((resolve) => (this.endBoot = resolve));
+      return;
+    }
     if (this.options.failOnStart) {
       this.fail(this.options.failOnStart);
       throw new Error(this.options.failOnStart);
@@ -102,6 +109,7 @@ export class FakeAgentRuntime implements AgentRuntime {
 
   async stop(): Promise<void> {
     this.stopCount++;
+    this.endBoot?.();
     if (this.options.usageOnStop !== undefined) {
       await this.communication.reportUsage({ ...EMPTY_USAGE, costUsd: this.options.usageOnStop });
     }

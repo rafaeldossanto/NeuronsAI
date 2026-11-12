@@ -12,8 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentNode } from "@neurons/graph-schema";
 import { isTerminalRuntime, type AgentCommunication } from "@neurons/agent-runtimes";
-import { TerminalRuntimeFactory } from "@neurons/agent-runtimes/claude";
-import { TerminalScreen } from "../../../packages/agent-runtimes/src/claude/terminal-screen.js";
+import { TerminalRuntimeFactory, TerminalScreen } from "@neurons/agent-runtimes/claude";
 import { loadConfig } from "../src/shared/config/app-config.js";
 
 const MODES = ["manual", "acceptEdits", "plan", "dontAsk", "auto"];
