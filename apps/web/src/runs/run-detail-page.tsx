@@ -39,6 +39,16 @@ import {
 } from "@/runs/live/run-queries";
 
 /** Unknown cost is shown as unknown, never as $0. */
+/** Why a run ended, in words; an unknown code is shown as it came. */
+const finishReasonLabel = (reason: string) =>
+  ({
+    finished: "conclusão pelo agente",
+    quiescent: "falta de atividade",
+    stopped: "parada manual",
+    failed: "falha",
+    guard_tripped: "limite de proteção",
+  })[reason as "finished"] ?? reason;
+
 const costLabel = (usd: number | null) => (usd === null ? "custo desconhecido" : formatUsd(usd));
 
 /** A message counts as "just happened" (worth a pulse) for this long after its timestamp. */
@@ -318,7 +328,8 @@ function RunScreen({
             <p className="whitespace-pre-wrap text-sm">{data.input}</p>
             {finish && (
               <p className="mt-3 text-sm text-muted-foreground">
-                Terminou por <strong className="text-foreground">{finish.reason}</strong>
+                Terminou por{" "}
+                <strong className="text-foreground">{finishReasonLabel(finish.reason)}</strong>
                 {finish.message ? `: ${finish.message}` : ""}
                 {finish.result ? `: ${finish.result}` : ""}
               </p>

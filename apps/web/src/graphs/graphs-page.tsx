@@ -22,12 +22,7 @@ export function GraphsPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <h1 className="text-3xl font-extrabold tracking-tight">Meus projetos</h1>
-          <Button asChild variant="outline" size="sm">
-            <Link to="/new">Novo a partir de modelo</Link>
-          </Button>
-        </div>
+        <h1 className="text-3xl font-extrabold tracking-tight">Meus projetos</h1>
         <p className="mt-1 text-muted-foreground">
           Cada projeto é um time de agentes ligados por setas.
         </p>
@@ -45,6 +40,12 @@ export function GraphsPage() {
           {create.isPending ? "Criando…" : "Criar projeto"}
         </Button>
       </form>
+      <p className="-mt-4 text-sm text-muted-foreground">
+        Prefere partir de um exemplo?{" "}
+        <Link to="/new" className="font-semibold text-foreground underline underline-offset-2">
+          Ver modelos
+        </Link>
+      </p>
       {create.isError && <ErrorState error={create.error} />}
 
       {graphs.isPending && <LoadingRows label="Carregando projetos" />}
@@ -53,11 +54,6 @@ export function GraphsPage() {
         <EmptyState
           title="Nenhum projeto ainda"
           hint="Dê um nome no campo acima para começar do zero, ou parta de um modelo pronto."
-          action={
-            <Button asChild variant="outline">
-              <Link to="/new">Ver modelos</Link>
-            </Button>
-          }
         />
       )}
       {graphs.isSuccess && graphs.data.length > 0 && (

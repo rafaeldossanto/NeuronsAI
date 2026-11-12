@@ -1,4 +1,4 @@
-import { Navigate, useSearchParams } from "react-router";
+import { Link, Navigate, useSearchParams } from "react-router";
 import { EmptyState, ErrorState, LoadingRows } from "@/shared/states";
 import { Button } from "@/shared/ui/button";
 import {
@@ -48,7 +48,12 @@ export function RunsPage() {
       {runs.isSuccess && total === 0 && !hasActiveFilters(filters) && (
         <EmptyState
           title="Nenhuma execução ainda"
-          hint="Elas aparecem aqui quando um projeto for executado."
+          hint="Elas aparecem aqui quando um projeto for executado. Abra um projeto e use Executar."
+          action={
+            <Button asChild variant="outline">
+              <Link to="/graphs">Ir para Meus projetos</Link>
+            </Button>
+          }
         />
       )}
       {runs.isSuccess && total === 0 && hasActiveFilters(filters) && (
