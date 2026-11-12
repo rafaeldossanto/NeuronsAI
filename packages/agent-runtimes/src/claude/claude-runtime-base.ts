@@ -232,6 +232,8 @@ export abstract class ClaudeRuntimeBase implements AgentRuntime {
       // Hard per-call limit of every MCP tool: must outlive the Hub's `ask` timeout.
       MCP_TOOL_TIMEOUT: String(this.deps.askTimeoutMs + MCP_TOOL_TIMEOUT_MARGIN_MS),
     });
+    // Stopped while the files and the bridge were being made: nothing to spawn, `boot` cleans up.
+    if (this.lifetime.signal.aborted) throw new Error("O agente foi encerrado antes de subir.");
     await this.launch({ command, args, env, cwd: this.agent.cwd });
   }
 

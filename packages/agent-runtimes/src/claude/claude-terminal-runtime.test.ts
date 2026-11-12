@@ -151,8 +151,11 @@ describe("ClaudeTerminalRuntime (fake CLI in a PTY)", () => {
       fakeFlags: ["--trust-dialog"],
       timings: { userDialogTimeoutMs: 60_000 },
     });
+    let screen = "";
+    runtime.onOutput((chunk) => (screen += chunk));
     const booting = runtime.start("x");
-    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    // The dialog is up (how long that takes depends on the machine: a CI runner is slow to spawn).
+    await eventually(() => /trust/i.test(screen), 30_000);
     const pid = runtime.processId;
     expect(pid).toBeDefined();
 
@@ -164,6 +167,18 @@ describe("ClaudeTerminalRuntime (fake CLI in a PTY)", () => {
     expect(runtime.state).toBe("stopped");
     expect(runtime.failureReason).toBeUndefined();
     expect(isAlive(pid ?? 0)).toBe(false);
+  });
+
+  it("stopped while its files and bridge are still being made, it spawns nothing and fails nothing", async () => {
+    const { runtime } = create({ fakeFlags: ["--trust-dialog"] });
+    const booting = runtime.start("x");
+
+    await runtime.stop();
+    await booting;
+
+    expect(runtime.state).toBe("stopped");
+    expect(runtime.failureReason).toBeUndefined();
+    expect(runtime.processId).toBeUndefined();
   });
 
   it("does not boot at all when it was stopped before `start` was called", async () => {
