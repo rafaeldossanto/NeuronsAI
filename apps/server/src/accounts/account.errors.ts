@@ -17,6 +17,20 @@ export class OrganizationAccessError extends DomainError {
   }
 }
 
+/**
+ * A writing route reached the server without saying who may call it. Failing closed keeps a new
+ * route from being open to every member by accident; the fix is `@RequirePermission` on the route.
+ */
+export class RoutePermissionUndeclaredError extends DomainError {
+  readonly kind = "forbidden" as const;
+  constructor() {
+    super(
+      "route_permission_undeclared",
+      "Esta ação não declara quem pode executá-la e foi recusada por segurança.",
+    );
+  }
+}
+
 export class LastOwnerError extends DomainError {
   readonly kind = "conflict" as const;
   constructor() {

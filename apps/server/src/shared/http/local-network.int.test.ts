@@ -56,4 +56,4 @@ it("rejects foreign Host and Origin over HTTP and the WebSocket upgrade", async 
     client?.terminate();
     await app.close();
   }
-}, 30000);
+});

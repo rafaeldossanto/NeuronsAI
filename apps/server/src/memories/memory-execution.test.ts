@@ -143,4 +143,4 @@ it("terminal → MCP → runner → servidor: cria, lê e edita a memória, com 
     await app.close();
     await rm(directory, { recursive: true, force: true });
   }
-}, 120_000);
+});

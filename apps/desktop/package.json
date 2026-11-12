@@ -24,12 +24,12 @@
     "@neurons/server": "workspace:*",
     "electron-updater": "6.8.11",
     "zod": "4.6.7",
-    "croner": "10.0.1"
+    "croner": "11.0.0"
   },
   "devDependencies": {
     "@neurons/web": "workspace:*",
     "@types/node": "^24.19.2",
-    "electron": "45.2.2",
+    "electron": "45.2.3",
     "electron-builder": "26.18.0"
   }
 }

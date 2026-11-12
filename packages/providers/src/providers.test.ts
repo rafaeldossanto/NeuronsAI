@@ -136,6 +136,61 @@ describe("SDK adapters without paid calls", () => {
   });
 });
 
+it("sends back to a compatible server only the fields of the Chat Completions contract", async () => {
+  const bodies: { messages: Record<string, unknown>[] }[] = [];
+  const fetcher: typeof fetch = async (_url, init) => {
+    bodies.push(JSON.parse(init?.body as string) as { messages: Record<string, unknown>[] });
+    await Promise.resolve();
+    return Response.json({
+      id: "test",
+      model: "local-model",
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: "pensando",
+            reasoning_content: "passo a passo",
+            refusal: null,
+            annotations: [],
+            audio: null,
+            tool_calls: [
+              {
+                type: "function",
+                id: "local_1",
+                index: 0,
+                extra: true,
+                function: { name: "finish", arguments: "{}" },
+              },
+            ],
+          },
+        },
+      ],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    });
+  };
+  const client = defaultProviders({
+    compatibleBaseUrl: "http://127.0.0.1:11434/v1",
+    fetcher,
+  }).createSession("openai-compatible", "local-model", "local", "high");
+  const turn = await client.respond("briefing", [], AbortSignal.timeout(2000));
+  client.result(turn.calls[0]!, "ok");
+  await client.respond("briefing", [], AbortSignal.timeout(2000));
+
+  const echoed = bodies[1]!.messages.find((message) => message.role === "assistant");
+  expect(echoed).toEqual({
+    role: "assistant",
+    content: "pensando",
+    tool_calls: [
+      { id: "local_1", type: "function", function: { name: "finish", arguments: "{}" } },
+    ],
+  });
+  expect(bodies[1]!.messages.at(-1)).toEqual({
+    role: "tool",
+    tool_call_id: "local_1",
+    content: "ok",
+  });
+});
+
 it("calculates cache charges once and preserves unknown prices", () => {
   const calculator = new UsageCalculator();
   const usage = { inputTokens: 100, outputTokens: 10, cacheReadTokens: 20, cacheCreationTokens: 0 };
@@ -152,4 +207,22 @@ it("calculates cache charges once and preserves unknown prices", () => {
   ).toBeUndefined();
   expect(supportedEffort("openai", "gpt-4.1-mini", "max")).toBeUndefined();
   expect(supportedEffort("openai", "gpt-6.1-sol", "xhigh")).toBe("xhigh");
+});
+
+it("lets the operator change the cap on a reply, keeping 8192 by default", async () => {
+  const caps: unknown[] = [];
+  const fetcher: typeof fetch = async (_url, init) => {
+    const body = JSON.parse(init?.body as string) as { max_output_tokens?: number };
+    caps.push(body.max_output_tokens);
+    await Promise.resolve();
+    return Response.json({ id: "r", model: "m", output: [], output_text: "", usage: null });
+  };
+  for (const maxOutputTokens of [undefined, 32_000]) {
+    const client = defaultProviders({
+      fetcher,
+      ...(maxOutputTokens && { maxOutputTokens }),
+    }).createSession("openai", "gpt-4.1-mini", "key", "low");
+    await client.respond("briefing", [], AbortSignal.timeout(2000));
+  }
+  expect(caps).toEqual([8192, 32_000]);
 });

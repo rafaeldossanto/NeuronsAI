@@ -9,7 +9,7 @@ import {
   type TerminalSize,
 } from "../contract/terminal-runtime.js";
 import { killProcessTree } from "../platform/process-tree.js";
-import { releasePtyHandles } from "../platform/pty-handles.js";
+import { guardPtyWrites, isBrokenPipe, releasePtyHandles } from "../platform/pty-handles.js";
 import { Gate, settlesWithin, sleep, waitUntil } from "./async.js";
 import { ClaudeLoginRequiredError } from "./claude-cli.js";
 import {
@@ -126,6 +126,8 @@ export class ClaudeTerminalRuntime extends ClaudeRuntimeBase implements Terminal
   private readonly promptSubmitted = new Gate();
   private readonly turnStopped = new Gate();
   private pty: IPty | undefined;
+  /** The child exited or is being killed: writes to its terminal would only break the pipe. */
+  private ptyEnded = false;
   private screen: TerminalScreen | undefined;
   private exited: Promise<void> = Promise.resolve();
   private lastOutputAt = 0;
@@ -184,7 +186,13 @@ export class ClaudeTerminalRuntime extends ClaudeRuntimeBase implements Terminal
   }
 
   writeInput(data: string): void {
-    this.pty?.write(data);
+    // The child may have exited between the check and the write; the exit handler reports that.
+    if (this.ptyEnded) return;
+    try {
+      this.pty?.write(data);
+    } catch (error) {
+      if (!isBrokenPipe(error)) throw error;
+    }
   }
 
   // ---- AgentRuntime ----
@@ -221,8 +229,11 @@ export class ClaudeTerminalRuntime extends ClaudeRuntimeBase implements Terminal
       env: { ...env, TERM: "xterm-256color" },
     });
     this.pty = pty;
+    this.ptyEnded = false;
+    guardPtyWrites(pty);
     this.exited = new Promise((resolve) => {
       pty.onExit(({ exitCode }) => {
+        this.ptyEnded = true;
         resolve();
         if (!this.lifetime.signal.aborted) {
           this.fail(`O Claude Code encerrou de forma inesperada (código ${exitCode}).`);
@@ -242,6 +253,7 @@ export class ClaudeTerminalRuntime extends ClaudeRuntimeBase implements Terminal
   protected async terminate(): Promise<void> {
     const pty = this.pty;
     if (pty) {
+      this.ptyEnded = true;
       await killProcessTree(pty.pid, this.deps.cli.platform);
       // Waits for the exit so no process is left when `stop()` resolves.
       await settlesWithin(this.exited, 5_000);
@@ -269,7 +281,7 @@ export class ClaudeTerminalRuntime extends ClaudeRuntimeBase implements Terminal
         if (dialog) {
           if (answer && !answered.has(`${dialog.name}:${answer}`) && quiet >= 700) {
             answered.add(`${dialog.name}:${answer}`);
-            this.pty?.write(answer);
+            this.writeInput(answer);
           }
           if (blockedSince && Date.now() - blockedSince > this.timings.userDialogTimeoutMs) {
             throw new Error(TRUST_HINT);

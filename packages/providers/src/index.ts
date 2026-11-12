@@ -1,4 +1,5 @@
 import { OpenAITurnClient, AnthropicTurnClient } from "./sdk-clients.js";
+export { DEFAULT_MAX_OUTPUT_TOKENS } from "./sdk-clients.js";
 import { OpenAICompatibleTurnClient } from "./compatible.js";
 import type { Effort, ModelProvider, TurnClient, ModelEvent, FunctionTool } from "./types.js";
 export * from "./types.js";
@@ -14,6 +15,10 @@ export class ProviderRegistry {
   }
   createSession(provider: string, model: string, key: string, effort: Effort): TurnClient {
     const found = this.providers.get(provider);
+    if (!found && provider === "openai-compatible")
+      throw new Error(
+        "O provedor openai-compatible não está configurado neste servidor: defina NEURONS_OPENAI_COMPATIBLE_BASE_URL com o endereço do servidor compatível (por exemplo http://127.0.0.1:11434/v1) e reinicie.",
+      );
     if (!found) throw new Error("Unsupported provider");
     return found.createSession(model, key, effort);
   }
@@ -23,18 +28,20 @@ export function defaultProviders(
     compatibleBaseUrl?: string;
     fetcher?: typeof fetch;
     compatibleFetch?: typeof fetch;
+    /** Cap on one reply of the OpenAI and Anthropic adapters; raise it for reasoning models. */
+    maxOutputTokens?: number;
   } = {},
 ): ProviderRegistry {
   const registry = new ProviderRegistry()
     .register({
       name: "openai",
       createSession: (model, key, effort) =>
-        new OpenAITurnClient(model, key, effort, options.fetcher),
+        new OpenAITurnClient(model, key, effort, options.fetcher, options.maxOutputTokens),
     })
     .register({
       name: "anthropic",
       createSession: (model, key, effort) =>
-        new AnthropicTurnClient(model, key, effort, options.fetcher),
+        new AnthropicTurnClient(model, key, effort, options.fetcher, options.maxOutputTokens),
     });
   if (options.compatibleBaseUrl)
     registry.register({

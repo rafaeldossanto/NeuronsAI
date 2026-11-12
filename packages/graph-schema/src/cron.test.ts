@@ -44,6 +44,38 @@ describe("isValidTimezone", () => {
   });
 });
 
+describe("daylight saving time (croner 11)", () => {
+  it("runs a fixed-time job from a spring-forward gap at the first valid time after it", () => {
+    // Lisboa 2026-03-29: 01:00 vira 02:00 (UTC+1), então 01:30 local não existe nesse dia.
+    const runs = nextCronRuns("30 1 * * *", {
+      timezone: "Europe/Lisbon",
+      from: new Date("2026-03-28T00:00:00Z"),
+      count: 3,
+    }).map((run) => run.toISOString());
+    expect(runs).toEqual([
+      "2026-03-28T01:30:00.000Z",
+      "2026-03-29T01:00:00.000Z", // 02:00 locais, o primeiro horário válido depois da lacuna
+      "2026-03-30T00:30:00.000Z",
+    ]);
+  });
+
+  it("keeps an interval job running through the repeated hour of fall back", () => {
+    // Lisboa 2026-10-25: 02:00 volta a 01:00, então 01:00-02:00 locais acontece duas vezes.
+    const runs = nextCronRuns("*/30 * * * *", {
+      timezone: "Europe/Lisbon",
+      from: new Date("2026-10-25T00:00:00Z"),
+      count: 5,
+    }).map((run) => run.toISOString());
+    expect(runs).toEqual([
+      "2026-10-25T00:30:00.000Z",
+      "2026-10-25T01:00:00.000Z",
+      "2026-10-25T01:30:00.000Z",
+      "2026-10-25T02:00:00.000Z",
+      "2026-10-25T02:30:00.000Z",
+    ]);
+  });
+});
+
 describe("nextCronRuns", () => {
   const from = new Date("2026-11-04T12:00:00.000Z"); // quarta-feira
 

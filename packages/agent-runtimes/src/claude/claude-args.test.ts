@@ -80,6 +80,7 @@ describe("assertAllowedUserArgs", () => {
     ["--settings", "x.json"],
     ["--mcp-config=x.json"],
     ["--permission-mode", "bypassPermissions"],
+    ["--permission-mode", "default"],
     ["--permission-mode=bypassPermissions"],
   ])("refuses %j", (...args) => {
     expect(() => assertAllowedUserArgs("Ana", args)).toThrow(UnsupportedRuntimeError);
