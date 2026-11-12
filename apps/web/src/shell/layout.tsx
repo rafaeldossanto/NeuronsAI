@@ -40,6 +40,12 @@ export function Layout() {
   const wide = useMatch("/graphs/:id") !== null;
   return (
     <div className={cn("min-h-screen", wide && "modeler-layout")}>
+      <a
+        href="#conteudo"
+        className="sr-only rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50"
+      >
+        Pular para o conteúdo
+      </a>
       <header className="border-b">
         <div
           className={cn(
@@ -88,7 +94,15 @@ export function Layout() {
           </div>
         )}
       </header>
-      <main className={cn("mx-auto max-w-5xl px-6 py-10", wide && "modeler-main max-w-none")}>
+      <main
+        id="conteudo"
+        tabIndex={-1}
+        className={cn(
+          "outline-none",
+          "mx-auto max-w-5xl px-6 py-10",
+          wide && "modeler-main max-w-none",
+        )}
+      >
         <Outlet />
       </main>
     </div>

@@ -84,7 +84,7 @@ describe("detalhe da execução ao vivo", () => {
     });
 
     expect(await screen.findByText("Concluída")).toBeInTheDocument();
-    expect(screen.getByText(/Terminou por/)).toHaveTextContent("finished: pronto");
+    expect(screen.getByText(/Terminou por/)).toHaveTextContent("conclusão pelo agente: pronto");
     expect(screen.queryByRole("button", { name: "Parar" })).not.toBeInTheDocument();
     expect(screen.getByRole("status", { name: "Conexão" })).toHaveTextContent("Encerrada");
   });

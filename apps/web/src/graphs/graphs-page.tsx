@@ -22,30 +22,39 @@ export function GraphsPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h1 className="text-3xl font-extrabold tracking-tight">Grafos</h1>
+        <h1 className="text-3xl font-extrabold tracking-tight">Meus projetos</h1>
         <p className="mt-1 text-muted-foreground">
-          Cada grafo é um time de agentes ligados por setas.
+          Cada projeto é um time de agentes ligados por setas.
         </p>
       </div>
 
-      <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row" aria-label="Novo grafo">
+      <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row" aria-label="Novo projeto">
         <Input
-          aria-label="Nome do novo grafo"
-          placeholder="Nome do novo grafo"
+          aria-label="Nome do novo projeto"
+          placeholder="Nome do novo projeto"
           value={name}
           maxLength={200}
           onChange={(e) => setName(e.target.value)}
         />
         <Button type="submit" variant="accent" disabled={create.isPending || !name.trim()}>
-          {create.isPending ? "Criando…" : "Criar grafo"}
+          {create.isPending ? "Criando…" : "Criar projeto"}
         </Button>
       </form>
+      <p className="-mt-4 text-sm text-muted-foreground">
+        Prefere partir de um exemplo?{" "}
+        <Link to="/new" className="font-semibold text-foreground underline underline-offset-2">
+          Ver modelos
+        </Link>
+      </p>
       {create.isError && <ErrorState error={create.error} />}
 
-      {graphs.isPending && <LoadingRows label="Carregando grafos" />}
+      {graphs.isPending && <LoadingRows label="Carregando projetos" />}
       {graphs.isError && <ErrorState error={graphs.error} onRetry={() => void graphs.refetch()} />}
       {graphs.isSuccess && graphs.data.length === 0 && (
-        <EmptyState title="Nenhum grafo ainda" hint="Crie o primeiro pelo campo acima." />
+        <EmptyState
+          title="Nenhum projeto ainda"
+          hint="Dê um nome no campo acima para começar do zero, ou parta de um modelo pronto."
+        />
       )}
       {graphs.isSuccess && graphs.data.length > 0 && (
         <ul className="flex flex-col gap-3">

@@ -111,8 +111,17 @@ function ErrorText({ error }: { error: Error | null }) {
   );
 }
 
-/** The server's side of a webhook or schedule block: on or off, route and secret, last and next run. */
-export function ExternalTriggerPanel({ graphId, node }: { graphId: string; node: TriggerNode }) {
+/** The server's side of a webhook, WhatsApp or schedule block: on or off, route and secret, last and next run. */
+export function ExternalTriggerPanel({
+  graphId,
+  node,
+  accessTokenNames = [],
+}: {
+  graphId: string;
+  node: TriggerNode;
+  /** Names of the secrets the graph's WhatsApp reply tools use, so the checklist can list them. */
+  accessTokenNames?: string[];
+}) {
   const state = useTriggerState(graphId, node.id);
   const setEnabled = useSetTriggerEnabled(graphId, node.id);
 
@@ -146,6 +155,14 @@ export function ExternalTriggerPanel({ graphId, node }: { graphId: string; node:
       </p>
 
       {node.kind === "webhook" && <WebhookSection graphId={graphId} node={node} state={data} />}
+      {node.kind === "whatsapp" && (
+        <WhatsAppSection
+          graphId={graphId}
+          node={node}
+          state={data}
+          accessTokenNames={accessTokenNames}
+        />
+      )}
       {node.kind === "schedule" && data.nextRunAt && (
         <Block title="Próxima execução">
           <span className="text-sm">{formatDateTime(data.nextRunAt)}</span>
@@ -296,6 +313,141 @@ function WebhookSection({
           </div>
         </Block>
       )}
+    </div>
+  );
+}
+
+/** Meta's side of the WhatsApp trigger: the URL and the verify token to paste, and the secrets to register. */
+function WhatsAppSection({
+  graphId,
+  node,
+  state,
+  accessTokenNames,
+}: {
+  graphId: string;
+  node: TriggerNode;
+  state: TriggerState;
+  accessTokenNames: string[];
+}) {
+  const rotate = useRotateTriggerSecret(graphId, node.id);
+  // Held only here: the server never shows it again, and leaving the block drops it.
+  const [revealed, setRevealed] = useState<string | null>(null);
+
+  const url =
+    state.hookPath && state.hooksPort
+      ? `http://127.0.0.1:${String(state.hooksPort)}${state.hookPath}`
+      : null;
+
+  const generate = () => {
+    if (
+      state.hasSecret &&
+      !window.confirm(
+        "Gerar outro verify token? O atual deixa de valer: a Meta só o usa ao confirmar a URL, então cole o novo lá se for confirmar de novo.",
+      )
+    ) {
+      return;
+    }
+    rotate.mutate(undefined, { onSuccess: (result) => setRevealed(result.secret) });
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      {state.hooksPort === null && (
+        <p role="note" className="rounded-md border border-input bg-muted p-2 text-xs">
+          A porta dos gatilhos está desligada. Defina <code>NEURONS_HOOKS_PORT</code> para o
+          servidor (ou o app) receber as mensagens da Meta.
+        </p>
+      )}
+
+      <Block title="URL do webhook (cole na Meta)">
+        {url ? (
+          <>
+            <code aria-label="URL do webhook" className="break-all rounded-md bg-muted p-2 text-xs">
+              {url}
+            </code>
+            <p className="text-xs text-muted-foreground">
+              A Meta precisa de um endereço público: use o túnel (Cloudflare Tunnel) e troque só o
+              endereço pelo do túnel, mantendo o caminho <code>{state.hookPath}</code>.
+            </p>
+            <div>
+              <CopyButton text={url} label="Copiar a URL" />
+            </div>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {state.hookPath
+              ? "Sem a porta dos gatilhos não há URL para a Meta chamar."
+              : "A URL aparece depois de gerar o verify token."}
+          </p>
+        )}
+      </Block>
+
+      <Block title="Verify token (cole na Meta)">
+        <p className="text-xs text-muted-foreground">
+          {state.hasSecret
+            ? "Há um verify token guardado (cifrado). Ele não pode ser mostrado de novo."
+            : "Ainda não há verify token: a Meta não consegue confirmar a URL sem ele."}
+        </p>
+        <div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={rotate.isPending}
+            onClick={generate}
+          >
+            <KeyRound className="size-4" />{" "}
+            {state.hasSecret ? "Gerar outro verify token" : "Gerar verify token"}
+          </Button>
+        </div>
+        <ErrorText error={rotate.error} />
+        {revealed && (
+          <div
+            role="status"
+            className="flex flex-col gap-2 rounded-md border border-accent bg-accent/10 p-3"
+          >
+            <p className="text-xs font-bold">
+              Copie agora: este verify token não será mostrado de novo. Se perder, gere outro.
+            </p>
+            <code aria-label="Verify token" className="break-all rounded bg-card p-2 text-xs">
+              {revealed}
+            </code>
+            <div className="flex gap-2">
+              <CopyButton text={revealed} label="Copiar o verify token" />
+              <Button type="button" variant="ghost" size="sm" onClick={() => setRevealed(null)}>
+                Já copiei
+              </Button>
+            </div>
+          </div>
+        )}
+      </Block>
+
+      <Block title="Segredos que você cadastra">
+        <p className="text-xs text-muted-foreground">
+          Cadastre os valores em Segredos, com exatamente estes nomes. O grafo guarda só os nomes.
+        </p>
+        <ul aria-label="Segredos do WhatsApp" className="flex flex-col gap-1 text-xs">
+          <li>
+            App Secret do app da Meta: <code>{node.appSecretName || "(defina o nome acima)"}</code>
+          </li>
+          {accessTokenNames.length > 0 ? (
+            accessTokenNames.map((name) => (
+              <li key={name}>
+                Access token (para responder): <code>{name}</code>
+              </li>
+            ))
+          ) : (
+            <li className="text-muted-foreground">
+              Access token: ligue o agente a uma ferramenta “WhatsApp (resposta)” para ele poder
+              responder.
+            </li>
+          )}
+        </ul>
+        <p className="text-xs text-muted-foreground">
+          Cada mensagem de cliente inicia uma execução nova. O agente não vê o telefone do cliente e
+          só responde a ele.
+        </p>
+      </Block>
     </div>
   );
 }

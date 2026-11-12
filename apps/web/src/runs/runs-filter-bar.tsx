@@ -93,7 +93,7 @@ export function RunsFilterBar({
         </select>
       </Field>
 
-      <Field label="Grafo">
+      <Field label="Projeto">
         <select
           className={selectClass}
           value={filters.graphId ?? ""}
@@ -117,7 +117,7 @@ export function RunsFilterBar({
           value={filters.graphVersionId ?? ""}
           onChange={(event) => onChange({ graphVersionId: event.target.value || undefined })}
         >
-          <option value="">{filters.graphId ? "Todas" : "Escolha um grafo"}</option>
+          <option value="">{filters.graphId ? "Todas" : "Escolha um projeto"}</option>
           {versionOptions.map((version) => (
             <option key={version.id} value={version.id}>
               v{version.version}

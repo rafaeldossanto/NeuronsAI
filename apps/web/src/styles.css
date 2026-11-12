@@ -35,9 +35,9 @@
   --card: #fdfdfb;
   --card-foreground: #1d1f26;
   --muted: #efefea;
-  --muted-foreground: #73747f;
+  --muted-foreground: #666772;
   --border: #e1e1da;
-  --input: #d6d6cd;
+  --input: #8c8d96;
   --primary: #1d1f26;
   --primary-foreground: #f7f7f4;
   --accent: #e9a15c;
@@ -79,7 +79,7 @@
     -webkit-font-smoothing: antialiased;
   }
   :focus-visible {
-    outline: 2px solid var(--ring);
+    outline: 2px solid var(--foreground);
     outline-offset: 2px;
   }
 }

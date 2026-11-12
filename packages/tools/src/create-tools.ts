@@ -13,12 +13,14 @@ import type { ToolSet } from "./core/types.js";
 import { createHttpTools } from "./http/http-tool.js";
 import { createMcpTools } from "./mcp/mcp-tools.js";
 import { createObsidianTools } from "./obsidian/obsidian-tools.js";
+import { createWhatsAppTools } from "./whatsapp/whatsapp-tools.js";
 
 /** One factory per `kind` — supporting a new kind means adding an entry here. */
 export const defaultToolFactories: ToolFactories = {
   mcp: createMcpTools,
   http: createHttpTools,
   obsidian: createObsidianTools,
+  whatsapp: createWhatsAppTools,
 };
 
 export async function createTools(node: ToolNode, deps: ToolDeps): Promise<ToolSet> {
@@ -36,6 +38,7 @@ export async function createTools(node: ToolNode, deps: ToolDeps): Promise<ToolS
     ...(deps.checkNoteWrite && { checkNoteWrite: deps.checkNoteWrite }),
     limits: { ...DEFAULT_LIMITS, ...deps.limits },
     ...(deps.network && { network: deps.network }),
+    ...(deps.whatsapp && { whatsapp: deps.whatsapp }),
   };
   const toolSet = await factory(node, resolved);
   return {

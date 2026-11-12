@@ -1,6 +1,8 @@
 import {
   peersOf,
+  readsCustomerMessages,
   toolsOf,
+  writeToolsBlockedFor,
   type AgentNode,
   type GraphNode,
   type Link,
@@ -105,6 +107,7 @@ export function Inspector({
       <LinkInspector
         key={link.id}
         link={link}
+        doc={doc}
         issues={issues.filter((i) => i.targetLinkId === link.id)}
         dispatch={dispatch}
       />
@@ -349,6 +352,7 @@ const TOOL_KINDS = [
   ["http", "HTTP"],
   ["mcp-stdio", "MCP (comando)"],
   ["mcp-http", "MCP (HTTP)"],
+  ["whatsapp", "WhatsApp (resposta)"],
 ] as const;
 
 function toolKey(tool: ToolNode["tool"]) {
@@ -363,6 +367,8 @@ function defaultTool(key: string): ToolNode["tool"] {
       return { kind: "mcp", transport: "stdio", command: "", args: [], allowedTools: [] };
     case "mcp-http":
       return { kind: "mcp", transport: "http", url: "", allowedTools: [] };
+    case "whatsapp":
+      return { kind: "whatsapp", phoneNumberId: "", accessTokenSecret: "whatsapp-access-token" };
     default:
       return { kind: "obsidian", vaultPath: "", readOnly: true };
   }
@@ -409,6 +415,33 @@ function ToolFields({
           <Field label="URL">
             <TextInput value={tool.url} onChange={(e) => set(["tool", "url"], e.target.value)} />
           </Field>
+        </>
+      )}
+      {tool.kind === "whatsapp" && (
+        <>
+          <Field
+            label="Phone number ID"
+            hint="O identificador do número na Meta (WhatsApp → Configuração da API). Só dígitos; não é o telefone."
+          >
+            <TextInput
+              inputMode="numeric"
+              value={tool.phoneNumberId}
+              onChange={(e) => set(["tool", "phoneNumberId"], e.target.value.trim())}
+            />
+          </Field>
+          <Field
+            label="Nome do segredo do access token"
+            hint="Cadastre o token em Segredos com este nome; o grafo guarda só o nome."
+          >
+            <TextInput
+              value={tool.accessTokenSecret}
+              onChange={(e) => set(["tool", "accessTokenSecret"], e.target.value.trim())}
+            />
+          </Field>
+          <p className="text-xs text-muted-foreground">
+            O agente escreve só o texto: a resposta vai sempre ao cliente que iniciou a execução,
+            até 24 h depois da última mensagem dele (templates não são suportados).
+          </p>
         </>
       )}
       {tool.kind === "mcp" && (
@@ -460,11 +493,18 @@ function TriggerFields({ doc, node, set }: { doc: GraphDoc; node: TriggerNode; s
                 set(["cron"], undefined);
                 set(["timezone"], undefined);
               }
+              if (e.target.value !== "whatsapp") {
+                set(["phoneNumberId"], undefined);
+                set(["appSecretName"], undefined);
+              } else if (node.appSecretName === undefined) {
+                set(["appSecretName"], "whatsapp-app-secret");
+              }
             }}
           >
             <option value="manual">Manual</option>
             <option value="webhook">Webhook</option>
             <option value="schedule">Agenda</option>
+            <option value="whatsapp">WhatsApp</option>
           </Select>
         </Field>
         {node.kind === "schedule" && (
@@ -492,6 +532,29 @@ function TriggerFields({ doc, node, set }: { doc: GraphDoc; node: TriggerNode; s
             <SchedulePreview cron={node.cron ?? ""} timezone={node.timezone} />
           </>
         )}
+        {node.kind === "whatsapp" && (
+          <>
+            <Field
+              label="Phone number ID"
+              hint="O identificador do número na Meta (WhatsApp → Configuração da API). Só dígitos; não é o telefone."
+            >
+              <TextInput
+                inputMode="numeric"
+                value={node.phoneNumberId ?? ""}
+                onChange={(e) => set(["phoneNumberId"], e.target.value.trim() || undefined)}
+              />
+            </Field>
+            <Field
+              label="Nome do segredo do App Secret"
+              hint="O App Secret do app da Meta, cadastrado em Segredos com este nome. O grafo guarda só o nome."
+            >
+              <TextInput
+                value={node.appSecretName ?? ""}
+                onChange={(e) => set(["appSecretName"], e.target.value.trim() || undefined)}
+              />
+            </Field>
+          </>
+        )}
         <Field label="Inicia o agente">
           <Select value={node.target} onChange={(e) => set(["target"], e.target.value)}>
             <option value="">Nenhum</option>
@@ -503,21 +566,68 @@ function TriggerFields({ doc, node, set }: { doc: GraphDoc; node: TriggerNode; s
           </Select>
         </Field>
       </Section>
+      {node.kind === "whatsapp" && <WriteToolsWarning doc={doc} target={node.target} />}
       {hasApi && node.kind !== "manual" && (
-        <Section title={node.kind === "webhook" ? "Webhook" : "Agendamento"}>
-          <ExternalTriggerPanel graphId={doc.id} node={node} />
+        <Section
+          title={
+            node.kind === "webhook"
+              ? "Webhook"
+              : node.kind === "whatsapp"
+                ? "WhatsApp"
+                : "Agendamento"
+          }
+        >
+          <ExternalTriggerPanel
+            graphId={doc.id}
+            node={node}
+            accessTokenNames={whatsappTokenNames(doc)}
+          />
         </Section>
       )}
     </>
   );
 }
 
+/** The names of the secrets that the graph's WhatsApp reply tools read their access token from. */
+function whatsappTokenNames(doc: GraphDoc): string[] {
+  const names = doc.nodes.flatMap((n) =>
+    n.type === "tool" && n.tool.kind === "whatsapp" ? [n.tool.accessTokenSecret] : [],
+  );
+  return [...new Set(names)];
+}
+
+/**
+ * The agent that reads customer messages starts with no tool that writes; the server enforces it.
+ * This tells which of the agent's tools are held back, and how to free one.
+ */
+function WriteToolsWarning({ doc, target }: { doc: GraphDoc; target: string }) {
+  const agent = doc.nodes.find((n): n is AgentNode => n.type === "agent" && n.id === target);
+  if (!agent) return null;
+  const blocked = writeToolsBlockedFor(doc, agent.name);
+  return (
+    <p role="note" className="rounded-md border border-input bg-muted p-2 text-xs">
+      <b>{agent.name}</b> lê mensagens de clientes, então começa <b>sem ferramentas de escrita</b>{" "}
+      (memória que grava, HTTP que não é GET, MCP).{" "}
+      {blocked.length > 0 ? (
+        <>
+          Ficam bloqueadas agora: <b>{blocked.map((tool) => tool.name).join(", ")}</b>. Para liberar
+          uma, selecione a seta do agente até ela e marque “Permitir escrita”.
+        </>
+      ) : (
+        "Nenhuma das ferramentas ligadas a ele é bloqueada."
+      )}
+    </p>
+  );
+}
+
 function LinkInspector({
   link,
+  doc,
   issues,
   dispatch,
 }: {
   link: Link;
+  doc: GraphDoc;
   issues: LocatedIssue[];
   dispatch: Dispatch;
 }) {
@@ -555,6 +665,23 @@ function LinkInspector({
         <p className="text-sm text-muted-foreground">
           O agente de origem pode chamar a ferramenta de destino.
         </p>
+      )}
+      {link.kind === "uses" && readsCustomerMessages(doc, link.from) && (
+        <label className="flex items-start gap-2 text-sm font-semibold">
+          <input
+            type="checkbox"
+            checked={link.allowWrite === true}
+            onChange={(e) => set(["allowWrite"], e.target.checked || undefined)}
+            className="mt-0.5 size-4 accent-accent"
+          />
+          <span>
+            Permitir escrita
+            <span className="block text-xs font-normal text-muted-foreground">
+              Este agente lê mensagens de clientes e começa sem ferramentas de escrita. Marque só se
+              a ferramenta precisar mesmo gravar ou alterar algo.
+            </span>
+          </span>
+        </label>
       )}
     </div>
   );

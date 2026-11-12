@@ -15,6 +15,8 @@ import { TriggerScheduler } from "./trigger-scheduler.js";
 import { TriggersController } from "./triggers.controller.js";
 import { TriggersService } from "./triggers.service.js";
 import { HOOKS_CONFIG, WebhookService } from "./webhook.service.js";
+import { WhatsAppMessagesModule } from "./whatsapp-messages.module.js";
+import { WhatsAppService } from "./whatsapp.service.js";
 import { DEFAULT_HOOKS_RATE_PER_MIN } from "../shared/config/hooks-config.js";
 
 /**
@@ -22,7 +24,14 @@ import { DEFAULT_HOOKS_RATE_PER_MIN } from "../shared/config/hooks-config.js";
  * They start runs, so this belongs with the worker side.
  */
 @Module({
-  imports: [DatabaseModule, GraphsModule, RunsModule, RunLogModule, SecretsModule],
+  imports: [
+    DatabaseModule,
+    GraphsModule,
+    RunsModule,
+    RunLogModule,
+    SecretsModule,
+    WhatsAppMessagesModule,
+  ],
   controllers: [TriggersController],
   providers: [
     { provide: TRIGGER_STATE_REPOSITORY, useClass: DrizzleTriggerStateRepository },
@@ -35,6 +44,7 @@ import { DEFAULT_HOOKS_RATE_PER_MIN } from "../shared/config/hooks-config.js";
     TriggerLauncher,
     TriggersService,
     WebhookService,
+    WhatsAppService,
     HooksServer,
     TriggerScheduler,
     OrphanWebhookSecrets,

@@ -189,3 +189,65 @@ describe("annotationSchema", () => {
     );
   });
 });
+
+describe("WhatsApp: trigger, tool and link", () => {
+  const whatsappTrigger = {
+    ...trigger("t", "a"),
+    kind: "whatsapp",
+    phoneNumberId: "106540352242922",
+    appSecretName: "whatsapp-app-secret",
+  };
+
+  it("accepts a WhatsApp trigger that names the number and the App Secret", () => {
+    expect(triggerNodeSchema.safeParse(whatsappTrigger).success).toBe(true);
+  });
+
+  it("requires the number and the secret name, with a message in Portuguese", () => {
+    const withoutNumber = { ...whatsappTrigger, phoneNumberId: undefined };
+    const withoutSecret = { ...whatsappTrigger, appSecretName: undefined };
+    const noNumber = triggerNodeSchema.safeParse(withoutNumber);
+    const noSecret = triggerNodeSchema.safeParse(withoutSecret);
+    expect(noNumber.success).toBe(false);
+    expect(noSecret.success).toBe(false);
+    expect(noNumber.error?.issues[0]?.message).toContain("Phone number ID");
+    expect(noSecret.error?.issues[0]?.message).toContain("App Secret");
+  });
+
+  it("refuses a number that is not numeric and a secret name that looks like a value", () => {
+    expect(
+      triggerNodeSchema.safeParse({ ...whatsappTrigger, phoneNumberId: "+55 11 9" }).success,
+    ).toBe(false);
+    expect(
+      triggerNodeSchema.safeParse({ ...whatsappTrigger, appSecretName: "a b/c" }).success,
+    ).toBe(false);
+  });
+
+  it("keeps the older trigger kinds valid without the WhatsApp fields", () => {
+    expect(triggerNodeSchema.safeParse({ ...trigger("t", "a"), kind: "webhook" }).success).toBe(
+      true,
+    );
+  });
+
+  it("accepts the reply tool with the name of the access token secret, never its value", () => {
+    const tool = {
+      id: "w",
+      type: "tool",
+      position: { x: 0, y: 0 },
+      name: "Resposta",
+      tool: {
+        kind: "whatsapp",
+        phoneNumberId: "106540352242922",
+        accessTokenSecret: "whatsapp-token",
+      },
+    };
+    expect(toolNodeSchema.safeParse(tool).success).toBe(true);
+    const bad = { ...tool, tool: { ...tool.tool, accessTokenSecret: "EAAG token com espaço" } };
+    expect(toolNodeSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it("accepts allowWrite on a link and keeps links without it valid", () => {
+    const base = { id: "l", from: "a", to: "t", kind: "uses" };
+    expect(linkSchema.safeParse(base).success).toBe(true);
+    expect(linkSchema.safeParse({ ...base, allowWrite: true }).success).toBe(true);
+  });
+});

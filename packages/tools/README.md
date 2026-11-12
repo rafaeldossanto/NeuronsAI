@@ -25,11 +25,12 @@ Falhas ao _montar_ o conjunto (`createTools`) lançam `ToolSetupError` com `code
 
 ## Tipos de ferramenta (`kind`)
 
-| kind       | O que expõe                                                                                                                          |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `mcp`      | Só as ferramentas de `allowedTools` do servidor MCP (stdio ou HTTP). Falha se o servidor não oferecer alguma.                        |
-| `http`     | Uma ferramenta com o nome do bloco; o agente envia `{ body }`, validado pelo `bodySchema` (Ajv).                                     |
-| `obsidian` | `obsidian_search`, `obsidian_read`, `obsidian_list_links` e, com escrita permitida, `obsidian_create`/`obsidian_edit`. Sem exclusão. |
+| kind       | O que expõe                                                                                                                                                                                                                                                                                                      |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mcp`      | Só as ferramentas de `allowedTools` do servidor MCP (stdio ou HTTP). Falha se o servidor não oferecer alguma.                                                                                                                                                                                                    |
+| `http`     | Uma ferramenta com o nome do bloco; o agente envia `{ body }`, validado pelo `bodySchema` (Ajv).                                                                                                                                                                                                                 |
+| `obsidian` | `obsidian_search`, `obsidian_read`, `obsidian_list_links` e, com escrita permitida, `obsidian_create`/`obsidian_edit`. Sem exclusão.                                                                                                                                                                             |
+| `whatsapp` | `send_whatsapp_reply`, só com o campo `text`: responde, pela WhatsApp Cloud API (Graph API `v27.0`), ao cliente da execução (`deps.whatsapp.recipient()`, que o servidor preenche). Sem destinatário vindo do agente; fora das 24 h falha explicando o template. Usa a guarda de saída quando há `deps.network`. |
 
 Para um novo `kind`: criar a fábrica (`ToolFactory<K>`) e registrá-la em `defaultToolFactories`
 (`src/create-tools.ts`), ou passá-la em `deps.factories`.

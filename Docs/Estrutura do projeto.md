@@ -133,6 +133,24 @@ em `build/`, scripts em `scripts/` e saídas geradas em `dist/` e `release/`.
 - Após uma movimentação, ajuste imports e referências na documentação e rode as
   verificações dos pacotes afetados. Para o desktop, confira também o smoke local.
 
+## Glossário das telas (pt-BR)
+
+Um termo por conceito, em toda a interface web. O código e a API seguem em inglês
+(`graph`, `run`, `template`); só o texto de tela muda.
+
+| Na tela | Evite | Observação |
+| --- | --- | --- |
+| projeto | grafo | O `graph` da API. "Meus projetos", "Criar projeto", filtro "Projeto". |
+| execução | run, rodada | Cada vez que um projeto roda. "Executar" é o botão, "execução" o registro. |
+| modelo | template | Projeto pronto para partir dele ("Ver modelos", "Usar modelo"). |
+| replay | — | Mantido: palavra já corrente em português e usada no painel ao vivo. |
+| runner | — | Mantido: termo do produto (computador que executa agentes). |
+| organização / espaço | workspace | "Espaço" é só a organização atual no cabeçalho. |
+| chave de API | segredo, token | "Segredo" aparece só onde o servidor já o chama assim. |
+
+Pendências conhecidas, em pastas que a passada de refino não tocou: o editor
+(`graphs/editor/`) ainda diz "grafo" em alguns textos.
+
 ## Validação desta reorganização
 
 - Compilação, lint e checagem de tipos das aplicações web e desktop passaram, com

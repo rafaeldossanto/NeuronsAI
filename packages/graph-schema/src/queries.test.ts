@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { linkBetween } from "./queries/link-between.js";
 import { peersOf } from "./queries/peers-of.js";
+import { writeToolsBlockedFor } from "./queries/customer-tools.js";
 import { toolsOf } from "./queries/tools-of.js";
+import type { ToolNode } from "./schemas/node.js";
 import { agent, httpTool, link, trigger, validGraph } from "./test-support.js";
 
 const names = (refs: { name: string }[]) => refs.map((ref) => ref.name);
@@ -85,5 +87,93 @@ describe("linkBetween", () => {
     });
     expect(linkBetween(graph, "Alfa", "f")).toBeUndefined();
     expect(linkBetween(graph, "Alfa", "Fantasma")).toBeUndefined();
+  });
+});
+
+describe("writeToolsBlockedFor", () => {
+  const whatsapp = (target: string) => ({
+    ...trigger("t1", target),
+    kind: "whatsapp" as const,
+    phoneNumberId: "106540352242922",
+    appSecretName: "app-secret",
+  });
+  const memory = (id: string, readOnly: boolean): ToolNode => ({
+    id,
+    type: "tool",
+    position: { x: 0, y: 0 },
+    name: `Memória ${id}`,
+    tool: { kind: "obsidian", memoryId: "5b440250-ceba-42f4-8ce6-717a290384c4", readOnly },
+  });
+  const postTool = (id: string): ToolNode => {
+    const base = httpTool(id, `Post ${id}`);
+    return {
+      ...base,
+      tool: { kind: "http", method: "POST", url: "https://a.exemplo.com", headers: {} },
+    };
+  };
+  const mcp = (id: string): ToolNode => ({
+    id,
+    type: "tool",
+    position: { x: 0, y: 0 },
+    name: `Mcp ${id}`,
+    tool: { kind: "mcp", transport: "http", url: "https://mcp.exemplo.com", allowedTools: [] },
+  });
+  const reply: ToolNode = {
+    id: "wa",
+    type: "tool",
+    position: { x: 0, y: 0 },
+    name: "Resposta",
+    tool: { kind: "whatsapp", phoneNumberId: "106540352242922", accessTokenSecret: "token" },
+  };
+  const build = (linkOverrides: Record<string, unknown> = {}, trig = whatsapp("a")) =>
+    validGraph({
+      nodes: [
+        trig,
+        agent("a", "Alfa"),
+        agent("b", "Beta"),
+        memory("m1", false),
+        memory("m2", true),
+        postTool("p"),
+        httpTool("g", "Consulta"),
+        mcp("x"),
+        reply,
+      ],
+      links: ["m1", "m2", "p", "g", "x", "wa"].map((to) =>
+        link(`l-${to}`, "a", to, { kind: "uses", ...(to === "m1" ? linkOverrides : {}) }),
+      ),
+    });
+
+  it("blocks the writing tools of the agent that a WhatsApp trigger feeds, and only those", () => {
+    expect(names(writeToolsBlockedFor(build(), "Alfa")).sort()).toEqual([
+      "Mcp x",
+      "Memória m1",
+      "Post p",
+    ]);
+  });
+
+  it("leaves the reply tool, reads and read-only memories alone", () => {
+    const blocked = names(writeToolsBlockedFor(build(), "Alfa"));
+    expect(blocked).not.toContain("Resposta");
+    expect(blocked).not.toContain("Consulta");
+    expect(blocked).not.toContain("Memória m2");
+  });
+
+  it("lets a link opt in explicitly with allowWrite", () => {
+    expect(names(writeToolsBlockedFor(build({ allowWrite: true }), "Alfa"))).not.toContain(
+      "Memória m1",
+    );
+  });
+
+  it("treats a memory made read-only by its link as a read", () => {
+    expect(names(writeToolsBlockedFor(build({ readOnly: true }), "Alfa"))).not.toContain(
+      "Memória m1",
+    );
+  });
+
+  it("does not touch agents that no WhatsApp trigger feeds, nor graphs without one", () => {
+    expect(writeToolsBlockedFor(build(), "Beta")).toEqual([]);
+    expect(
+      writeToolsBlockedFor(build({}, { ...whatsapp("a"), kind: "manual" } as never), "Alfa"),
+    ).toEqual([]);
   });
 });
