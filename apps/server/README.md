@@ -456,6 +456,8 @@ Cada mudança real de tamanho vira um `run.ephemeral` `TerminalResized { cols, r
 
 No perfil `hybrid` o pedido vira `agent.resize` no protocolo do runner e a confirmação volta como `agent.resized` (**revisão 4**; um runner de revisão anterior não recebe o frame, e o terminal dele fica em 120×40, o que o cliente vê pelo `TerminalResized`).
 
+Um tamanho pedido **com o runner fora do ar** não se perde: o servidor guarda o último tamanho pedido e, quando o runner volta e manda o `agent.snapshot` (que traz o tamanho que o PTY ainda tem), repete o `agent.resize` se forem diferentes.
+
 ### Saída do terminal ao reconectar
 
 A saída do terminal é efêmera (não está no log, que é o que faz o `seq` ser confiável). Quem assina recebe, logo depois do histórico, um `run.ephemeral` com `replay: true` e **os últimos ~200 mil caracteres** que cada terminal imprimiu; o que passou enquanto o cliente estava fora entra nesse resumo. **O resumo basta para o xterm.js**: uma TUI como o Claude Code repinta a tela o tempo todo, então reproduzir o fim da saída numa tela nova a deixa igual à que estava. O buffer descarta chunks inteiros da frente (nunca começa no meio de um chunk, nem de uma sequência de escape que o chunk abriu e fechou), tanto no runner embutido quanto no remoto. O cliente deve **trocar** o conteúdo do terminal pelo resumo (não somar) e seguir com os `run.ephemeral` seguintes. Fica uma lacuna conhecida e pequena: no perfil `hybrid`, o que o runner imprimiu enquanto a conexão **runner ↔ servidor** estava caída não chega ao servidor (ele guarda só o que recebeu); a TUI repinta no próximo desenho. Gravar a saída no log foi descartado: seriam centenas de KB por minuto num log que serve de histórico e de replay.
@@ -505,6 +507,8 @@ Um runtime novo implementa `AgentRuntime` (do pacote `@neurons/agent-runtimes`) 
 pnpm --filter @neurons/server test               # unitários + suítes de banco no PGlite, sem Docker (entram no `turbo test`)
 pnpm --filter @neurons/server test:integration   # as mesmas suítes de banco em Postgres 18 real
 ```
+
+Scripts manuais, fora do `turbo test`: `test:e2e:claude` (Claude Code real, gasta cota), `test:e2e:permission-modes` (Claude Code real, não envia prompt) e `shutdown:load`, que sobe várias instâncias do servidor com agentes vivos, manda fechar todas juntas e imprime o tempo de cada fase do fechamento (`--instances`, `--rounds`, `--burners`, `--scenario=booting`).
 
 As suítes de banco (`*.int.test.ts`: migrations, repositórios, segredos e Hub) são escritas uma vez só e rodam nos dois bancos: o Vitest tem um projeto por banco (`provide: { databaseKind }`) e `startTestDatabase()` abre o que o projeto pede. No `test` rodam em PGlite em memória, sem Docker (então rodam também no CI de Windows e macOS). No `test:integration` rodam em Postgres 18 via Testcontainers, que precisa do **Docker Desktop em execução** (na primeira vez baixa a imagem `postgres:18`). Abrir o PGlite leva alguns segundos (WASM + initdb), por isso os timeouts de 60 s.
 

@@ -83,6 +83,8 @@ interface AgentSlot {
 export class Supervisor {
   /** Something happened that may have left the run quiet: nudge whoever checks for the end. */
   readonly settled = new Signal<string>();
+  /** `stopAll` was called: the server is closing. */
+  private shuttingDown = false;
   readonly agentStarted = new Signal<StartedAgent>();
   readonly agentStateChanged = new Signal<AgentStateChange>();
   /** Every runtime of the run is stopped. */
@@ -156,6 +158,9 @@ export class Supervisor {
    * message is left for an agent that can still receive it.
    */
   async isQuiescent(runId: string): Promise<boolean> {
+    // Closing the server stops every agent, which would look like "nobody is working": the runs
+    // stay `running` for `recover`, and the database is about to close under any query made now.
+    if (this.shuttingDown) return false;
     if (!this.isIdleNow(runId)) return false;
     const unacked = await this.hub.unacked(runId);
     if (unacked.some((message) => this.canStillReceive(runId, message.to))) return false;
@@ -193,6 +198,7 @@ export class Supervisor {
 
   /** Stops every runtime of every run (server shutdown); the runs stay `running` for `recover`. */
   async stopAll(): Promise<void> {
+    this.shuttingDown = true;
     await Promise.all([...this.slots.keys()].map((runId) => this.stopRun(runId)));
   }
 
@@ -344,12 +350,16 @@ export class Supervisor {
 
   private async stopRuntime(slot: AgentSlot): Promise<void> {
     slot.unsubscribe();
-    await slot.booted;
+    // Without a runtime yet there is nothing to stop: its creation is all that `booted` waits for.
+    if (!slot.runtime) await slot.booted;
     try {
+      // A runtime still booting is told to stop right away: its boot can last a minute (the CLI
+      // sitting at a dialog nobody answers) and ends as soon as it is asked to.
       await slot.runtime?.stop();
     } catch (error) {
       this.logger.error(`Falha ao parar "${slot.agent.name}": ${errorMessage(error)}`);
     }
+    await slot.booted;
     slot.detachTerminal();
     // The run is over for this agent (a failed one keeps saying so). Written before the run's end.
     this.syncState(slot);

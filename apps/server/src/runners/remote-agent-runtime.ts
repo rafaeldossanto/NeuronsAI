@@ -261,6 +261,12 @@ export class RemoteTerminalRuntime extends RemoteAgentRuntime implements Termina
   private readonly tail = new OutputBuffer();
 
   private currentSize: TerminalSize = { ...DEFAULT_TERMINAL_SIZE };
+  /**
+   * The size the viewers last asked for. A request made while the runner was away has nowhere to go;
+   * the runner's snapshot on the next connection tells the size it still has, and this is what it
+   * is brought to.
+   */
+  private wantedSize: TerminalSize | undefined;
   private readonly resizes = new Signal<TerminalSize>();
 
   override applySnapshot(data: string, cols: number, rows: number): void {
@@ -269,6 +275,10 @@ export class RemoteTerminalRuntime extends RemoteAgentRuntime implements Termina
     this.tail.push(data);
     this.resizes.emit({ cols, rows });
     this.outputs.emit("\x1bc" + data);
+    const wanted = this.wantedSize;
+    if (wanted && (wanted.cols !== cols || wanted.rows !== rows)) {
+      this.endpoint?.sendResize(this.instanceId, wanted.cols, wanted.rows);
+    }
   }
 
   override applyOutput(data: string): void {
@@ -286,6 +296,7 @@ export class RemoteTerminalRuntime extends RemoteAgentRuntime implements Termina
 
   /** Asks the runner; the size changes here when the runner confirms it (`agent.resized`). */
   resize(cols: number, rows: number): void {
+    this.wantedSize = { cols, rows };
     if (cols === this.currentSize.cols && rows === this.currentSize.rows) return;
     this.endpoint?.sendResize(this.instanceId, cols, rows);
   }

@@ -145,6 +145,37 @@ describe("ClaudeTerminalRuntime (fake CLI in a PTY)", () => {
     expect(runtime.state).toBe("failed");
   });
 
+  it("stops at once while the CLI waits at a dialog nobody answers, without calling it a failure", async () => {
+    // The default waits: the boot would give up only after a minute.
+    const { runtime } = create({
+      fakeFlags: ["--trust-dialog"],
+      timings: { userDialogTimeoutMs: 60_000 },
+    });
+    const booting = runtime.start("x");
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    const pid = runtime.processId;
+    expect(pid).toBeDefined();
+
+    const startedAt = Date.now();
+    await runtime.stop();
+    await booting;
+
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
+    expect(runtime.state).toBe("stopped");
+    expect(runtime.failureReason).toBeUndefined();
+    expect(isAlive(pid ?? 0)).toBe(false);
+  });
+
+  it("does not boot at all when it was stopped before `start` was called", async () => {
+    const { runtime } = create();
+    await runtime.stop();
+
+    await runtime.start("x");
+
+    expect(runtime.state).toBe("stopped");
+    expect(runtime.processId).toBeUndefined();
+  });
+
   it('trusts the folder only when told to, moving off the highlighted "No, exit" first', async () => {
     const deps = testDeps({ fakeFlags: ["--trust-dialog"] });
     const runtime = new ClaudeTerminalRuntime(

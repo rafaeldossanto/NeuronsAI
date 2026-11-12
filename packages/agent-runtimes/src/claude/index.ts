@@ -6,6 +6,7 @@ export {
 } from "./terminal-runtime-factory.js";
 export { ClaudeTerminalRuntime, DEFAULT_TERMINAL_TIMINGS } from "./claude-terminal-runtime.js";
 export type { ClaudeTerminalOptions, TerminalTimings } from "./claude-terminal-runtime.js";
+export { TerminalScreen, type FooterState } from "./terminal-screen.js";
 export { ClaudeStreamJsonRuntime } from "./claude-stream-json-runtime.js";
 export { ClaudeCli, ClaudeLoginRequiredError } from "./claude-cli.js";
 export type { ClaudeCliOptions, ClaudeCommand } from "./claude-cli.js";

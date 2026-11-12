@@ -40,7 +40,11 @@ export class DatabaseService implements OnApplicationShutdown {
 
   async onApplicationShutdown(): Promise<void> {
     if (!this.provider) return;
+    const startedAt = Date.now();
     await this.provider.close();
-    this.logger.log(`Banco fechado (${this.provider.description}).`);
+    const tookMs = Date.now() - startedAt;
+    this.logger.log(
+      `Banco fechado (${this.provider.description})${tookMs >= 1_000 ? ` em ${String(tookMs)} ms` : ""}.`,
+    );
   }
 }

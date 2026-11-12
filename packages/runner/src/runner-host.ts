@@ -216,7 +216,10 @@ export class RunnerHost {
     for (const id of this.snapshotIds) {
       const instance = this.instances.get(id);
       if (instance && !wanted.has(id)) {
-        this.logger.warn("Parando um agente que o servidor não quer mais (execução perdida).");
+        // An agent already stopped is only remembered for a while (idempotency): nothing to stop.
+        if (!instance.stopping) {
+          this.logger.warn("Parando um agente que o servidor não quer mais (execução perdida).");
+        }
         void this.stopInstance(instance);
       }
     }

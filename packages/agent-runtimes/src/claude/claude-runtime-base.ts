@@ -67,6 +67,9 @@ export abstract class ClaudeRuntimeBase implements AgentRuntime {
   private bridge: LocalBridge | undefined;
   private files: SessionFiles | undefined;
   private releasing: Promise<void> | undefined;
+  /** The boot under way, never rejecting: what `stop` waits for after cutting it short. */
+  private booting: Promise<void> | undefined;
+  private stopRequested = false;
 
   constructor(
     protected readonly agent: ClaudeAgentConfig,
@@ -93,12 +96,28 @@ export abstract class ClaudeRuntimeBase implements AgentRuntime {
     return this.changes.subscribe(listener);
   }
 
-  async start(briefing: string): Promise<void> {
+  start(briefing: string): Promise<void> {
+    // Stopped before it even began (the stop does not wait for a start nobody called yet).
+    if (this.stopRequested || this.closed) return Promise.resolve();
+    const boot = this.boot(briefing);
+    this.booting = boot.then(
+      () => undefined,
+      () => undefined,
+    );
+    return boot;
+  }
+
+  private async boot(briefing: string): Promise<void> {
     try {
       await this.prepare(briefing);
       if (this.currentState !== "starting") return; // stopped while booting
       this.setState("idle");
     } catch (error) {
+      if (this.stopRequested) {
+        // Asked to stop while booting: the wait for the CLI was cut short, which is no failure.
+        await this.release();
+        return;
+      }
       this.fail(errorMessage(error));
       await this.release();
       throw error;
@@ -108,6 +127,13 @@ export abstract class ClaudeRuntimeBase implements AgentRuntime {
   abstract deliver(message: InboundMessage): Promise<void>;
 
   async stop(): Promise<void> {
+    this.stopRequested = true;
+    if (this.currentState === "starting" && this.booting) {
+      // Still booting: the wait for the CLI (a minute, at a dialog nobody answers) ends as soon as
+      // the lifetime is aborted, and the boot tears everything it created down on its way out.
+      this.lifetime.abort();
+      await this.booting;
+    }
     // Before the state changes: the turn that is wrapping up still has its usage to report.
     await this.drain(this.deps.usageFlushMs ?? DEFAULT_USAGE_FLUSH_MS);
     this.setState("stopped");

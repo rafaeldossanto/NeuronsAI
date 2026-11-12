@@ -32,6 +32,31 @@ describe("Supervisor", () => {
     expect(harness.runtimes.created.map((runtime) => runtime.name)).toEqual(["Beta"]);
   });
 
+  it("stops an agent that is still booting right away, instead of waiting for the boot to give up", async () => {
+    const harness = createHubHarness(persistence, {
+      runtimeOptions: { Beta: { hangOnStart: true } },
+    });
+    const runId = await harness.openRun();
+    await harness.hub.send(runId, HUMAN, "Beta", "message", "oi");
+    await eventually(() => expect(harness.runtimes.runtimeOf("Beta")?.briefing).toBeDefined());
+
+    // Its boot never ends on its own: only telling it to stop lets this resolve.
+    await harness.supervisor.stopRun(runId);
+
+    expect(harness.runtimes.runtimeOf("Beta")?.stopCount).toBe(1);
+    expect(persistence.runLog.eventsOf(runId, "AgentFailed")).toEqual([]);
+  });
+
+  it("stops saying runs are quiescent once the server is closing, so no query races the database's close", async () => {
+    const harness = createHubHarness(persistence);
+    const runId = await harness.openRun();
+    expect(await harness.supervisor.isQuiescent(runId)).toBe(true);
+
+    await harness.supervisor.stopAll();
+
+    expect(await harness.supervisor.isQuiescent(runId)).toBe(false);
+  });
+
   it("logs AgentStarted before the first MessageDelivered", async () => {
     const harness = createHubHarness(persistence);
     const runId = await harness.openRun();

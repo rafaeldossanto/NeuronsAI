@@ -114,7 +114,12 @@ function rig(options: { terminal?: boolean } = {}) {
       return runtime;
     },
   };
-  const host = new RunnerHost({ name: "teste", createFactory: () => factory });
+  const warnings: string[] = [];
+  const host = new RunnerHost({
+    name: "teste",
+    createFactory: () => factory,
+    logger: { warn: (line) => warnings.push(line), error: () => undefined },
+  });
   const received: RunnerFrame[] = [];
   let server!: ServerChannel;
 
@@ -146,7 +151,18 @@ function rig(options: { terminal?: boolean } = {}) {
       ),
     );
   };
-  return { host, runtimes, received, connect, say, next, count, start, server: () => server };
+  return {
+    host,
+    runtimes,
+    received,
+    warnings,
+    connect,
+    say,
+    next,
+    count,
+    start,
+    server: () => server,
+  };
 }
 
 const message = (id: string): InboundMessage => ({
@@ -299,6 +315,26 @@ describe("RunnerHost", () => {
 
     await vi.waitFor(() => expect(r.runtimes[0]?.stopCount).toBe(1));
     expect(r.runtimes[1]?.stopCount).toBe(0);
+    r.host.detach();
+  });
+
+  it("does not warn about an agent that was already stopped and is only remembered", async () => {
+    const r = rig();
+    r.connect();
+    r.say({ type: "registered", runnerId: "r1", heartbeatIntervalMs: 60_000, keep: [] });
+    await r.start("i1");
+    await r.start("i2");
+    r.say({ type: "agent.stop", requestId: "stop-i1", instanceId: "i1" });
+    await vi.waitFor(() => expect(r.runtimes[0]?.stopCount).toBe(1));
+
+    r.host.detach();
+    r.connect();
+    r.say({ type: "registered", runnerId: "r1", heartbeatIntervalMs: 60_000, keep: ["i2"] });
+
+    await vi.waitFor(() => expect(r.runtimes[1]?.stopCount).toBe(0));
+    // i1 ended on the server's own order: the reconnection has nothing to complain about.
+    expect(r.warnings).toEqual([]);
+    expect(r.runtimes[0]?.stopCount).toBe(1);
     r.host.detach();
   });
 

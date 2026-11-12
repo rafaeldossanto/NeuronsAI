@@ -11,6 +11,8 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e:claude": "tsx e2e/claude-two-terminals.ts",
+    "test:e2e:permission-modes": "tsx e2e/claude-permission-modes.ts",
+    "shutdown:load": "tsx e2e/shutdown-under-load.ts",
     "demo": "tsx demo/api-demo.ts",
     "demo:triggers": "tsx demo/triggers-demo.ts",
     "openapi:emit": "tsx src/api/openapi/emit-cli.ts",
