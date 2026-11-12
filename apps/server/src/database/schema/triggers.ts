@@ -1,4 +1,4 @@
-import { boolean, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { createdAtColumn } from "./columns.js";
 import { graphs } from "./graphs.js";
 import { runs } from "./runs.js";
@@ -53,4 +53,35 @@ export const webhookDeliveries = pgTable(
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
   },
   (table) => [primaryKey({ columns: [table.hookId, table.signature] })],
+);
+
+/**
+ * WhatsApp messages already turned into runs, so that Meta resending the same message (it does,
+ * for up to 7 days when it does not get a 200) starts nothing twice. It also remembers who to
+ * answer: `contact` is the customer's number, **personal data**, kept only while a reply is
+ * possible (the 24-hour window) and then cleared; the row itself, which holds no personal data,
+ * stays for the whole period Meta may resend.
+ */
+export const whatsappMessages = pgTable(
+  "whatsapp_messages",
+  {
+    hookId: text("hook_id")
+      .notNull()
+      .references(() => graphTriggers.hookId, { onDelete: "cascade" }),
+    /** The `wamid` Meta gave the message. */
+    messageId: text("message_id").notNull(),
+    /** The run the message started; null while it is being started (or when it could not be). */
+    runId: uuid("run_id").references(() => runs.id, { onDelete: "set null" }),
+    /** The business number the customer wrote to. */
+    phoneNumberId: text("phone_number_id").notNull(),
+    /** The customer's number; cleared once the 24-hour window is over. */
+    contact: text("contact"),
+    /** When the customer sent the message (Meta's timestamp): the 24-hour window counts from here. */
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.hookId, table.messageId] }),
+    index("whatsapp_messages_run_idx").on(table.runId),
+  ],
 );

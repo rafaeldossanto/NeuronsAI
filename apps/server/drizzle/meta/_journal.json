@@ -99,6 +99,13 @@
       "when": 1794008789994,
       "tag": "0013_credential_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794443556149,
+      "tag": "0014_whatsapp_messages",
+      "breakpoints": true
     }
   ]
 }

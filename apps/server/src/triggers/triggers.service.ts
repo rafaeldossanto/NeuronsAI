@@ -10,7 +10,11 @@ import {
   type TriggerStateRecord,
   type TriggerStateRepository,
 } from "./trigger-state.js";
-import { WebhookSecretRequiredError } from "./triggers.errors.js";
+import {
+  WebhookSecretRequiredError,
+  WhatsAppAppSecretMissingError,
+  WhatsAppVerifyTokenRequiredError,
+} from "./triggers.errors.js";
 
 export type TriggerChangeListener = (change: {
   graphId: string;
@@ -64,15 +68,19 @@ export class TriggersService {
   /**
    * Generates the webhook's secret (the first one, or a new one that replaces it; the old one stops
    * working at once). The secret is returned here and nowhere else: only a cipher of it is kept.
+   * For a WhatsApp trigger (by the saved draft) the secret is the **verify token** that Meta sends
+   * back when it confirms the URL; the App Secret is the user's own, kept under a name of their
+   * choosing.
    */
   async rotateSecret(
     graphId: string,
     triggerId: string,
   ): Promise<{ secret: string; view: TriggerView }> {
-    await this.requireGraph(graphId);
+    const graph = await this.requireGraph(graphId);
     const existing = await this.states.find(graphId, triggerId);
     const hookId = existing?.hookId ?? newHookId();
-    const secret = `whsec_${randomBytes(32).toString("base64url")}`;
+    const isWhatsApp = draftTriggerKind(graph.draft, triggerId) === "whatsapp";
+    const secret = `${isWhatsApp ? "vt_" : "whsec_"}${randomBytes(32).toString("base64url")}`;
     // Stored first: without a master key nothing is created.
     await this.secrets.set(webhookSecretName(hookId), secret);
     await this.states.ensure(graphId, triggerId, hookId);
@@ -109,10 +117,22 @@ export class TriggersService {
     if (trigger.kind === "webhook" && !existing?.secretSetAt) {
       throw new WebhookSecretRequiredError();
     }
+    if (trigger.kind === "whatsapp") {
+      if (!existing?.secretSetAt) throw new WhatsAppVerifyTokenRequiredError();
+      const appSecretName = trigger.appSecretName;
+      if (
+        appSecretName !== undefined &&
+        !(await this.secrets.listNames()).includes(appSecretName)
+      ) {
+        throw new WhatsAppAppSecretMissingError(appSecretName);
+      }
+    }
   }
 
-  private async requireGraph(graphId: string): Promise<void> {
-    if (!(await this.graphs.findById(graphId))) throw new GraphNotFoundError(graphId);
+  private async requireGraph(graphId: string) {
+    const graph = await this.graphs.findById(graphId);
+    if (!graph) throw new GraphNotFoundError(graphId);
+    return graph;
   }
 }
 
@@ -139,6 +159,19 @@ const emptyView = (triggerId: string): TriggerView => ({
   lastRunId: null,
   nextRunAt: null,
 });
+
+/** The kind of the trigger in the saved draft, which is all the editor has before a publication. */
+function draftTriggerKind(draft: unknown, triggerId: string): string | undefined {
+  const nodes = (draft as { nodes?: unknown } | null)?.nodes;
+  if (!Array.isArray(nodes)) return undefined;
+  const node = nodes.find(
+    (candidate: unknown): candidate is { kind?: unknown } =>
+      typeof candidate === "object" &&
+      candidate !== null &&
+      (candidate as { id?: unknown }).id === triggerId,
+  );
+  return typeof node?.kind === "string" ? node.kind : undefined;
+}
 
 /** 128 random bits, URL-safe: the public URL says nothing about the graph or the trigger. */
 function newHookId(): string {

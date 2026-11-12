@@ -13,10 +13,15 @@ import { TriggerLauncher } from "../trigger-launcher.js";
 import { TriggerScheduler } from "../trigger-scheduler.js";
 import { TriggersService } from "../triggers.service.js";
 import { WebhookService } from "../webhook.service.js";
+import { WhatsAppService } from "../whatsapp.service.js";
+import { InMemoryWhatsAppMessageRepository } from "./in-memory-whatsapp-message-repository.js";
 import { InMemoryTriggerStateRepository } from "./in-memory-trigger-state-repository.js";
 
 export const WEBHOOK_TRIGGER = "gatilho-webhook";
 export const SCHEDULE_TRIGGER = "gatilho-agenda";
+export const WHATSAPP_TRIGGER = "gatilho-whatsapp";
+export const WHATSAPP_PHONE_NUMBER_ID = "106540352242922";
+export const WHATSAPP_APP_SECRET_NAME = "whatsapp-app-secret";
 
 const position = { x: 0, y: 0 };
 
@@ -37,6 +42,21 @@ export function graphWithExternalTriggers(schedule: Partial<TriggerNode> = {}): 
     },
   ];
   return { ...graph, nodes: [...triggers, ...graph.nodes.filter((n) => n.type !== "trigger")] };
+}
+
+/** The test graph with a WhatsApp trigger that points at Alfa. */
+export function graphWithWhatsApp(): GraphDefinition {
+  const graph = buildTestGraph();
+  const trigger: TriggerNode = {
+    id: WHATSAPP_TRIGGER,
+    type: "trigger",
+    position,
+    kind: "whatsapp",
+    target: "agente-alfa",
+    phoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
+    appSecretName: WHATSAPP_APP_SECRET_NAME,
+  };
+  return { ...graph, nodes: [trigger, ...graph.nodes.filter((n) => n.type !== "trigger")] };
 }
 
 /** A RunService that only records what it was asked to start; runs stay `running` until finished. */
@@ -93,6 +113,10 @@ export async function createTriggerRig(options: { ratePerMinute?: number } = {})
   const webhook = new WebhookService(states, secrets, launcher, {
     ratePerMinute: options.ratePerMinute ?? 1_000,
   });
+  const whatsappMessages = new InMemoryWhatsAppMessageRepository();
+  const whatsapp = new WhatsAppService(states, secrets, launcher, whatsappMessages, {
+    ratePerMinute: options.ratePerMinute ?? 1_000,
+  });
   const versionService = new GraphVersionService(graphs, versions);
   const graph = await graphs.create({ name: "Com gatilhos externos" });
 
@@ -124,6 +148,8 @@ export async function createTriggerRig(options: { ratePerMinute?: number } = {})
     launcher,
     triggers,
     webhook,
+    whatsapp,
+    whatsappMessages,
     publish,
     scheduler,
   };

@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { MemoriesModule } from "../memories/memories.module.js";
 import { GraphToolsService } from "../memories/graph-tools.service.js";
 import { SecretsModule } from "../secrets/secrets.module.js";
+import { WhatsAppMessagesModule } from "../triggers/whatsapp-messages.module.js";
 import { AgentsModule } from "../agents/agents.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { GuardEnforcer } from "../guards/guard-enforcer.js";
@@ -27,6 +28,7 @@ import { Supervisor } from "./supervisor.js";
     RealtimeModule,
     MemoriesModule,
     SecretsModule,
+    WhatsAppMessagesModule,
   ],
   providers: [
     RunRegistry,
