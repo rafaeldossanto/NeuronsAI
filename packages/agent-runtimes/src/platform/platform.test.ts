@@ -89,6 +89,26 @@ describe("findClaudeBinary", () => {
     );
   });
 
+  it("finds the CLI in the Claude-Data folder newer app builds use, and prefers the newest version", () => {
+    const data = "C:\\Users\\ana\\AppData\\Local\\Claude-Data";
+    const root = `${data}\\claude_xyz\\claude-code`;
+    const packages = "C:\\Users\\ana\\AppData\\Local\\Packages";
+    const oldRoot = `${packages}\\Claude_xyz\\LocalCache\\Roaming\\Claude\\claude-code`;
+    const probe = files({
+      [packages]: ["Claude_xyz"],
+      [oldRoot]: ["2.1.100"],
+      [`${oldRoot}\\2.1.100`]: ["old"],
+      [`${oldRoot}\\2.1.100\\old\\claude.exe`]: null,
+      [data]: ["claude_xyz"],
+      [root]: ["2.1.321"],
+      [`${root}\\2.1.321`]: ["d020", "d0e2"],
+      [`${root}\\2.1.321\\d0e2\\claude.exe`]: null,
+    });
+    expect(findClaudeBinary(undefined, { ...windows, files: probe })).toBe(
+      `${root}\\2.1.321\\d0e2\\claude.exe`,
+    );
+  });
+
   it("looks on the PATH and in /usr/local on POSIX systems", () => {
     const probe = files({ "/opt/tools/claude": null });
     expect(

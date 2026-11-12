@@ -105,23 +105,27 @@ function findDesktopEmbedded(
       roots.push(paths.join(packages, name, "LocalCache", "Roaming", "Claude", "claude-code"));
     }
     roots.push(paths.join(variable("APPDATA") ?? "", "Claude", "claude-code"));
+    // Newer builds of the app keep their data (and the CLIs it downloads) outside the package:
+    // `%LOCALAPPDATA%\Claude-Data\<package family>\claude-code`.
+    const appData = paths.join(variable("LOCALAPPDATA") ?? "", "Claude-Data");
+    for (const name of files.list(appData)) roots.push(paths.join(appData, name, "claude-code"));
   } else if (lookup.platform === "darwin") {
     roots.push(
       paths.join(lookup.homeDir, "Library", "Application Support", "Claude", "claude-code"),
     );
   }
 
-  for (const root of roots) {
-    const versions = files.list(root).sort(compareVersions).reverse();
-    for (const version of versions) {
-      const versionDir = paths.join(root, version);
-      const candidates = [
-        paths.join(versionDir, executable),
-        ...files.list(versionDir).map((hash) => paths.join(versionDir, hash, executable)),
-      ];
-      const found = candidates.find((candidate) => files.exists(candidate));
-      if (found) return found;
-    }
+  // The newest version wins, whichever folder it is in (an old app may leave stale ones behind).
+  const installed = roots.flatMap((root) => files.list(root).map((version) => ({ root, version })));
+  installed.sort((a, b) => compareVersions(b.version, a.version));
+  for (const { root, version } of installed) {
+    const versionDir = paths.join(root, version);
+    const candidates = [
+      paths.join(versionDir, executable),
+      ...files.list(versionDir).map((hash) => paths.join(versionDir, hash, executable)),
+    ];
+    const found = candidates.find((candidate) => files.exists(candidate));
+    if (found) return found;
   }
   return undefined;
 }
