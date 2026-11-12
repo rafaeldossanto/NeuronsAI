@@ -1,5 +1,6 @@
 import type { ToolConfig, ToolNode } from "@neurons/graph-schema";
 import type { OutboundPolicy } from "../net/guarded-fetch.js";
+import type { WhatsAppDeps } from "../whatsapp/whatsapp-tools.js";
 import type { ToolLimits } from "./limits.js";
 import type { SecretResolver } from "./secrets.js";
 import type { ToolSet } from "./types.js";
@@ -19,6 +20,8 @@ export interface ToolDeps {
    * as on a user's own machine where calling localhost is legitimate.
    */
   network?: OutboundPolicy;
+  /** The WhatsApp conversation of the current run; without it the reply tool has nobody to answer. */
+  whatsapp?: WhatsAppDeps;
   /** Replaces or extends the built-in factories; one entry per `kind`. */
   factories?: Partial<ToolFactories>;
 }

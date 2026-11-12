@@ -33,3 +33,11 @@ export type {
   ToolResult,
   ToolSet,
 } from "./core/types.js";
+export {
+  WHATSAPP_GRAPH_BASE_URL,
+  WHATSAPP_GRAPH_VERSION,
+  WHATSAPP_MAX_TEXT_CHARS,
+  WHATSAPP_WINDOW_MS,
+  type WhatsAppDeps,
+  type WhatsAppRecipient,
+} from "./whatsapp/whatsapp-tools.js";
