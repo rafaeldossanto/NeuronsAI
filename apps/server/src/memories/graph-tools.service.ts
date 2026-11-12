@@ -1,5 +1,5 @@
-import { Inject, Injectable } from "@nestjs/common";
-import { toolsOf, type ToolNode } from "@neurons/graph-schema";
+import { Inject, Injectable, Optional } from "@nestjs/common";
+import { toolsOf, writeToolsBlockedFor, type ToolNode } from "@neurons/graph-schema";
 import { createTools, type ToolSet } from "@neurons/tools";
 import { SecretsService } from "../secrets/secrets.service.js";
 import { RunRegistry } from "../hub/run-registry.js";
@@ -8,6 +8,13 @@ import type { AppConfig } from "../shared/config/app-config.js";
 import { APP_CONFIG } from "../shared/config/tokens.js";
 import { MemoriesService, MemoryError } from "./memories.service.js";
 import { resourceScope } from "../accounts/resource-scope.js";
+import {
+  WHATSAPP_MESSAGE_REPOSITORY,
+  type WhatsAppMessageRepository,
+} from "../triggers/whatsapp-messages.js";
+
+/** Replaces `https://graph.facebook.com` for the WhatsApp reply tool (tests point it at a fake Meta). */
+export const WHATSAPP_GRAPH_BASE_URL = Symbol("WHATSAPP_GRAPH_BASE_URL");
 
 @Injectable()
 export class GraphToolsService {
@@ -17,6 +24,10 @@ export class GraphToolsService {
     @Inject(MemoriesService) private readonly memories: MemoriesService,
     @Inject(SecretsService) private readonly secrets: SecretsService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Optional()
+    @Inject(WHATSAPP_MESSAGE_REPOSITORY)
+    private readonly whatsappMessages?: WhatsAppMessageRepository,
+    @Optional() @Inject(WHATSAPP_GRAPH_BASE_URL) private readonly whatsappBaseUrl?: string,
   ) {}
 
   list(runId: string, agent: string) {
@@ -29,7 +40,9 @@ export class GraphToolsService {
   private async listScoped(runId: string, agent: string) {
     const graph = this.runs.require(runId).graph;
     const descriptions = [];
+    const blocked = writeToolsBlockedFor(graph, agent);
     for (const node of toolsOf(graph, agent)) {
+      if (blocked.some((entry) => entry.id === node.id)) continue;
       const set = await this.open(runId, agent, node.id);
       try {
         descriptions.push(
@@ -130,6 +143,13 @@ export class GraphToolsService {
         "tool_not_connected",
         "O agente não está ligado a esta ferramenta nesta execução.",
       );
+    // An agent that reads customer messages writes nowhere unless its link says so (allowWrite).
+    if (writeToolsBlockedFor(this.runs.require(runId).graph, agent).some((n) => n.id === nodeId))
+      throw new MemoryError(
+        "forbidden",
+        "write_tool_blocked",
+        'Este agente lê mensagens de clientes e começa sem ferramentas de escrita. Para liberar, marque "Permitir escrita" na ligação do agente com esta ferramenta.',
+      );
     return node;
   }
 
@@ -180,6 +200,23 @@ export class GraphToolsService {
       secrets: { resolve: (name) => this.secrets.get(name) },
       // Public servers keep tools away from loopback, private networks and the cloud metadata address.
       ...(this.config.outbound && { network: this.config.outbound }),
+      ...(original.tool.kind === "whatsapp" && {
+        whatsapp: {
+          // Who the reply goes to is the customer of this run, held by the server: the agent never
+          // names (or even sees) a number.
+          recipient: async () => {
+            const contact = await this.whatsappMessages?.contactOfRun(runId);
+            return (
+              contact && {
+                to: contact.to,
+                phoneNumberId: contact.phoneNumberId,
+                customerWroteAt: contact.sentAt,
+              }
+            );
+          },
+          ...(this.whatsappBaseUrl && { graphBaseUrl: this.whatsappBaseUrl }),
+        },
+      }),
     });
   }
 }

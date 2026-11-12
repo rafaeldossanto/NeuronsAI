@@ -680,10 +680,12 @@ export interface components {
                     /** @constant */
                     type: "trigger";
                     /** @enum {string} */
-                    kind: "manual" | "webhook" | "schedule";
+                    kind: "manual" | "webhook" | "schedule" | "whatsapp";
                     target: string;
                     cron?: string;
                     timezone?: string;
+                    phoneNumberId?: string;
+                    appSecretName?: string;
                 } | {
                     id: string;
                     position: {
@@ -773,6 +775,11 @@ export interface components {
                         /** Format: uuid */
                         memoryId?: string;
                         readOnly: boolean;
+                    } | {
+                        /** @constant */
+                        kind: "whatsapp";
+                        phoneNumberId: string;
+                        accessTokenSecret: string;
                     };
                 })[];
                 links: {
@@ -785,6 +792,7 @@ export interface components {
                     bidirectional: boolean;
                     maxMessages?: number;
                     readOnly?: boolean;
+                    allowWrite?: boolean;
                 }[];
                 annotations: {
                     id: string;
@@ -2365,10 +2373,12 @@ export interface operations {
                             /** @constant */
                             type: "trigger";
                             /** @enum {string} */
-                            kind: "manual" | "webhook" | "schedule";
+                            kind: "manual" | "webhook" | "schedule" | "whatsapp";
                             target: string;
                             cron?: string;
                             timezone?: string;
+                            phoneNumberId?: string;
+                            appSecretName?: string;
                         } | {
                             id: string;
                             position: {
@@ -2458,6 +2468,11 @@ export interface operations {
                                 /** Format: uuid */
                                 memoryId?: string;
                                 readOnly: boolean;
+                            } | {
+                                /** @constant */
+                                kind: "whatsapp";
+                                phoneNumberId: string;
+                                accessTokenSecret: string;
                             };
                         })[];
                         links: {
@@ -2470,6 +2485,7 @@ export interface operations {
                             bidirectional?: boolean;
                             maxMessages?: number;
                             readOnly?: boolean;
+                            allowWrite?: boolean;
                         }[];
                         annotations: {
                             id: string;

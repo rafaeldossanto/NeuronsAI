@@ -12,6 +12,11 @@ export const linkSchema = z.object({
   maxMessages: z.number().int().positive().optional(),
   /** Restricts this agent's access to a memory even when its block permits writes. */
   readOnly: z.boolean().optional(),
+  /**
+   * An agent that reads customer messages (the target of a WhatsApp trigger) gets no tool that
+   * writes unless this link says so explicitly.
+   */
+  allowWrite: z.boolean().optional(),
 });
 
 export type LinkKind = z.infer<typeof linkKindSchema>;

@@ -35,6 +35,10 @@ export interface FakeTurn {
   usage(usage: { costUsd: number } & Partial<Omit<AgentUsage, "costUsd">>): Promise<void>;
   /** Reports a turn whose price is unknown. */
   usageWithoutCost(): Promise<void>;
+  /** The tools the graph lets this agent use (a memory, an HTTP API, the WhatsApp reply...). */
+  tools(): Promise<{ nodeId: string; name: string; description: string }[]>;
+  /** Calls one of those tools through the server, as a real runtime does. */
+  useTool(nodeId: string, name: string, input: Record<string, unknown>): Promise<unknown>;
   /** Reports a call to a tool of its own (not one of the Hub's). */
   toolCall(report: Partial<ToolCallReport> & { tool: string }): Promise<void>;
 }
@@ -136,6 +140,11 @@ export class FakeAgentRuntime implements AgentRuntime {
       peers: () => communication.listPeers(),
       usage: (usage) => communication.reportUsage({ ...EMPTY_USAGE, ...usage }),
       usageWithoutCost: () => communication.reportUsage({ ...EMPTY_USAGE }),
+      tools: async () => (await communication.listTools?.()) ?? [],
+      useTool: (nodeId, name, input) => {
+        if (!communication.useTool) throw new Error("Ferramentas indisponíveis.");
+        return communication.useTool(nodeId, name, input);
+      },
       toolCall: (report) =>
         communication.reportToolCall({ inputSummary: "{}", durationMs: 5, ok: true, ...report }),
     };

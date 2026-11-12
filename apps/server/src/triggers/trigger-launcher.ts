@@ -9,7 +9,7 @@ import type { RunRecord } from "../run-log/run-repository.js";
 import { RunService } from "../runs/run.service.js";
 import { NoPublishedVersionError, TriggerNotInVersionError } from "./triggers.errors.js";
 
-export type ExternalTriggerKind = "webhook" | "schedule";
+export type ExternalTriggerKind = "webhook" | "schedule" | "whatsapp";
 
 /**
  * What an external trigger runs: always the **latest published version** of its graph, read at the
