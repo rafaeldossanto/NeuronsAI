@@ -26,8 +26,17 @@ export function usesSecrets(definition: unknown): boolean {
     Array.isArray(nodes) &&
     nodes.some((node: unknown) => {
       if (!node || typeof node !== "object") return false;
-      const runtime = (node as { runtime?: { secretName?: unknown } }).runtime;
-      return typeof runtime?.secretName === "string" && runtime.secretName.length > 0;
+      const candidate = node as {
+        runtime?: { secretName?: unknown };
+        tool?: { accessTokenSecret?: unknown };
+        appSecretName?: unknown;
+      };
+      // Agent credentials, the WhatsApp token and the Meta App Secret are all named secrets.
+      return [
+        candidate.runtime?.secretName,
+        candidate.tool?.accessTokenSecret,
+        candidate.appSecretName,
+      ].some((name) => typeof name === "string" && name.length > 0);
     })
   );
 }

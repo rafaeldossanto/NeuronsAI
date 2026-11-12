@@ -22,23 +22,28 @@ export function RunCost({ run }: { run: RunListItem }) {
 }
 
 const head =
-  "px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground";
+  "px-3 py-2 sm:px-4 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground";
 
 const FINISHED = new Set(["succeeded", "failed", "cancelled"]);
 
 export function RunsTable({ runs }: { runs: RunListItem[] }) {
   const navigate = useNavigate();
   return (
-    <div className="overflow-x-auto rounded-lg border bg-card">
-      <table className="w-full text-sm">
+    <div
+      className="relative overflow-x-auto rounded-lg border bg-card"
+      role="region"
+      aria-label="Lista de execuções"
+      tabIndex={0}
+    >
+      <table className="w-full min-w-0 text-sm">
         <thead className="border-b bg-muted/40">
           <tr>
-            <th className={head}>Grafo</th>
-            <th className={head}>Versão</th>
+            <th className={head}>Projeto</th>
+            <th className={`${head} hidden sm:table-cell`}>Versão</th>
             <th className={head}>Status</th>
-            <th className={head}>Início</th>
-            <th className={head}>Fim</th>
-            <th className={head}>Duração</th>
+            <th className={`${head} hidden sm:table-cell`}>Início</th>
+            <th className={`${head} hidden md:table-cell`}>Fim</th>
+            <th className={`${head} hidden md:table-cell`}>Duração</th>
             <th className={head}>Custo</th>
             <th className={head}>
               <span className="sr-only">Ações</span>
@@ -52,7 +57,7 @@ export function RunsTable({ runs }: { runs: RunListItem[] }) {
               className="cursor-pointer border-b last:border-b-0 hover:bg-muted/50"
               onClick={() => void navigate(`/runs/${run.id}`)}
             >
-              <td className="px-4 py-3">
+              <td className="px-3 py-3 sm:px-4">
                 <Link
                   to={`/runs/${run.id}`}
                   className="font-bold hover:underline"
@@ -63,18 +68,27 @@ export function RunsTable({ runs }: { runs: RunListItem[] }) {
                 <span className="block font-mono text-xs text-muted-foreground">
                   {run.id.slice(0, 8)}
                 </span>
+                <span className="block text-xs text-muted-foreground sm:hidden">
+                  {formatDateTime(run.startedAt)}
+                </span>
               </td>
-              <td className="px-4 py-3">v{run.graphVersion}</td>
-              <td className="px-4 py-3">
+              <td className="hidden px-3 py-3 sm:table-cell sm:px-4">v{run.graphVersion}</td>
+              <td className="px-3 py-3 sm:px-4">
                 <RunStatusBadge status={run.status} />
               </td>
-              <td className="px-4 py-3">{formatDateTime(run.startedAt)}</td>
-              <td className="px-4 py-3">{formatDateTime(run.finishedAt)}</td>
-              <td className="px-4 py-3">{formatDuration(run.durationMs)}</td>
-              <td className="px-4 py-3">
+              <td className="hidden px-3 py-3 sm:table-cell sm:px-4">
+                {formatDateTime(run.startedAt)}
+              </td>
+              <td className="hidden px-3 py-3 md:table-cell sm:px-4">
+                {formatDateTime(run.finishedAt)}
+              </td>
+              <td className="hidden px-3 py-3 md:table-cell sm:px-4">
+                {formatDuration(run.durationMs)}
+              </td>
+              <td className="px-3 py-3 sm:px-4">
                 <RunCost run={run} />
               </td>
-              <td className="px-4 py-3 text-right">
+              <td className="px-3 py-3 sm:px-4 text-right">
                 {FINISHED.has(run.status) && (
                   <Link
                     to={`/runs/${run.id}?replay=1`}

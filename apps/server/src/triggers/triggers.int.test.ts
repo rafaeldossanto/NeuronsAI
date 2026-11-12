@@ -403,10 +403,12 @@ describe("webhook", () => {
       expect(graphs.items.map((item) => item.name)).not.toContain("invasor");
     });
 
-    it("answers GET on the webhook route with 404 as well", async () => {
+    it("answers GET on a common webhook with the same generic 403 as any refused WhatsApp check", async () => {
       await start();
       const { url } = await readyWebhook();
-      expect((await fetch(url)).status).toBe(404);
+      const reply = await fetch(`${url}?hub.mode=subscribe&hub.verify_token=x&hub.challenge=1`);
+      expect(reply.status).toBe(403);
+      expect(await reply.json()).toEqual({ code: "forbidden", message: "Não autorizado." });
     });
 
     it("is off by default: nothing else listens, and the state says so", async () => {

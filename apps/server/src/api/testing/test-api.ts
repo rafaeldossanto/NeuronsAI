@@ -15,6 +15,8 @@ export interface TestApiOptions {
   /** Builds the agents' runtimes; without it the real ones stay (and no test should start a run). */
   runtimes?: AgentRuntimeFactory;
   config?: Partial<AppConfig>;
+  /** Replaces providers by token (a fake Meta address, say). */
+  overrides?: { provide: unknown; useValue: unknown }[];
 }
 
 /**
@@ -37,6 +39,9 @@ export async function startTestApi(
     .useValue(sharedDatabase);
   if (options.runtimes) {
     builder = builder.overrideProvider(AGENT_RUNTIME_FACTORY).useValue(options.runtimes);
+  }
+  for (const override of options.overrides ?? []) {
+    builder = builder.overrideProvider(override.provide).useValue(override.useValue);
   }
   if (options.auth) builder = builder.overrideProvider(AccountAuth).useValue(options.auth);
 

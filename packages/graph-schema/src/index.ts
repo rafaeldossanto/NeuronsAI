@@ -17,6 +17,11 @@ export { peersOf, type AgentPeers, type AgentRef } from "./queries/peers-of.js";
 export { linkBetween } from "./queries/link-between.js";
 export { toolsOf } from "./queries/tools-of.js";
 export {
+  isWriteTool,
+  readsCustomerMessages,
+  writeToolsBlockedFor,
+} from "./queries/customer-tools.js";
+export {
   migrateGraph,
   GraphMigrationError,
   type GraphMigrationErrorCode,

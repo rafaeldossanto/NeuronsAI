@@ -35,6 +35,10 @@ export interface FakeTurn {
   usage(usage: { costUsd: number } & Partial<Omit<AgentUsage, "costUsd">>): Promise<void>;
   /** Reports a turn whose price is unknown. */
   usageWithoutCost(): Promise<void>;
+  /** The tools the graph lets this agent use (a memory, an HTTP API, the WhatsApp reply...). */
+  tools(): Promise<{ nodeId: string; name: string; description: string }[]>;
+  /** Calls one of those tools through the server, as a real runtime does. */
+  useTool(nodeId: string, name: string, input: Record<string, unknown>): Promise<unknown>;
   /** Reports a call to a tool of its own (not one of the Hub's). */
   toolCall(report: Partial<ToolCallReport> & { tool: string }): Promise<void>;
 }
@@ -46,6 +50,8 @@ export interface FakeRuntimeOptions {
   neverAck?: boolean;
   /** Fails to start with this message. */
   failOnStart?: string;
+  /** Never finishes booting by itself (a CLI at a dialog nobody answers); `stop` ends the boot. */
+  hangOnStart?: boolean;
   /** Whether the runtime reports what its turns cost (like stream-json); default true. */
   reportsCost?: boolean;
   /** Reports a turn with this cost while stopping, like a closing turn whose `result` arrives late. */
@@ -64,6 +70,7 @@ export class FakeAgentRuntime implements AgentRuntime {
 
   private currentState: AgentRuntimeState = "starting";
   private readonly changes = new Signal<AgentRuntimeState>();
+  private endBoot: (() => void) | undefined;
 
   constructor(
     readonly name: string,
@@ -85,6 +92,10 @@ export class FakeAgentRuntime implements AgentRuntime {
   async start(briefing: string): Promise<void> {
     this.briefing = briefing;
     await Promise.resolve();
+    if (this.options.hangOnStart) {
+      await new Promise<void>((resolve) => (this.endBoot = resolve));
+      return;
+    }
     if (this.options.failOnStart) {
       this.fail(this.options.failOnStart);
       throw new Error(this.options.failOnStart);
@@ -102,6 +113,7 @@ export class FakeAgentRuntime implements AgentRuntime {
 
   async stop(): Promise<void> {
     this.stopCount++;
+    this.endBoot?.();
     if (this.options.usageOnStop !== undefined) {
       await this.communication.reportUsage({ ...EMPTY_USAGE, costUsd: this.options.usageOnStop });
     }
@@ -136,6 +148,11 @@ export class FakeAgentRuntime implements AgentRuntime {
       peers: () => communication.listPeers(),
       usage: (usage) => communication.reportUsage({ ...EMPTY_USAGE, ...usage }),
       usageWithoutCost: () => communication.reportUsage({ ...EMPTY_USAGE }),
+      tools: async () => (await communication.listTools?.()) ?? [],
+      useTool: (nodeId, name, input) => {
+        if (!communication.useTool) throw new Error("Ferramentas indisponíveis.");
+        return communication.useTool(nodeId, name, input);
+      },
       toolCall: (report) =>
         communication.reportToolCall({ inputSummary: "{}", durationMs: 5, ok: true, ...report }),
     };

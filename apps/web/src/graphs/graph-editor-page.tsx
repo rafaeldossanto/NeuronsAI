@@ -10,7 +10,7 @@ export function GraphEditorPage() {
   const graph = useGraph(id);
   const versions = useGraphVersions(id);
 
-  if (graph.isPending) return <LoadingRows label="Carregando grafo" rows={4} />;
+  if (graph.isPending) return <LoadingRows label="Carregando projeto" rows={4} />;
   if (graph.isError) return <ErrorState error={graph.error} onRetry={() => void graph.refetch()} />;
 
   return (

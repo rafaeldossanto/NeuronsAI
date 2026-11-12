@@ -215,10 +215,16 @@ export function SessionGate({
         <div className="flex flex-col gap-3">
           <p className="caption-4 text-muted-foreground">NeuronsAI</p>
           <h1 className="heading-5">
-            {status === "checking" ? "Abrindo seu espaço" : "Entre no seu espaço"}
+            {status === "checking"
+              ? "Abrindo seu espaço"
+              : status === "failed"
+                ? "Não foi possível abrir seu espaço"
+                : "Entre no seu espaço"}
           </h1>
           <p className="body-6 text-muted-foreground">
-            Acesse seus projetos e acompanhe seus agentes em um só lugar.
+            {status === "failed"
+              ? "Confira se o servidor do NeuronsAI está em execução e se a rede está funcionando; depois tente de novo."
+              : "Acesse seus projetos e acompanhe seus agentes em um só lugar."}
           </p>
         </div>
         {status === "checking" ? (

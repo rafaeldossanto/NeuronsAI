@@ -32,7 +32,12 @@ export interface BlockData extends Record<string, unknown> {
 
 export type BlockNode = Node<BlockData>;
 
-const TRIGGER_LABELS = { manual: "Manual", webhook: "Webhook", schedule: "Agenda" } as const;
+const TRIGGER_LABELS = {
+  manual: "Manual",
+  webhook: "Webhook",
+  schedule: "Agenda",
+  whatsapp: "WhatsApp",
+} as const;
 
 function describe(node: GraphNode): {
   icon: LucideIcon;
@@ -63,7 +68,12 @@ function describe(node: GraphNode): {
             title: node.name,
             detail: `${node.tool.memoryId ? "Memória cadastrada" : "Cofre local"} · ${node.tool.readOnly ? "somente leitura" : "leitura e escrita"}`,
           }
-        : { icon: Wrench, kindLabel: "Ferramenta", title: node.name, detail: node.tool.kind };
+        : {
+            icon: Wrench,
+            kindLabel: "Ferramenta",
+            title: node.name,
+            detail: node.tool.kind === "whatsapp" ? "WhatsApp (resposta)" : node.tool.kind,
+          };
     case "trigger":
       return {
         icon: Zap,

@@ -80,14 +80,16 @@ Segredos e variáveis `CLAUDE_CODE_*`/`ANTHROPIC_*` do processo hospedeiro ficam
 
 - `claude-binary.ts`: `NEURONS_CLAUDE_BIN` → `claude` no `PATH` → `~/.local/bin`, `~/.claude/local` (e `/usr/local/bin`, `/opt/homebrew/bin`) → a CLI
   embutida no app desktop (Windows: `…\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code\<versão>\<hash>\claude.exe`; macOS:
-  `~/Library/Application Support/Claude/claude-code`), pasta de versão mais nova.
+  `~/Library/Application Support/Claude/claude-code`), pasta de versão mais nova. No Windows entra também `%LOCALAPPDATA%Claude-Data<família do pacote>claude-code` (onde as versões novas do app guardam a CLI; achado na aceitação real de 11/11/2026), e vale a versão mais nova entre todas as pastas.
 - `claude-cli.ts` (em `claude/`): `claude auth status` antes de subir; sem login, falha pedindo `claude auth login`.
 - `process-tree.ts`: Windows `taskkill /T /F`; macOS/Linux, grupo de processos (SIGTERM e, se preciso, SIGKILL).
 - `child-env.ts`, `private-directory.ts`.
 
 ## Testes
 
+**Parar um agente que ainda sobe** (o Claude Code parado no diálogo de "confiar na pasta", por exemplo) corta a espera na hora: `stop()` aborta o boot, que se desfaz sozinho (PTY, ponte e arquivos) e termina sem erro; antes o `stop` esperava o boot desistir, até 60 s, e o fechamento do servidor junto.
+
 `pnpm test` roda com uma **CLI falsa** (`test-fixtures/fake-claude.mjs`, um script Node que imprime o rodapé, chama os hooks por HTTP, lê a
-entrada e chama o `mcp-neurons` de verdade) e não gasta nada. O teste com a CLI real é o `test:e2e:claude` do `@neurons/server`.
+entrada e chama o `mcp-neurons` de verdade) e não gasta nada. O teste com a CLI real é o `test:e2e:claude` do `@neurons/server`; o `test:e2e:permission-modes` abre uma CLI real em cada `--permission-mode` aceito (PTY e stream-json) **sem enviar prompt**, então não gasta cota.
 
 `node-pty` 1.1.0 traz binário pronto para Windows e macOS (no Linux ele compila no `postinstall`; por isso está em `allowBuilds`).
