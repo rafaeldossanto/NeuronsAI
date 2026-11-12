@@ -227,7 +227,7 @@ export class WhatsAppService {
 
     let started = 0;
     let ignored = 0;
-    let failure: unknown;
+    let failure: Error | undefined;
     for (const entry of payload.entry) {
       for (const change of entry.changes) {
         // Delivery statuses arrive here too (`statuses`): there is nothing to do with them.
@@ -241,7 +241,8 @@ export class WhatsAppService {
             if (await this.startRun(state, phoneNumberId, raw, now)) started += 1;
             else ignored += 1;
           } catch (error) {
-            failure ??= error;
+            failure ??=
+              error instanceof Error ? error : new Error("Falha inesperada ao iniciar a execução.");
           }
         }
       }
@@ -250,7 +251,7 @@ export class WhatsAppService {
       `WhatsApp ${shortId(state.hookId)}: ${started} execução(ões) iniciada(s), ${ignored} mensagem(ns) ignorada(s).`,
     );
     // After the others had their turn: one failure of ours must not hold back the rest.
-    if (failure !== undefined) throw failure;
+    if (failure) throw failure;
     return started;
   }
 

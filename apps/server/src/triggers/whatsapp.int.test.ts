@@ -97,10 +97,10 @@ function fakeAgents() {
       const reply = tools.find((tool) => tool.name === "send_whatsapp_reply");
       if (turn.message.body.includes("tente escrever")) {
         // A prompt-injected agent trying a write tool it was never given.
-        const blocked = (await turn.useTool("pedidos-post", "registrar_pedido", {}).then(
-          (value) => value,
+        const blocked: unknown = await turn.useTool("pedidos-post", "registrar_pedido", {}).then(
+          (value: unknown) => value,
           (error: Error) => ({ refused: error.message }),
-        )) as unknown;
+        );
         seen.postAttempt = blocked;
       }
       if (reply) {
