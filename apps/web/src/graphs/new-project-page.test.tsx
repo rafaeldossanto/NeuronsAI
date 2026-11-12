@@ -88,11 +88,11 @@ describe("novo projeto e templates", () => {
       const draft = instantiateTemplate(template.id, { projectId: graphId, cwd });
       const { calls } = renderApp("/new", routes(template.name, draft));
       const user = userEvent.setup();
-      await user.click(screen.getByRole("button", { name: `Usar template ${template.name}` }));
-      const dialog = screen.getByRole("dialog", { name: "Criar projeto a partir de template" });
+      await user.click(screen.getByRole("button", { name: `Usar modelo ${template.name}` }));
+      const dialog = screen.getByRole("dialog", { name: "Criar projeto a partir de modelo" });
       if (template.requiresWorkdir)
         await user.type(within(dialog).getByLabelText("Pasta de trabalho no runner"), cwd);
-      await user.click(within(dialog).getByRole("button", { name: "Criar projeto com template" }));
+      await user.click(within(dialog).getByRole("button", { name: "Criar projeto com o modelo" }));
       expect(
         await screen.findByRole("heading", { level: 1, name: template.name }),
       ).toBeInTheDocument();
@@ -110,13 +110,11 @@ describe("novo projeto e templates", () => {
     },
   );
 
-  it("exige uma pasta absoluta antes de criar um template com terminais", async () => {
+  it("exige uma pasta absoluta antes de criar um modelo com terminais", async () => {
     const { calls } = renderApp("/new", resources);
-    await userEvent.click(
-      screen.getByRole("button", { name: "Usar template Pesquisa com revisor" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Usar modelo Pesquisa com revisor" }));
     await userEvent.type(screen.getByLabelText("Pasta de trabalho no runner"), ".");
-    await userEvent.click(screen.getByRole("button", { name: "Criar projeto com template" }));
+    await userEvent.click(screen.getByRole("button", { name: "Criar projeto com o modelo" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("pasta de trabalho absoluta");
     expect(calls.filter((call) => call.method === "POST")).toHaveLength(0);
   });
@@ -129,13 +127,13 @@ describe("novo projeto e templates", () => {
         body: { code: "test_error", message: "Não foi possível criar o projeto agora." },
       },
     });
-    await userEvent.click(screen.getByRole("button", { name: "Usar template Venda → pós-venda" }));
-    await userEvent.click(screen.getByRole("button", { name: "Criar projeto com template" }));
+    await userEvent.click(screen.getByRole("button", { name: "Usar modelo Venda → pós-venda" }));
+    await userEvent.click(screen.getByRole("button", { name: "Criar projeto com o modelo" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Não foi possível criar o projeto agora.",
     );
     expect(
-      screen.getByRole("dialog", { name: "Criar projeto a partir de template" }),
+      screen.getByRole("dialog", { name: "Criar projeto a partir de modelo" }),
     ).toBeInTheDocument();
   });
 
@@ -150,20 +148,20 @@ describe("novo projeto e templates", () => {
           ? { status: 500, body: { code: "test_error", message: "Falha ao salvar o rascunho." } }
           : { body: { ...graphSummary, name: template.name } },
     });
-    await userEvent.click(screen.getByRole("button", { name: `Usar template ${template.name}` }));
-    await userEvent.click(screen.getByRole("button", { name: "Criar projeto com template" }));
+    await userEvent.click(screen.getByRole("button", { name: `Usar modelo ${template.name}` }));
+    await userEvent.click(screen.getByRole("button", { name: "Criar projeto com o modelo" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Falha ao salvar o rascunho.");
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Criar projeto com template" })).toBeEnabled(),
+      expect(screen.getByRole("button", { name: "Criar projeto com o modelo" })).toBeEnabled(),
     );
-    await userEvent.click(screen.getByRole("button", { name: "Criar projeto com template" }));
+    await userEvent.click(screen.getByRole("button", { name: "Criar projeto com o modelo" }));
     expect(
       await screen.findByRole("heading", { level: 1, name: template.name }),
     ).toBeInTheDocument();
     expect(calls.filter((call) => call.path === "POST /graphs")).toHaveLength(1);
     expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(2);
   });
-  it("reaproveita o projeto em branco ao trocar de template depois de uma falha", async () => {
+  it("reaproveita o projeto em branco ao trocar de modelo depois de uma falha", async () => {
     const first = listTemplates()[0]!;
     const draft = instantiateTemplate(first.id, { projectId: graphId });
     let saves = 0;
@@ -174,12 +172,12 @@ describe("novo projeto e templates", () => {
           ? { status: 500, body: { code: "test_error", message: "Falha ao salvar o rascunho." } }
           : { body: { ...graphSummary, name: first.name } },
     });
-    await userEvent.click(screen.getByRole("button", { name: `Usar template ${first.name}` }));
-    await userEvent.click(screen.getByRole("button", { name: "Criar projeto com template" }));
+    await userEvent.click(screen.getByRole("button", { name: `Usar modelo ${first.name}` }));
+    await userEvent.click(screen.getByRole("button", { name: "Criar projeto com o modelo" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Falha ao salvar o rascunho.");
     await userEvent.keyboard("{Escape}");
-    await userEvent.click(screen.getByRole("button", { name: `Usar template ${first.name}` }));
-    await userEvent.click(screen.getByRole("button", { name: "Criar projeto com template" }));
+    await userEvent.click(screen.getByRole("button", { name: `Usar modelo ${first.name}` }));
+    await userEvent.click(screen.getByRole("button", { name: "Criar projeto com o modelo" }));
     expect(await screen.findByRole("heading", { level: 1, name: first.name })).toBeInTheDocument();
     expect(calls.filter((call) => call.path === "POST /graphs")).toHaveLength(1);
   });

@@ -76,11 +76,13 @@ export function ConnectionsPanel({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
   const [message, setMessage] = useState("");
+  const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
   async function save(event: FormEvent) {
     event.preventDefault();
     setPending(true);
     setMessage("");
+    setSaved(false);
     try {
       const result = await workspace.api.PUT("/secrets/{name}", {
         params: { path: { name } },
@@ -93,6 +95,7 @@ export function ConnectionsPanel({ onClose }: { onClose: () => void }) {
       setValue("");
       setName("");
       setMessage("Chave salva. Selecione o nome nas propriedades do agente.");
+      setSaved(true);
       await workspace.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Falha ao salvar a chave.");
@@ -164,7 +167,10 @@ export function ConnectionsPanel({ onClose }: { onClose: () => void }) {
             </Button>
           </form>
           {message && (
-            <p role="status" className="mt-3 text-sm">
+            <p
+              role={saved ? "status" : "alert"}
+              className={saved ? "mt-3 text-sm" : "mt-3 text-sm text-destructive"}
+            >
               {message}
             </p>
           )}

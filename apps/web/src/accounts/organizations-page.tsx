@@ -545,7 +545,7 @@ function LocalDataAdoption({
   if (done)
     return (
       <p role="status" className="body-6 rounded-lg bg-muted p-4">
-        Dados locais movidos para {organizationName}: {plural(done.graphs, "grafo", "grafos")},{" "}
+        Dados locais movidos para {organizationName}: {plural(done.graphs, "projeto", "projetos")},{" "}
         {plural(done.runs, "execução", "execuções")}, {plural(done.secrets, "segredo", "segredos")}{" "}
         e {plural(done.memories, "memória", "memórias")}. Gatilhos com agenda ficam desligados:
         ligue-os de novo.
@@ -559,10 +559,11 @@ function LocalDataAdoption({
     >
       <h3 className="title-3">Dados locais deste servidor</h3>
       <p className="body-6 text-muted-foreground">
-        Este servidor tem dados criados antes das contas: {plural(data.graphs, "grafo", "grafos")},{" "}
-        {plural(data.runs, "execução", "execuções")}, {plural(data.secrets, "segredo", "segredos")}{" "}
-        e {plural(data.memories, "memória", "memórias")}. Eles não aparecem em nenhuma organização
-        até você movê-los.
+        Este servidor tem dados criados antes das contas:{" "}
+        {plural(data.graphs, "projeto", "projetos")}, {plural(data.runs, "execução", "execuções")},{" "}
+        {plural(data.secrets, "segredo", "segredos")} e{" "}
+        {plural(data.memories, "memória", "memórias")}. Eles não aparecem em nenhuma organização até
+        você movê-los.
       </p>
       <Button variant="outline" className="self-start" onClick={() => setConfirming(true)}>
         Mover dados locais para esta organização

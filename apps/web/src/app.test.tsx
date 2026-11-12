@@ -11,7 +11,7 @@ describe("navegação", () => {
     });
     const user = userEvent.setup();
 
-    expect(await screen.findByRole("heading", { name: "Grafos" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Meus projetos" })).toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: "Execuções" }));
     expect(await screen.findByRole("heading", { name: "Execuções" })).toBeInTheDocument();
   });

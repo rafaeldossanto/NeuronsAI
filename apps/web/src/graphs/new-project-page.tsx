@@ -89,7 +89,7 @@ export function NewProjectPage() {
       <header>
         <h1 className="text-3xl font-semibold tracking-tight">Novo projeto</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Comece do zero ou use um template. Cada modelo vira um rascunho independente para você
+          Comece do zero ou use um modelo. Cada modelo vira um rascunho independente para você
           revisar e publicar.
         </p>
       </header>
@@ -144,7 +144,7 @@ export function NewProjectPage() {
       </div>
       {selected && (
         <Modal
-          title="Criar projeto a partir de template"
+          title="Criar projeto a partir de modelo"
           onClose={() => {
             if (!pending) {
               setSelected(null);
@@ -152,7 +152,7 @@ export function NewProjectPage() {
             }
           }}
         >
-          <form onSubmit={submit} className="flex flex-col gap-4" aria-label="Configurar template">
+          <form onSubmit={submit} className="flex flex-col gap-4" aria-label="Configurar modelo">
             <p className="text-sm text-muted-foreground">
               {selected.name}. O projeto será salvo como rascunho. Revise as configurações no editor
               antes de publicar.
@@ -225,7 +225,7 @@ export function NewProjectPage() {
                 Cancelar
               </Button>
               <Button type="submit" disabled={pending}>
-                {pending ? "Criando projeto…" : "Criar projeto com template"}
+                {pending ? "Criando projeto…" : "Criar projeto com o modelo"}
               </Button>
             </div>
           </form>
