@@ -2241,7 +2241,8 @@
                                   "enum": [
                                     "manual",
                                     "webhook",
-                                    "schedule"
+                                    "schedule",
+                                    "whatsapp"
                                   ]
                                 },
                                 "target": {
@@ -2255,6 +2256,14 @@
                                 "timezone": {
                                   "type": "string",
                                   "minLength": 1
+                                },
+                                "phoneNumberId": {
+                                  "type": "string",
+                                  "pattern": "^\\d{5,25}$"
+                                },
+                                "appSecretName": {
+                                  "type": "string",
+                                  "pattern": "^[A-Za-z0-9._-]{1,128}$"
                                 }
                               },
                               "required": [
@@ -2607,6 +2616,28 @@
                                         "kind",
                                         "readOnly"
                                       ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "const": "whatsapp"
+                                        },
+                                        "phoneNumberId": {
+                                          "type": "string",
+                                          "pattern": "^\\d{5,25}$"
+                                        },
+                                        "accessTokenSecret": {
+                                          "type": "string",
+                                          "pattern": "^[A-Za-z0-9._-]{1,128}$"
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "phoneNumberId",
+                                        "accessTokenSecret"
+                                      ]
                                     }
                                   ]
                                 }
@@ -2656,6 +2687,9 @@
                               "maximum": 9007199254740991
                             },
                             "readOnly": {
+                              "type": "boolean"
+                            },
+                            "allowWrite": {
                               "type": "boolean"
                             }
                           },
@@ -4390,7 +4424,8 @@
                           "enum": [
                             "manual",
                             "webhook",
-                            "schedule"
+                            "schedule",
+                            "whatsapp"
                           ]
                         },
                         "target": {
@@ -4404,6 +4439,14 @@
                         "timezone": {
                           "type": "string",
                           "minLength": 1
+                        },
+                        "phoneNumberId": {
+                          "type": "string",
+                          "pattern": "^\\d{5,25}$"
+                        },
+                        "appSecretName": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9._-]{1,128}$"
                         }
                       },
                       "required": [
@@ -4768,6 +4811,29 @@
                                 "readOnly"
                               ],
                               "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "const": "whatsapp"
+                                },
+                                "phoneNumberId": {
+                                  "type": "string",
+                                  "pattern": "^\\d{5,25}$"
+                                },
+                                "accessTokenSecret": {
+                                  "type": "string",
+                                  "pattern": "^[A-Za-z0-9._-]{1,128}$"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "phoneNumberId",
+                                "accessTokenSecret"
+                              ],
+                              "additionalProperties": false
                             }
                           ]
                         }
@@ -4818,6 +4884,9 @@
                       "maximum": 9007199254740991
                     },
                     "readOnly": {
+                      "type": "boolean"
+                    },
+                    "allowWrite": {
                       "type": "boolean"
                     }
                   },
