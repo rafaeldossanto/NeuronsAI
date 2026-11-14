@@ -286,6 +286,7 @@ describe("guards", () => {
       const slow = {
         ...persistence.history,
         readFrom: persistence.history.readFrom.bind(persistence.history),
+        usageByAgent: persistence.history.usageByAgent.bind(persistence.history),
         readByType: async (runId: string, type: string) => {
           await new Promise((resolve) => setTimeout(resolve, 80));
           return persistence.runLog.readByType(runId, type);

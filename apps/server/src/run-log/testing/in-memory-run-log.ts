@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { GraphVersionRepository } from "../../graphs/graph-version-repository.js";
+import { totalsByAgent, type UsageTotals } from "../../guards/usage-totals.js";
 import type { RunEventHistory } from "../../realtime/run-event-history.js";
 import type { RunEvent } from "../../realtime/run-event.js";
 import { resourceScope } from "../../accounts/resource-scope.js";
@@ -59,6 +60,10 @@ export class InMemoryRunLog implements RunEventLog, RunRepository, RunEventHisto
 
   readByType(runId: string, type: string): Promise<RunEvent[]> {
     return Promise.resolve(this.eventsOf(runId, type).sort((a, b) => a.seq - b.seq));
+  }
+
+  usageByAgent(runId: string): Promise<Record<string, UsageTotals>> {
+    return Promise.resolve(totalsByAgent(this.eventsOf(runId, "UsageRecorded")));
   }
 
   eventsOf(runId: string, type?: string): RunEvent[] {

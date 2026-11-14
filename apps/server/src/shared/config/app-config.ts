@@ -32,7 +32,12 @@ export type { OutboundConfig } from "./outbound-config.js";
 export type { SignupConfig } from "./auth-config.js";
 export type { Profile, RunnerLimits } from "./runner-config.js";
 export type { TerminalInputLimits } from "./terminal-config.js";
-export type { DatabaseConfig, DatabaseKind, PostgresConnection } from "./database-config.js";
+export type {
+  DatabaseConfig,
+  DatabaseKind,
+  PoolSettings,
+  PostgresConnection,
+} from "./database-config.js";
 
 export const APP_MODES = ["api", "worker", "all"] as const;
 export type AppMode = (typeof APP_MODES)[number];

@@ -153,7 +153,7 @@ export class RunsController {
     errors: [404],
   })
   async events(@ValidParams() { id }: RunParams, @ValidQuery() query: EventsQuery) {
-    const events = await this.queries.events(id, query.fromSeq, query.limit);
-    return { items: events.map(presentRunEvent), total: await this.queries.eventCount(id) };
+    const { items, total } = await this.queries.eventsPage(id, query.fromSeq, query.limit);
+    return { items: items.map(presentRunEvent), total };
   }
 }

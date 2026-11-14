@@ -120,24 +120,37 @@ export class DrizzleRunRepository implements RunRepository {
 
   async list(filter: RunListFilter): Promise<RunListPage> {
     const { db } = this.database;
-    // One aggregate over the usage events of all runs, joined once: no query per run. A turn counts
-    // as known only when its `costUsd` is a JSON number; null/absent is "unknown", never zero.
+    // A turn counts as known only when its `costUsd` is a JSON number; null/absent is "unknown", never zero.
     const isKnown = sql`jsonb_typeof(${runEvents.payload} -> 'costUsd') = 'number'`;
-    const usage = db
-      .select({
-        runId: runEvents.runId,
-        known:
-          sql<string>`coalesce(sum((${runEvents.payload} ->> 'costUsd')::numeric) filter (where ${isKnown}), 0)`.as(
-            "known_cost",
+    const usageOf = (runIds?: string[]) =>
+      db
+        .select({
+          runId: runEvents.runId,
+          known:
+            sql<string>`coalesce(sum((${runEvents.payload} ->> 'costUsd')::numeric) filter (where ${isKnown}), 0)`.as(
+              "known_cost",
+            ),
+          turns: sql<number>`count(*)::int`.as("usage_turns"),
+          unknown: sql<number>`(count(*) filter (where not ${isKnown}))::int`.as("unknown_turns"),
+        })
+        .from(runEvents)
+        .where(
+          and(
+            eq(runEvents.type, "UsageRecorded"),
+            sql`${runEvents.agent} is not null`,
+            runIds && inArray(runEvents.runId, runIds),
           ),
-        turns: sql<number>`count(*)::int`.as("usage_turns"),
-        unknown: sql<number>`(count(*) filter (where not ${isKnown}))::int`.as("unknown_turns"),
-      })
-      .from(runEvents)
-      .where(and(eq(runEvents.type, "UsageRecorded"), sql`${runEvents.agent} is not null`))
-      .groupBy(runEvents.runId)
-      .as("usage");
-    const cost = sql<string>`coalesce(${usage.known}, 0)`;
+        )
+        .groupBy(runEvents.runId);
+
+    // The cost is only needed across ALL runs when it filters or orders them; otherwise it is
+    // computed for the runs of the page alone, and the count never touches the event log.
+    const costDecides =
+      filter.sort === "costUsd" ||
+      filter.minCostUsd !== undefined ||
+      filter.maxCostUsd !== undefined;
+    const usage = usageOf().as("usage");
+    const cost = costDecides ? sql<string>`coalesce(${usage.known}, 0)` : sql<string>`0`;
 
     const conditions: SQL[] = [resourceScope.matches(graphs.organizationId)];
     if (filter.status) conditions.push(eq(runs.status, filter.status));
@@ -167,42 +180,57 @@ export class DrizzleRunRepository implements RunRepository {
           ? [durationOrder, startedAt, direction(runs.id)]
           : [startedAt, direction(runs.id)];
 
-    const [rows, [counted]] = await Promise.all([
-      db
-        .select({
-          run: runs,
-          graphId: graphVersions.graphId,
-          graphName: graphs.name,
-          graphVersion: graphVersions.version,
-          cost,
-          turns: usage.turns,
-          unknown: usage.unknown,
-        })
-        .from(runs)
-        .innerJoin(graphVersions, eq(graphVersions.id, runs.graphVersionId))
-        .innerJoin(graphs, eq(graphs.id, graphVersions.graphId))
-        .leftJoin(usage, eq(usage.runId, runs.id))
-        .where(where)
-        .orderBy(...orderBy)
-        .limit(filter.limit)
-        .offset(filter.offset ?? 0),
+    const base = () =>
       db
         .select({ total: sql<number>`count(*)::int` })
         .from(runs)
         .innerJoin(graphVersions, eq(graphVersions.id, runs.graphVersionId))
-        .innerJoin(graphs, eq(graphs.id, graphVersions.graphId))
-        .leftJoin(usage, eq(usage.runId, runs.id))
-        .where(where),
+        .innerJoin(graphs, eq(graphs.id, graphVersions.graphId));
+    const page = db
+      .select({
+        run: runs,
+        graphId: graphVersions.graphId,
+        graphName: graphs.name,
+        graphVersion: graphVersions.version,
+        cost,
+        turns: costDecides ? usage.turns : sql<number | null>`null`,
+        unknown: costDecides ? usage.unknown : sql<number | null>`null`,
+      })
+      .from(runs)
+      .innerJoin(graphVersions, eq(graphVersions.id, runs.graphVersionId))
+      .innerJoin(graphs, eq(graphs.id, graphVersions.graphId));
+
+    const [rows, [counted]] = await Promise.all([
+      (costDecides ? page.leftJoin(usage, eq(usage.runId, runs.id)) : page)
+        .where(where)
+        .orderBy(...orderBy)
+        .limit(filter.limit)
+        .offset(filter.offset ?? 0),
+      (costDecides ? base().leftJoin(usage, eq(usage.runId, runs.id)) : base()).where(where),
     ]);
-    const items: RunListItem[] = rows.map((row) => ({
-      ...toRunRecord(row.run),
-      graphId: row.graphId,
-      graphName: row.graphName,
-      graphVersion: row.graphVersion,
-      costUsd: Number(row.cost),
-      turns: Number(row.turns ?? 0),
-      unknownCostTurns: Number(row.unknown ?? 0),
-    }));
+
+    // Without cost in the filter or the order, the totals are read for the page's runs only.
+    const pageUsage = new Map<string, { cost: number; turns: number; unknown: number }>();
+    if (!costDecides && rows.length > 0) {
+      for (const row of await usageOf(rows.map((r) => r.run.id)))
+        pageUsage.set(row.runId, {
+          cost: Number(row.known),
+          turns: Number(row.turns),
+          unknown: Number(row.unknown),
+        });
+    }
+    const items: RunListItem[] = rows.map((row) => {
+      const own = pageUsage.get(row.run.id);
+      return {
+        ...toRunRecord(row.run),
+        graphId: row.graphId,
+        graphName: row.graphName,
+        graphVersion: row.graphVersion,
+        costUsd: costDecides ? Number(row.cost) : (own?.cost ?? 0),
+        turns: costDecides ? Number(row.turns ?? 0) : (own?.turns ?? 0),
+        unknownCostTurns: costDecides ? Number(row.unknown ?? 0) : (own?.unknown ?? 0),
+      };
+    });
     return { items, total: Number(counted?.total ?? 0) };
   }
 

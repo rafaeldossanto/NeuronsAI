@@ -9,10 +9,20 @@ export type PostgresConnection =
   | { connectionString: string }
   | { host: string; port: number; user: string; password: string; database: string };
 
+/** How the Postgres pool behaves. The embedded database is one connection and ignores it. */
+export interface PoolSettings {
+  /** Most connections open at once. */
+  max: number;
+  /** How long an idle connection is kept before it is closed. */
+  idleTimeoutMs: number;
+  /** A query running longer than this is cancelled by the server; 0 means no limit. Migrations ignore it. */
+  statementTimeoutMs: number;
+}
+
 export type DatabaseConfig =
   | { kind: "embedded" }
-  /** `connection` is absent when no Postgres variables were provided. */
-  | { kind: "postgres"; connection?: PostgresConnection };
+  /** `connection` is absent when no Postgres variables were provided; `pool` falls back to the defaults. */
+  | { kind: "postgres"; connection?: PostgresConnection; pool?: PoolSettings };
 
 export const databaseEnvShape = {
   NEURONS_DB: unlessEmpty(z.enum(DATABASE_KINDS).default("embedded")),
@@ -22,6 +32,9 @@ export const databaseEnvShape = {
   NEURONS_DB_USER: unlessEmpty(z.string().trim().min(1).optional()),
   NEURONS_DB_NAME: unlessEmpty(z.string().trim().min(1).optional()),
   NEURONS_DB_PASSWORD: unlessEmpty(z.string().min(1).optional()),
+  NEURONS_DB_POOL_MAX: unlessEmpty(z.coerce.number().int().min(1).max(500).default(10)),
+  NEURONS_DB_IDLE_TIMEOUT_MS: unlessEmpty(z.coerce.number().int().min(0).default(30_000)),
+  NEURONS_DB_STATEMENT_TIMEOUT_MS: unlessEmpty(z.coerce.number().int().min(0).default(30_000)),
 };
 
 export type DatabaseEnv = z.infer<z.ZodObject<typeof databaseEnvShape>>;
@@ -37,7 +50,15 @@ const REQUIRED_POSTGRES_VARIABLES = [
 export function resolveDatabase(env: DatabaseEnv): DatabaseConfig {
   if (env.NEURONS_DB === "embedded") return { kind: "embedded" };
   const connection = resolvePostgresConnection(env);
-  return { kind: "postgres", ...(connection && { connection }) };
+  return {
+    kind: "postgres",
+    ...(connection && { connection }),
+    pool: {
+      max: env.NEURONS_DB_POOL_MAX,
+      idleTimeoutMs: env.NEURONS_DB_IDLE_TIMEOUT_MS,
+      statementTimeoutMs: env.NEURONS_DB_STATEMENT_TIMEOUT_MS,
+    },
+  };
 }
 
 function resolvePostgresConnection(env: DatabaseEnv): PostgresConnection | undefined {
