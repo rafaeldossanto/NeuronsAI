@@ -26,11 +26,15 @@ export class ConnectionsService implements OnApplicationShutdown {
   private timer: ReturnType<typeof setTimeout> | undefined;
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {}
 
+  private claudeCli: ClaudeCli | undefined;
+
+  /** One instance for the process: its 30 s login cache only works if it is reused. */
   private cli() {
-    return new ClaudeCli({
+    this.claudeCli ??= new ClaudeCli({
       ...(this.config.claudeBin && { configuredBinary: this.config.claudeBin }),
       ...(this.config.claudeCommand && { command: this.config.claudeCommand }),
     });
+    return this.claudeCli;
   }
 
   async status() {
@@ -99,6 +103,7 @@ export class ConnectionsService implements OnApplicationShutdown {
     const clear = () => {
       if (this.login === child) this.login = undefined;
       clearTimeout(this.timer);
+      cli.invalidateLoginCache();
     };
     child.once("exit", clear);
     child.once("error", clear);

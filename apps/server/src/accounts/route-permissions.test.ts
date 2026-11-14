@@ -2,9 +2,8 @@ import "reflect-metadata";
 import { PATH_METADATA } from "@nestjs/common/constants.js";
 import { expect, it, vi } from "vitest";
 import type { CallHandler, ExecutionContext } from "@nestjs/common";
-import { RoutePermissionUndeclaredError } from "./account.errors.js";
+import { OrganizationAccessError, RoutePermissionUndeclaredError } from "./account.errors.js";
 import type { AccountAuth } from "./account-auth.service.js";
-import type { AccountsService } from "./accounts.service.js";
 import { RequestScopeInterceptor } from "./request-scope.interceptor.js";
 import { API_CONTROLLERS } from "../api/api-controllers.js";
 import { contractOf } from "../api/endpoint.js";
@@ -63,17 +62,15 @@ const declaredHandler = (): undefined => undefined;
 const undeclaredHandler = (): undefined => undefined;
 Reflect.defineMetadata("neurons:permission", "write", declaredHandler);
 
-function interceptorFor(method: string, handler: () => undefined) {
-  const requireAccess = vi.fn().mockResolvedValue({ role: "member" });
+function interceptorFor(method: string, handler: () => undefined, role = "member") {
+  const authenticate = vi.fn();
   const auth = {
     browser: {
-      authenticate: vi.fn().mockResolvedValue({ userId: "u1", organizationId: "o1" }),
+      authenticate: authenticate.mockResolvedValue({ userId: "u1", organizationId: "o1", role }),
       requireMutation: vi.fn(),
     },
   } as unknown as AccountAuth;
-  const interceptor = new RequestScopeInterceptor(auth, {
-    requireAccess,
-  } as unknown as AccountsService);
+  const interceptor = new RequestScopeInterceptor(auth);
   const header = vi.fn();
   const context = {
     getType: () => "http",
@@ -83,27 +80,28 @@ function interceptorFor(method: string, handler: () => undefined) {
   } as unknown as ExecutionContext;
   const handle = vi.fn();
   const next: CallHandler = { handle };
-  return { interceptor, context, next, handle, requireAccess };
+  return { interceptor, context, next, handle, authenticate };
 }
 
 it("refuses a writing request on a route that declares no permission, before any access check", async () => {
-  const { interceptor, context, next, handle, requireAccess } = interceptorFor(
-    "POST",
-    undeclaredHandler,
-  );
+  const { interceptor, context, next, handle } = interceptorFor("POST", undeclaredHandler);
   await expect(interceptor.intercept(context, next)).rejects.toBeInstanceOf(
     RoutePermissionUndeclaredError,
   );
-  expect(requireAccess).not.toHaveBeenCalled();
   expect(handle).not.toHaveBeenCalled();
 });
 
-it("checks the declared permission on a writing request and plain read on a GET", async () => {
-  const write = interceptorFor("POST", declaredHandler);
-  await write.interceptor.intercept(write.context, write.next);
-  expect(write.requireAccess).toHaveBeenCalledWith("u1", "o1", "write");
+it("checks the declared permission against the role read once by authenticate", async () => {
+  const write = interceptorFor("POST", declaredHandler, "viewer");
+  await expect(write.interceptor.intercept(write.context, write.next)).rejects.toBeInstanceOf(
+    OrganizationAccessError,
+  );
+  expect(write.handle).not.toHaveBeenCalled();
+  expect(write.authenticate).toHaveBeenCalledTimes(1);
 
-  const read = interceptorFor("GET", undeclaredHandler);
+  const allowed = interceptorFor("POST", declaredHandler, "member");
+  await allowed.interceptor.intercept(allowed.context, allowed.next);
+
+  const read = interceptorFor("GET", undeclaredHandler, "viewer");
   await read.interceptor.intercept(read.context, read.next);
-  expect(read.requireAccess).toHaveBeenCalledWith("u1", "o1", "read");
 });
