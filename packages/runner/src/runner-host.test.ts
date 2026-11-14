@@ -4,6 +4,8 @@ import type {
   AgentRuntimeFactory,
   AgentRuntimeState,
   InboundMessage,
+  OutputDelta,
+  StreamingAgentRuntime,
   TerminalAgentRuntime,
   TerminalSize,
 } from "@neurons/agent-runtimes";
@@ -84,6 +86,17 @@ class StubTerminalRuntime extends StubRuntime implements TerminalAgentRuntime {
   }
 }
 
+/** A stream-json style runtime: says what the model writes while it writes. */
+class StubStreamingRuntime extends StubRuntime implements StreamingAgentRuntime {
+  private readonly writing = new Signal<OutputDelta>();
+  onOutputDelta(listener: (delta: OutputDelta) => void) {
+    return this.writing.subscribe(listener);
+  }
+  write(delta: OutputDelta): void {
+    this.writing.emit(delta);
+  }
+}
+
 const agent: AgentNode = {
   id: "agente-alfa",
   type: "agent",
@@ -103,13 +116,15 @@ type ServerBody = ServerFrame extends infer Frame
   : never;
 
 /** A host plus the server end of its channel, where the test plays the server. */
-function rig(options: { terminal?: boolean } = {}) {
+function rig(options: { terminal?: boolean; streaming?: boolean } = {}) {
   const runtimes: StubRuntime[] = [];
   const factory: AgentRuntimeFactory = {
     create: (_agent, communication) => {
       const runtime = options.terminal
         ? new StubTerminalRuntime(communication)
-        : new StubRuntime(communication);
+        : options.streaming
+          ? new StubStreamingRuntime(communication)
+          : new StubRuntime(communication);
       runtimes.push(runtime);
       return runtime;
     },
@@ -561,4 +576,62 @@ it("recovers the latest terminal snapshot after reconnect, gated by peer revisio
   expect(r.count("agent.snapshot")).toBe(count);
   await r.host.stopAll();
   r.server().close();
+});
+
+describe("RunnerHost: live text (revision 6)", () => {
+  const registered = (revision?: number): ServerBody => ({
+    type: "registered",
+    runnerId: "r1",
+    ...(revision !== undefined && { revision }),
+    heartbeatIntervalMs: 60_000,
+    keep: [],
+  });
+  const piece: OutputDelta = { turnId: "t1", channel: "message", delta: "Olá" };
+
+  it("sends what the agent writes, as agent.delta, to a server that announced revision 6", async () => {
+    const r = rig({ streaming: true });
+    r.connect();
+    r.say(registered(PROTOCOL_REVISION));
+    await r.start("i1");
+
+    (r.runtimes[0] as StubStreamingRuntime).write(piece);
+
+    expect(await r.next("agent.delta")).toMatchObject({ instanceId: "i1", ...piece });
+    r.host.detach();
+  });
+
+  it("sends nothing to a server of revision 5 or earlier, which would drop the connection", async () => {
+    for (const revision of [undefined, 4, 5]) {
+      const r = rig({ streaming: true });
+      r.connect();
+      r.say(registered(revision));
+      await r.start("i1");
+
+      (r.runtimes[0] as StubStreamingRuntime).write(piece);
+      // A frame that does get an answer, after the delta, proves the delta was handled by now.
+      r.say({ type: "agent.stop", requestId: "stop-1", instanceId: "i1" });
+      await vi.waitFor(() =>
+        expect(r.received).toContainEqual(
+          expect.objectContaining({ type: "response", requestId: "stop-1" }),
+        ),
+      );
+
+      expect(r.count("agent.delta")).toBe(0);
+      r.host.detach();
+    }
+  });
+
+  it("does not carry a delta that was not sent over to the next connection", async () => {
+    const r = rig({ streaming: true });
+    r.connect();
+    r.say(registered(PROTOCOL_REVISION));
+    await r.start("i1");
+    r.host.detach();
+    r.connect(); // the new connection has not said what it speaks yet
+
+    (r.runtimes[0] as StubStreamingRuntime).write(piece);
+
+    expect(r.count("agent.delta")).toBe(0);
+    r.host.detach();
+  });
 });

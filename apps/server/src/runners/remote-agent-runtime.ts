@@ -6,6 +6,8 @@ import {
   type AgentRuntime,
   type AgentRuntimeState,
   type InboundMessage,
+  type OutputDelta,
+  type StreamingAgentRuntime,
   type TerminalAgentRuntime,
   type TerminalSize,
 } from "@neurons/agent-runtimes";
@@ -59,13 +61,14 @@ export type CallOutcome = { ok: true; result: unknown } | { ok: false; message: 
  * the state it reports is mirrored here, and what the agent does through the Hub's tools comes back
  * as calls that run on this agent's {@link AgentCommunication}.
  */
-export class RemoteAgentRuntime implements AgentRuntime {
+export class RemoteAgentRuntime implements AgentRuntime, StreamingAgentRuntime {
   readonly instanceId = randomUUID();
   readonly reportsCost: boolean;
 
   private currentState: AgentRuntimeState = "starting";
   private reason: string | undefined;
   private readonly changes = new Signal<AgentRuntimeState>();
+  private readonly writing = new Signal<OutputDelta>();
   protected endpoint: RunnerEndpoint | undefined;
   private stopping: Promise<void> | undefined;
 
@@ -175,6 +178,16 @@ export class RemoteAgentRuntime implements AgentRuntime {
 
   applyOutput(data: string): void {
     void data;
+  }
+
+  /** What the agent is writing while the model generates it (live only; the runner groups the tokens). */
+  onOutputDelta(listener: (delta: OutputDelta) => void): Unsubscribe {
+    return this.writing.subscribe(listener);
+  }
+
+  applyDelta(delta: OutputDelta): void {
+    if (this.closed) return;
+    this.writing.emit({ turnId: delta.turnId, channel: delta.channel, delta: delta.delta });
   }
 
   /** The runner resized the terminal; only terminal runtimes keep a size. */

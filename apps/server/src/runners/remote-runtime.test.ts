@@ -1,6 +1,7 @@
 import { Logger } from "@nestjs/common";
 import type { FakeTerminalRuntime } from "../agents/testing/fake-agent-runtime.js";
 import { TerminalUnavailableError } from "../realtime/terminal-errors.js";
+import type { EphemeralRunEvent, EventSink, RunEvent } from "../realtime/run-event.js";
 import {
   PROTOCOL_REVISION,
   PROTOCOL_VERSION,
@@ -598,7 +599,7 @@ describe("a runner of another protocol revision than the server's", () => {
   async function connectRunnerOfRevision(revision: number, extra: Record<string, unknown> = {}) {
     rig = createRunnerRig({ runtimeOptions: { Beta: { terminal: true } } });
     const { server, runner } = createMemoryChannelPair();
-    const frames: { type: string; revision?: number }[] = [];
+    const frames: { type: string; revision?: number; instanceId?: string }[] = [];
     runner.onFrame((frame) => {
       frames.push(frame);
       if (frame.type === "agent.start") {
@@ -626,8 +627,53 @@ describe("a runner of another protocol revision than the server's", () => {
     await wiring.hub.send(runId, HUMAN, "Beta", "message", "oi");
     await eventually(() => expect(frames.some((frame) => frame.type === "agent.start")).toBe(true));
     await eventually(() => expect(wiring.terminals.activeGraph(runId)).toBeDefined());
-    return { wiring, runId, frames };
+    return { wiring, runId, frames, runner };
   }
+
+  /** What a viewer of the run is sent live. */
+  async function watch(wiring: ReturnType<typeof createHubWiring>, runId: string) {
+    const live: EphemeralRunEvent[] = [];
+    const sink: EventSink = {
+      send: (_event: RunEvent) => undefined,
+      sendEphemeral: (event) => void live.push(event),
+    };
+    await wiring.subscriptions.subscribe(sink, runId);
+    return live;
+  }
+
+  const deltaFrame = {
+    v: PROTOCOL_VERSION as 1,
+    type: "agent.delta" as const,
+    turnId: "t1",
+    channel: "message" as const,
+    delta: "Olá",
+  };
+
+  it("publishes the live text of a runner of revision 6 as AgentOutputDelta, never into the log", async () => {
+    const { wiring, runId, runner, frames } = await connectRunnerOfRevision(PROTOCOL_REVISION);
+    const live = await watch(wiring, runId);
+    const betaId = frames.find((frame) => frame.type === "agent.start")!.instanceId!;
+
+    runner.send({ ...deltaFrame, instanceId: betaId });
+
+    await eventually(() =>
+      expect(live).toMatchObject([
+        { type: "AgentOutputDelta", agent: "Beta", turnId: "t1", channel: "message", delta: "Olá" },
+      ]),
+    );
+    expect(rig.link?.connected).toBe(true);
+  });
+
+  it("works with a runner of revision 5, which never sends the live text", async () => {
+    const { wiring, runId, frames } = await connectRunnerOfRevision(5);
+    const live = await watch(wiring, runId);
+    await wiring.hub.send(runId, HUMAN, "Beta", "message", "outra");
+    await delay(50);
+
+    expect(live).toEqual([]);
+    expect(frames.some((frame) => frame.type === "agent.deliver")).toBe(true);
+    expect(rig.link?.connected).toBe(true);
+  });
 
   it("works with a runner of revision 4 (the one before this server): answers it with its own revision and sends the resize that revision knows", async () => {
     const { wiring, runId, frames } = await connectRunnerOfRevision(4);

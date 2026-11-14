@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   PROTOCOL_REVISION,
   PROTOCOL_VERSION,
+  REVISION_OUTPUT_STREAM,
   REVISION_TERMINAL_RESIZE,
   REVISION_TOOL_CALLS,
   revisionOf,
@@ -190,5 +191,33 @@ describe("memory channel pair", () => {
     expect(closed.sort()).toEqual(["runner", "server"]);
     expect(server.isOpen).toBe(false);
     expect(() => server.send({ v: PROTOCOL_VERSION, type: "heartbeat" })).not.toThrow();
+  });
+});
+
+describe("live text (revision 6)", () => {
+  const delta = {
+    v: PROTOCOL_VERSION,
+    type: "agent.delta",
+    instanceId: "i1",
+    turnId: "t1",
+    channel: "message",
+    delta: "Olá",
+  };
+
+  it("is a revision of its own, announced by both peers", () => {
+    expect(REVISION_OUTPUT_STREAM).toBe(6);
+    expect(PROTOCOL_REVISION).toBeGreaterThanOrEqual(REVISION_OUTPUT_STREAM);
+  });
+
+  it("travels from the runner to the server only", () => {
+    expect(decodeRunnerFrame(JSON.stringify(delta))).toEqual({ ok: true, frame: delta });
+    // A server of revision 5 reading it would refuse it: that is why the runner gates on the revision.
+    expect(decodeServerFrame(JSON.stringify(delta)).ok).toBe(false);
+  });
+
+  it("refuses an empty piece, an unknown channel and a piece too big", () => {
+    for (const bad of [{ delta: "" }, { channel: "terminal" }, { delta: "x".repeat(20_001) }]) {
+      expect(decodeRunnerFrame(JSON.stringify({ ...delta, ...bad })).ok).toBe(false);
+    }
   });
 });

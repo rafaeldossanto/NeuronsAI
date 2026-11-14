@@ -55,6 +55,13 @@ describe("buildClaudeArgs", () => {
     expect(args[args.indexOf("--permission-prompts") + 1]).toBe("none");
   });
 
+  it("asks only the stream-json session for the partial messages (the PTY has no such output)", () => {
+    expect(buildClaudeArgs({ ...base, mode: "stream-json" })).toContain(
+      "--include-partial-messages",
+    );
+    expect(buildClaudeArgs({ ...base, mode: "pty" })).not.toContain("--include-partial-messages");
+  });
+
   it("passes the model and other agent args after its own", () => {
     const args = buildClaudeArgs({ ...base, mode: "pty", userArgs: ["--model", "haiku"] });
     expect(args.slice(-2)).toEqual(["--model", "haiku"]);
