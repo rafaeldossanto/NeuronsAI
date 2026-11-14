@@ -1,7 +1,9 @@
 import type {
+  AgentDeltaChunk,
   AgentLive,
   AgentLiveStatus,
   LiveMessageKind,
+  LiveDraft,
   LivePulse,
   RunLiveEvent,
   RunLiveFinish,
@@ -23,6 +25,10 @@ export const TERMINAL_MAX_CHARS = 200_000;
 export const TERMINAL_TRIM_SLACK = 50_000;
 /** Most recent entries kept in `timeline`, `toolCalls` and `guardEvents`; the screen says when older ones were dropped. */
 export const MAX_ACTIVITY = 500;
+/** Characters kept of one draft (the latest ones); a model can write far more than a screen shows. */
+export const DRAFT_MAX_CHARS = 8_000;
+/** Message drafts kept per agent: one reply may write several messages (one per tool call). */
+export const MAX_MESSAGE_DRAFTS = 4;
 
 export const initialRunLiveState: RunLiveState = {
   status: "pending",
@@ -39,6 +45,7 @@ export const initialRunLiveState: RunLiveState = {
   trimmed: { timeline: 0, toolCalls: 0, guardEvents: 0 },
   terminals: {},
   terminalMeta: {},
+  drafts: {},
 };
 
 const STATUS_BY_REASON: Record<RunLiveFinish["reason"], RunLiveStatus> = {
@@ -54,6 +61,8 @@ const isTerminalChunk = (event: RunLiveEvent): event is TerminalChunk =>
   event.type === "TerminalOutput";
 const isTerminalSize = (event: RunLiveEvent): event is TerminalSize =>
   event.type === "TerminalResized";
+const isAgentDelta = (event: RunLiveEvent): event is AgentDeltaChunk =>
+  event.type === "AgentOutputDelta";
 /** `@human` and `@trigger` are senders, not agents. */
 const isAgentName = (name: string) => !name.startsWith("@");
 const isDead = (status: AgentLiveStatus) => status === "failed" || status === "finished";
@@ -66,9 +75,10 @@ const isDead = (status: AgentLiveStatus) => status === "failed" || status === "f
 export function reduceRunEvent(state: RunLiveState, event: RunLiveEvent): RunLiveState {
   if (isTerminalChunk(event)) return reduceTerminal(state, event);
   if (isTerminalSize(event)) return reduceTerminalSize(state, event);
+  if (isAgentDelta(event)) return reduceDelta(state, event);
   if (event.seq <= state.lastSeq) return state;
 
-  const next = { ...state, lastSeq: event.seq };
+  const next = withDraftsSettled({ ...state, lastSeq: event.seq }, event);
   const payload = asRecord(event.payload);
   switch (event.type) {
     case "RunStarted":
@@ -188,6 +198,90 @@ function agentStateChanged(
 function deduce(agent: AgentLive, status: AgentLiveStatus): Partial<AgentLive> {
   if (agent.stateSource === "event" || isDead(agent.status)) return {};
   return { status };
+}
+
+/**
+ * A piece of what an agent is writing. The free text keeps only its latest turn (a new turn
+ * replaces it); each message being written has its own draft. Ignored once the run is over.
+ */
+function reduceDelta(state: RunLiveState, chunk: AgentDeltaChunk): RunLiveState {
+  if (state.finish) return state;
+  const current = state.drafts[chunk.agent] ?? [];
+  const sameTurn = current.find((d) => d.turnId === chunk.turnId && d.channel === chunk.channel);
+  let drafts: LiveDraft[];
+  if (sameTurn) {
+    drafts = current.map((d) => (d === sameTurn ? grow(d, chunk.delta) : d));
+  } else {
+    const fresh = grow(
+      { turnId: chunk.turnId, channel: chunk.channel, body: "", cut: false },
+      chunk.delta,
+    );
+    drafts =
+      chunk.channel === "text"
+        ? [...current.filter((d) => d.channel !== "text"), fresh]
+        : [...current, fresh];
+    const messages = drafts.filter((d) => d.channel === "message");
+    if (messages.length > MAX_MESSAGE_DRAFTS) {
+      const dropped = new Set(messages.slice(0, messages.length - MAX_MESSAGE_DRAFTS));
+      drafts = drafts.filter((d) => !dropped.has(d));
+    }
+  }
+  return { ...state, drafts: { ...state.drafts, [chunk.agent]: drafts } };
+}
+
+function grow(draft: LiveDraft, delta: string): LiveDraft {
+  const joined = draft.body + delta;
+  return joined.length > DRAFT_MAX_CHARS
+    ? { ...draft, body: joined.slice(-DRAFT_MAX_CHARS), cut: true }
+    : { ...draft, body: joined };
+}
+
+/**
+ * The log catches up with what was being written: the message that was sent replaces the oldest
+ * draft of its sender, and an agent that is no longer working keeps no half-written message (the
+ * call may have failed, or the turn ended otherwise). The free text stays, as the agent's latest
+ * words, until the next turn or the end of the run.
+ */
+function withDraftsSettled(state: RunLiveState, event: RunLogEvent): RunLiveState {
+  if (Object.keys(state.drafts).length === 0) return state;
+  const payload = asRecord(event.payload);
+  switch (event.type) {
+    case "MessageSent": {
+      const from = text(payload["from"]) ?? event.agent;
+      return from ? dropDrafts(state, from, "oldest-message") : state;
+    }
+    case "AgentStateChanged":
+      return event.agent && payload["state"] !== "busy"
+        ? dropDrafts(state, event.agent, "messages")
+        : state;
+    case "AgentFailed":
+      return event.agent ? dropDrafts(state, event.agent, "all") : state;
+    case "RunFinished":
+      return { ...state, drafts: {} };
+    default:
+      return state;
+  }
+}
+
+function dropDrafts(
+  state: RunLiveState,
+  agent: string,
+  what: "oldest-message" | "messages" | "all",
+): RunLiveState {
+  const current = state.drafts[agent];
+  if (!current) return state;
+  const oldest = current.find((d) => d.channel === "message");
+  const kept =
+    what === "all"
+      ? []
+      : what === "messages"
+        ? current.filter((d) => d.channel !== "message")
+        : current.filter((d) => d !== oldest);
+  if (kept.length === current.length) return state;
+  const drafts = { ...state.drafts };
+  if (kept.length > 0) drafts[agent] = kept;
+  else delete drafts[agent];
+  return { ...state, drafts };
 }
 
 function reduceTerminal(state: RunLiveState, chunk: TerminalChunk): RunLiveState {

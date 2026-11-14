@@ -17,6 +17,7 @@ import {
   agentStatusLabel,
   connectionLabel,
   selectActivity,
+  selectDrafts,
   useRunLive,
   type ConnectionState,
   type LivePulse,
@@ -257,6 +258,12 @@ function RunScreen({
 
   const active = !replay && (status === "pending" || status === "running");
   const agents = useMemo(() => Object.values(state.agents), [state.agents]);
+  const writing = useMemo(
+    () => selectDrafts(state),
+    // `selectDrafts` only reads these two.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.drafts, state.agents],
+  );
   const timeline = useMemo(
     () => selectActivity(state),
     // `selectActivity` only reads these two lists.
@@ -403,6 +410,7 @@ function RunScreen({
         />
         <ActivityList
           items={timeline}
+          drafts={writing}
           empty={replay ? "Nenhuma mensagem até aqui" : "Nenhuma mensagem ainda"}
         />
       </section>

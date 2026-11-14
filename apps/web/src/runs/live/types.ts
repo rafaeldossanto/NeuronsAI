@@ -117,6 +117,24 @@ export interface RunLiveState {
    * reset, even the ones cut off the front of `terminals` by the size limit.
    */
   terminalMeta: Record<string, TerminalMeta>;
+  /**
+   * What each agent is writing right now, by agent name (live only, from `AgentOutputDelta`; never
+   * in the log). Bounded: see `DRAFT_MAX_CHARS` and `MAX_MESSAGE_DRAFTS`.
+   */
+  drafts: Record<string, LiveDraft[]>;
+}
+
+/**
+ * A text the model is still writing. `text` is its free text (it only reaches the screen);
+ * `message` is the body of a message to another agent. The message that is finally sent replaces
+ * the draft.
+ */
+export interface LiveDraft {
+  turnId: string;
+  channel: "text" | "message";
+  /** The latest characters (at most `DRAFT_MAX_CHARS`); `cut` says the start was dropped. */
+  body: string;
+  cut: boolean;
 }
 
 export interface TerminalMeta {
@@ -159,4 +177,13 @@ export interface TerminalSize {
   rows: number;
 }
 
-export type RunLiveEvent = RunLogEvent | TerminalChunk | TerminalSize;
+/** A piece of what an agent is writing, pushed over `/ws` (`run.ephemeral`): never stored, no `seq`. */
+export interface AgentDeltaChunk {
+  type: "AgentOutputDelta";
+  agent: string;
+  turnId: string;
+  channel: "text" | "message";
+  delta: string;
+}
+
+export type RunLiveEvent = RunLogEvent | TerminalChunk | TerminalSize | AgentDeltaChunk;

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/shared/ui/button";
 import { formatUsd } from "@/shared/format";
 import { ActivityList } from "./activity-list";
-import { selectActivity } from "./activity";
+import { selectActivity, selectDrafts } from "./activity";
 import { agentStatusLabel } from "./labels";
 import type { TerminalInputError } from "./terminal-errors";
 import { TerminalView } from "./terminal-view";
@@ -49,11 +49,13 @@ export function AgentPanel({
   const hasTerminal = node?.runtime.kind === "terminal" && node.runtime.mode === "pty";
   const streamJson = node?.runtime.kind === "terminal" && node.runtime.mode === "stream-json";
   const [notSent, setNotSent] = useState(false);
-  const { timeline, toolCalls } = state;
+  const { timeline, toolCalls, drafts, agents } = state;
   const conversation = useMemo(
     () => selectActivity({ timeline, toolCalls }, name),
     [timeline, toolCalls, name],
   );
+
+  const writing = useMemo(() => selectDrafts({ drafts, agents }, name), [drafts, agents, name]);
 
   const send = (data: string) => {
     onClearInputError();
@@ -130,7 +132,11 @@ export function AgentPanel({
 
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-bold">Conversa</h3>
-        <ActivityList items={conversation} empty="Este agente ainda não trocou mensagens." />
+        <ActivityList
+          items={conversation}
+          drafts={writing}
+          empty="Este agente ainda não trocou mensagens."
+        />
       </div>
     </section>
   );
