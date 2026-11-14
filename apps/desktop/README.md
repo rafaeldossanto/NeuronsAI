@@ -77,7 +77,7 @@ O app empacotado usa `asar: true`: o código e as dependências ficam em `app.as
 
 ## Instaladores e release
 
-`electron-builder.yml` define os alvos: **NSIS** (Windows), **dmg + zip** (macOS, arm64 e x64; o zip é de onde o macOS atualiza) e **AppImage + deb** (Linux). Nada é assinado (T23). Instaladores locais: `pnpm --filter @neurons/desktop dist` (mesmo aviso do node-gyp no Windows: acrescente `--config.npmRebuild=false`, chamando `pnpm exec electron-builder --win nsis --publish never --config.npmRebuild=false`).
+`electron-builder.yml` define os alvos: **NSIS** (Windows), **dmg + zip** (macOS, arm64 e x64; o zip é de onde o macOS atualiza) e **AppImage + deb** (Linux; os dois saem como `NeuronsAI-X.Y.Z-linux-x64.*`, o nome que a release e o site esperam, sem renomear à mão). Nada é assinado (T23). Instaladores locais: `pnpm --filter @neurons/desktop dist` (mesmo aviso do node-gyp no Windows: acrescente `--config.npmRebuild=false`, chamando `pnpm exec electron-builder --win nsis --publish never --config.npmRebuild=false`).
 
 O workflow [`release.yml`](../../.github/workflows/release.yml):
 
