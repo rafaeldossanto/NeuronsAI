@@ -31,6 +31,7 @@ Dois pontos de entrada:
 - **`ClaudeStreamJsonRuntime`.** `claude -p --input-format stream-json --output-format stream-json`, uma sessão persistente. A mensagem é
   uma linha JSON no stdin; o evento `result` é o fim do turno e traz uso e custo, repassados por `communication.reportUsage` (o servidor
   grava `UsageRecorded`) antes de o agente voltar a `idle`. Sem tela; sem permissões interativas (`--permission-prompts none`).
+  - _Texto ao vivo:_ roda com `--include-partial-messages`; os eventos `stream_event` (eventos brutos da API: `content_block_delta` com `text_delta` e `input_json_delta`) viram `onOutputDelta` (`StreamingAgentRuntime`): o texto livre no canal `text` e o campo `text`/`question` das chamadas `send_message`/`reply`/`ask` no canal `message` (`JsonStringFieldStream` lê o JSON parcial). Agrupado a cada ~50 ms (`OutputBatcher`), só ao vivo, nunca no log. O parser é tolerante: evento que não reconhece é ignorado. Formato conferido na documentação da CLI; falta confirmar numa rodada real.
 
 **O custo é por turno (T24).** O `total_cost_usd` de cada `result` do stream-json é o custo da _sessão inteira até ali_, não do turno (medido com o Claude Code 2.1.309: totais de 0,00099, 0,00155 e 0,00200 em três turnos, o do meio com 4 tokens de saída; `modelUsage` também soma os turnos, só `usage` é por turno). O runtime guarda o total anterior e reporta a diferença (`costOfTurn`), então o `UsageRecorded` de cada turno traz o custo daquele turno e a soma dos turnos fecha com o total.
 
