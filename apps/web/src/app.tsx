@@ -1,20 +1,26 @@
 import type { ApiClient } from "@neurons/api-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Link, Navigate, Route, Routes } from "react-router";
 import { Button } from "@/shared/ui/button";
 import { Layout } from "@/shell/layout";
 import { WorkspaceProvider } from "@/workspace/resources";
 import { NewProjectPage } from "@/graphs/new-project-page";
-import { EmptyState } from "@/shared/states";
+import { EmptyState, LoadingRows } from "@/shared/states";
 import { ApiProvider } from "@/shared/api";
-import { GraphEditorPage } from "@/graphs/graph-editor-page";
 import { GraphsPage } from "@/graphs/graphs-page";
-import { RunDetailPage } from "@/runs/run-detail-page";
 import { RunsPage } from "@/runs/runs-page";
 import { OrganizationsPage } from "@/accounts/organizations-page";
 import { RunnersPage } from "@/runners/runners-page";
 import { SettingsPage } from "@/settings/settings-page";
+
+// Heavy routes load on demand: the graph editor (React Flow, roughjs) and the run detail (xterm).
+const GraphEditorPage = lazy(() =>
+  import("@/graphs/graph-editor-page").then((m) => ({ default: m.GraphEditorPage })),
+);
+const RunDetailPage = lazy(() =>
+  import("@/runs/run-detail-page").then((m) => ({ default: m.RunDetailPage })),
+);
 
 export function createQueryClient() {
   return new QueryClient({
@@ -34,9 +40,23 @@ export function App({ api, queryClient }: { api: ApiClient; queryClient?: QueryC
               <Route index element={<Navigate to="/graphs" replace />} />
               <Route path="new" element={<NewProjectPage />} />
               <Route path="graphs" element={<GraphsPage />} />
-              <Route path="graphs/:id" element={<GraphEditorPage />} />
+              <Route
+                path="graphs/:id"
+                element={
+                  <Suspense fallback={<LoadingRows label="Carregando projeto" rows={4} />}>
+                    <GraphEditorPage />
+                  </Suspense>
+                }
+              />
               <Route path="runs" element={<RunsPage />} />
-              <Route path="runs/:id" element={<RunDetailPage />} />
+              <Route
+                path="runs/:id"
+                element={
+                  <Suspense fallback={<LoadingRows label="Carregando execução" rows={4} />}>
+                    <RunDetailPage />
+                  </Suspense>
+                }
+              />
               <Route path="organizations" element={<OrganizationsPage />} />
               <Route path="runners" element={<RunnersPage />} />
               <Route path="settings" element={<SettingsPage />} />

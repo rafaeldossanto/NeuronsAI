@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/two-terminals-demo.json";
 import { selectActivity } from "./activity";
-import { initialRunLiveState, reduceRunEvent } from "./reduce-run-event";
+import {
+  initialRunLiveState,
+  MAX_ACTIVITY,
+  reduceRunEvent,
+  TERMINAL_MAX_CHARS,
+  TERMINAL_TRIM_SLACK,
+} from "./reduce-run-event";
 import type { RunLiveState, RunLogEvent } from "./types";
 
 const events = fixture.events as RunLogEvent[];
@@ -310,5 +316,42 @@ describe("linha do tempo única e terminal", () => {
     });
     expect(result.terminalMeta["A"]).toEqual({ resets: 0, total: 0, cols: 90, rows: 30 });
     expect(result.terminals["A"]).toBeUndefined();
+  });
+
+  it("guarda só as últimas entradas de mensagens, ferramentas e guardas, e conta as descartadas", () => {
+    const total = MAX_ACTIVITY + 7;
+    const list: RunLogEvent[] = [];
+    for (let i = 1; i <= total; i++) {
+      list.push(
+        event(3 * i - 2, "MessageSent", "A", {
+          from: "A",
+          to: "B",
+          kind: "message",
+          body: `m${i}`,
+        }),
+      );
+      list.push(event(3 * i - 1, "ToolCalled", "A", { tool: "Read", ok: true }));
+      list.push(event(3 * i, "GuardWarning", "A", { guard: "g", message: `w${i}` }));
+    }
+    const state = fold(list);
+    expect(state.timeline).toHaveLength(MAX_ACTIVITY);
+    expect(state.toolCalls).toHaveLength(MAX_ACTIVITY);
+    expect(state.guardEvents).toHaveLength(MAX_ACTIVITY);
+    expect(state.trimmed).toEqual({ timeline: 7, toolCalls: 7, guardEvents: 7 });
+    expect(state.timeline[0]?.preview).toBe("m8");
+    expect(state.timeline.at(-1)?.preview).toBe(`m${total}`);
+  });
+
+  it("só corta a saída do terminal quando passa do limite com folga, e corta até o limite", () => {
+    const chunk = (data: string) =>
+      ({ type: "TerminalOutput", agent: "A", data, replay: false }) as const;
+    let state = reduceRunEvent(initialRunLiveState, chunk("x".repeat(TERMINAL_MAX_CHARS)));
+    state = reduceRunEvent(state, chunk("y".repeat(10)));
+    // Over the limit but inside the slack: nothing is cut yet.
+    expect(state.terminals["A"]).toHaveLength(TERMINAL_MAX_CHARS + 10);
+    state = reduceRunEvent(state, chunk("z".repeat(TERMINAL_TRIM_SLACK)));
+    expect(state.terminals["A"]).toHaveLength(TERMINAL_MAX_CHARS);
+    expect(state.terminals["A"]?.endsWith("z")).toBe(true);
+    expect(state.terminalMeta["A"]?.total).toBe(TERMINAL_MAX_CHARS + 10 + TERMINAL_TRIM_SLACK);
   });
 });

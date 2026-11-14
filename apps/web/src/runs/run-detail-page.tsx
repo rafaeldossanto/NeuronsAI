@@ -11,6 +11,7 @@ import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { Skeleton } from "@/shared/ui/skeleton";
 import { formatDateTime, formatUsd } from "@/shared/format";
 import {
   agentStatusLabel,
@@ -255,8 +256,13 @@ function RunScreen({
   );
 
   const active = !replay && (status === "pending" || status === "running");
-  const agents = Object.values(state.agents);
-  const timeline = selectActivity(state);
+  const agents = useMemo(() => Object.values(state.agents), [state.agents]);
+  const timeline = useMemo(
+    () => selectActivity(state),
+    // `selectActivity` only reads these two lists.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.timeline, state.toolCalls],
+  );
   const selectedNode = doc?.nodes.filter(isAgent).find((n) => n.id === selectedId);
 
   return (
@@ -294,12 +300,16 @@ function RunScreen({
               selectedId={selectedId}
               onSelect={setSelectedId}
             />
-          ) : (
+          ) : graph.isError ? (
             <p className="p-6 text-sm text-muted-foreground">
-              {graph.isError
-                ? "Não foi possível carregar o desenho desta execução."
-                : "Carregando o desenho…"}
+              Não foi possível carregar o desenho desta execução.
             </p>
+          ) : (
+            <Skeleton
+              role="status"
+              aria-label="Carregando o desenho"
+              className="h-full w-full rounded-none"
+            />
           )}
         </div>
         {selectedNode && (
@@ -370,6 +380,7 @@ function RunScreen({
       {state.guardEvents.length > 0 && (
         <section aria-label="Guardas">
           <h2 className="mb-3 text-lg font-bold">Guardas</h2>
+          <TrimmedNote shown={state.guardEvents.length} dropped={state.trimmed.guardEvents} />
           <ul className="flex flex-col gap-2">
             {state.guardEvents.map((g) => (
               <li
@@ -386,12 +397,27 @@ function RunScreen({
 
       <section aria-label="Linha do tempo">
         <h2 className="mb-3 text-lg font-bold">Linha do tempo</h2>
+        <TrimmedNote
+          shown={timeline.length}
+          dropped={state.trimmed.timeline + state.trimmed.toolCalls}
+        />
         <ActivityList
           items={timeline}
           empty={replay ? "Nenhuma mensagem até aqui" : "Nenhuma mensagem ainda"}
         />
       </section>
     </div>
+  );
+}
+
+/** Memory is bounded: when older entries were dropped, say that the list shows only the latest ones. */
+function TrimmedNote({ shown, dropped }: { shown: number; dropped: number }) {
+  if (dropped === 0) return null;
+  return (
+    <p role="note" className="mb-2 text-xs text-muted-foreground">
+      Mostrando só os registros mais recentes ({shown}); {dropped} mais antigos foram descartados da
+      tela. O histórico completo continua salvo no replay.
+    </p>
   );
 }
 

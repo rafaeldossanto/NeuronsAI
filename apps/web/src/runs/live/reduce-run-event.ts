@@ -16,6 +16,13 @@ export const PREVIEW_MAX = 200;
 export const MAX_PULSES = 20;
 /** Terminal output kept per agent (characters). The xterm.js panel has its own scrollback. */
 export const TERMINAL_MAX_CHARS = 200_000;
+/**
+ * The output is only cut once it passes the limit by this much, down to the limit: a chatty agent then
+ * pays for one slice every `TERMINAL_TRIM_SLACK` characters instead of one per chunk.
+ */
+export const TERMINAL_TRIM_SLACK = 50_000;
+/** Most recent entries kept in `timeline`, `toolCalls` and `guardEvents`; the screen says when older ones were dropped. */
+export const MAX_ACTIVITY = 500;
 
 export const initialRunLiveState: RunLiveState = {
   status: "pending",
@@ -29,6 +36,7 @@ export const initialRunLiveState: RunLiveState = {
   totals: { costUsd: 0, turns: 0, unknownCostTurns: 0 },
   guardEvents: [],
   toolCalls: [],
+  trimmed: { timeline: 0, toolCalls: 0, guardEvents: 0 },
   terminals: {},
   terminalMeta: {},
 };
@@ -98,42 +106,48 @@ export function reduceRunEvent(state: RunLiveState, event: RunLiveEvent): RunLiv
       } catch {
         // Older runners can report a plain-text summary instead of JSON.
       }
+      const [toolCalls, dropped] = appendCapped(next.toolCalls, {
+        seq: event.seq,
+        agent: event.agent,
+        tool: text(payload["tool"]) ?? "Ferramenta",
+        path: text(summary["path"]),
+        ok: payload["ok"] === true,
+        durationMs: typeof payload["durationMs"] === "number" ? payload["durationMs"] : null,
+        errorCode: text(payload["errorCode"]),
+        at: event.at,
+      });
       return {
         ...next,
-        toolCalls: [
-          ...next.toolCalls,
-          {
-            seq: event.seq,
-            agent: event.agent,
-            tool: text(payload["tool"]) ?? "Ferramenta",
-            path: text(summary["path"]),
-            ok: payload["ok"] === true,
-            durationMs: typeof payload["durationMs"] === "number" ? payload["durationMs"] : null,
-            errorCode: text(payload["errorCode"]),
-            at: event.at,
-          },
-        ],
+        toolCalls,
+        trimmed: { ...next.trimmed, toolCalls: next.trimmed.toolCalls + dropped },
       };
     }
     case "GuardTripped":
-    case "GuardWarning":
+    case "GuardWarning": {
+      const [guardEvents, dropped] = appendCapped(next.guardEvents, {
+        seq: event.seq,
+        type: event.type,
+        guard: text(payload["guard"]) ?? "?",
+        agent: event.agent,
+        message: text(payload["reason"]) ?? text(payload["message"]) ?? "",
+        at: event.at,
+      });
       return {
         ...next,
-        guardEvents: [
-          ...next.guardEvents,
-          {
-            seq: event.seq,
-            type: event.type,
-            guard: text(payload["guard"]) ?? "?",
-            agent: event.agent,
-            message: text(payload["reason"]) ?? text(payload["message"]) ?? "",
-            at: event.at,
-          },
-        ],
+        guardEvents,
+        trimmed: { ...next.trimmed, guardEvents: next.trimmed.guardEvents + dropped },
       };
+    }
     default:
       return next;
   }
+}
+
+/** Appends keeping the last `MAX_ACTIVITY` entries; also says how many old ones fell off. */
+function appendCapped<T>(list: readonly T[], item: T): [T[], number] {
+  const grown = [...list, item];
+  const dropped = Math.max(0, grown.length - MAX_ACTIVITY);
+  return [dropped > 0 ? grown.slice(dropped) : grown, dropped];
 }
 
 const AGENT_STATES: readonly string[] = [
@@ -179,7 +193,10 @@ function deduce(agent: AgentLive, status: AgentLiveStatus): Partial<AgentLive> {
 function reduceTerminal(state: RunLiveState, chunk: TerminalChunk): RunLiveState {
   const previous = chunk.replay ? "" : (state.terminals[chunk.agent] ?? "");
   const joined = previous + chunk.data;
-  const kept = joined.length > TERMINAL_MAX_CHARS ? joined.slice(-TERMINAL_MAX_CHARS) : joined;
+  const kept =
+    joined.length > TERMINAL_MAX_CHARS + TERMINAL_TRIM_SLACK
+      ? joined.slice(-TERMINAL_MAX_CHARS)
+      : joined;
   const meta = state.terminalMeta[chunk.agent] ?? { resets: 0, total: 0 };
   return {
     ...state,
@@ -260,22 +277,21 @@ function messageSent(
   if (isAgentName(to)) next = setAgent(next, to, event.seq, () => ({}));
 
   const pulse: LivePulse = { from, to, kind: messageKind, seq: event.seq };
+  const [timeline, dropped] = appendCapped(next.timeline, {
+    seq: event.seq,
+    messageId: text(payload["messageId"]) ?? `seq-${event.seq}`,
+    from,
+    to,
+    kind: messageKind,
+    replyTo: text(payload["replyTo"]),
+    preview: preview(text(payload["body"]) ?? ""),
+    delivered: false,
+    at: event.at,
+  });
   return {
     ...next,
-    timeline: [
-      ...next.timeline,
-      {
-        seq: event.seq,
-        messageId: text(payload["messageId"]) ?? `seq-${event.seq}`,
-        from,
-        to,
-        kind: messageKind,
-        replyTo: text(payload["replyTo"]),
-        preview: preview(text(payload["body"]) ?? ""),
-        delivered: false,
-        at: event.at,
-      },
-    ],
+    timeline,
+    trimmed: { ...next.trimmed, timeline: next.trimmed.timeline + dropped },
     pulses: [...next.pulses, pulse].slice(-MAX_PULSES),
   };
 }

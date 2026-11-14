@@ -1,5 +1,4 @@
 /* global window, document, location, ResizeObserver, IntersectionObserver, devicePixelRatio, innerWidth, requestAnimationFrame, setTimeout, URLSearchParams, MouseEvent */
-import particleData from "./particle-data.json";
 
 (function () {
   "use strict";
@@ -132,9 +131,6 @@ import particleData from "./particle-data.json";
       drift: 1.1 + random() * 2.2,
     };
   }
-  var heroPoints = particleData.hero.map(function (p) {
-    return makePoint(p[0], p[1], !!p[2], prepared);
-  });
   var branchVertices = [
     [
       [25, 278],
@@ -169,9 +165,26 @@ import particleData from "./particle-data.json";
     ],
   ];
   var branchNetwork = branchVertices.map(preparePath);
-  var branchPoints = particleData.branch.map(function (p) {
-    return makePoint(p[0], p[1], !!p[2], branchNetwork);
-  });
+  // The point data is ~180 KB: it is its own chunk, fetched after the page is up instead of being part
+  // of the first script. Both sets are built together, in the original order, so the seeded random
+  // numbers (and so the look of the field) stay exactly the same.
+  var pointsPromise = null;
+  function loadPoints() {
+    pointsPromise =
+      pointsPromise ||
+      import("./particle-data.json").then(function (module) {
+        var data = module.default;
+        return {
+          hero: data.hero.map(function (p) {
+            return makePoint(p[0], p[1], !!p[2], prepared);
+          }),
+          branch: data.branch.map(function (p) {
+            return makePoint(p[0], p[1], !!p[2], branchNetwork);
+          }),
+        };
+      });
+    return pointsPromise;
+  }
   var fields = [];
   function ParticleField(canvas, points, network, kind) {
     this.canvas = canvas;
@@ -354,17 +367,40 @@ import particleData from "./particle-data.json";
     lastFrame = 0;
     if (!document.hidden) requestFrame();
   });
-  fields.push(
-    new ParticleField(document.getElementById("hero-particles"), heroPoints, prepared, "hero"),
-  );
-  fields.push(
-    new ParticleField(
-      document.getElementById("branch-particles"),
-      branchPoints,
-      branchNetwork,
-      "branch",
-    ),
-  );
+  // A field is built (and its data fetched) when its canvas is about to appear.
+  function whenNearViewport(id, build) {
+    var canvas = document.getElementById(id);
+    var done = new Promise(function (resolve) {
+      var observer = new IntersectionObserver(
+        function (entries) {
+          if (
+            !entries.some(function (entry) {
+              return entry.isIntersecting;
+            })
+          )
+            return;
+          observer.disconnect();
+          loadPoints().then(function (points) {
+            var field = build(canvas, points);
+            fields.push(field);
+            field.resize();
+            if (document.body.classList.contains("ready")) field.draw(still ? 0 : 2);
+            requestFrame();
+            resolve(field);
+          });
+        },
+        { rootMargin: "600px", threshold: 0 },
+      );
+      observer.observe(canvas);
+    });
+    return done;
+  }
+  var heroReady = whenNearViewport("hero-particles", function (canvas, points) {
+    return new ParticleField(canvas, points.hero, prepared, "hero");
+  });
+  whenNearViewport("branch-particles", function (canvas, points) {
+    return new ParticleField(canvas, points.branch, branchNetwork, "branch");
+  });
   var revealObserver = new IntersectionObserver(
     function (entries) {
       entries.forEach(function (entry) {
@@ -661,13 +697,15 @@ import particleData from "./particle-data.json";
     openDialog("code-dialog");
   });
   selectAgent("dev");
-  window.__previewReady = document.fonts.ready.then(function () {
-    document.body.classList.add("ready");
-    fields.forEach(function (field) {
-      field.resize();
-      field.draw(still ? 0 : 2);
-    });
-    requestFrame();
-    return { heroPoints: heroPoints.length, branchPoints: branchPoints.length };
-  });
+  window.__previewReady = Promise.all([document.fonts.ready, heroReady, loadPoints()]).then(
+    function (results) {
+      document.body.classList.add("ready");
+      fields.forEach(function (field) {
+        field.resize();
+        field.draw(still ? 0 : 2);
+      });
+      requestFrame();
+      return { heroPoints: results[2].hero.length, branchPoints: results[2].branch.length };
+    },
+  );
 })();

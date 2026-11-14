@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { ApiClient } from "@neurons/api-client";
 import { Button } from "@/shared/ui/button";
@@ -133,25 +133,32 @@ export function SessionGate({
     };
   }, [check, attempt]);
 
-  async function switchOrganization(organizationId: string) {
-    changingScope.current = true;
-    checkVersion.current++;
-    flushSync(() => setStatus("checking"));
-    await invalidateWorkspaceRequests();
-    try {
-      await expectNoContent(api.POST("/auth/organization", { body: { organizationId } }));
-      setError("");
-      channel.current?.postMessage("changed");
-      await check();
-    } catch (failure) {
-      setError(
-        failure instanceof Error ? failure.message : "Não foi possível mudar de organização.",
-      );
-      setStatus("failed");
-    } finally {
-      changingScope.current = false;
-    }
-  }
+  const switchOrganization = useCallback(
+    async (organizationId: string) => {
+      changingScope.current = true;
+      checkVersion.current++;
+      flushSync(() => setStatus("checking"));
+      await invalidateWorkspaceRequests();
+      try {
+        await expectNoContent(api.POST("/auth/organization", { body: { organizationId } }));
+        setError("");
+        channel.current?.postMessage("changed");
+        await check();
+      } catch (failure) {
+        setError(
+          failure instanceof Error ? failure.message : "Não foi possível mudar de organização.",
+        );
+        setStatus("failed");
+      } finally {
+        changingScope.current = false;
+      }
+    },
+    [api, check],
+  );
+  const sessionValue = useMemo(
+    () => (account ? { account, reload: check, switchOrganization } : null),
+    [account, check, switchOrganization],
+  );
 
   async function signIn() {
     setBusy(true);
@@ -190,9 +197,11 @@ export function SessionGate({
     }
   }
   if (status === "local") return children;
-  if (status === "authenticated" && account)
+  // `switchOrganization` touches refs only when called (from an event), never while rendering.
+  // eslint-disable-next-line react-hooks/refs
+  if (status === "authenticated" && account && sessionValue)
     return (
-      <SessionContext.Provider value={{ account, reload: check, switchOrganization }}>
+      <SessionContext.Provider value={sessionValue}>
         <div className="flex items-center justify-end gap-4 bg-muted px-6 py-2">
           {error && (
             <p role="alert" className="body-6 text-destructive">

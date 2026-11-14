@@ -15,7 +15,7 @@ interface Model {
 
 type Action =
   | { type: "reset" }
-  | { type: "event"; event: RunLiveEvent }
+  | { type: "events"; events: readonly RunLiveEvent[] }
   | { type: "connection"; connection: ConnectionState }
   | { type: "error"; error: string | null }
   | { type: "inputError"; inputError: TerminalInputError | null };
@@ -31,8 +31,10 @@ function reducer(model: Model, action: Action): Model {
   switch (action.type) {
     case "reset":
       return initialModel;
-    case "event":
-      return { ...model, state: reduceRunEvent(model.state, action.event) };
+    case "events": {
+      const state = action.events.reduce(reduceRunEvent, model.state);
+      return state === model.state ? model : { ...model, state };
+    }
     case "connection":
       return { ...model, connection: action.connection };
     case "error":
@@ -64,6 +66,17 @@ export function useRunLive(runId: string): {
   useEffect(() => {
     dispatch({ type: "reset" });
     if (!runId) return;
+    // The socket can deliver many messages per frame (terminal output above all): collect them and
+    // dispatch one batch per animation frame, so React renders once instead of once per message.
+    let queue: RunLiveEvent[] = [];
+    let frame: number | null = null;
+    const flush = () => {
+      frame = null;
+      if (queue.length === 0) return;
+      const events = queue;
+      queue = [];
+      dispatch({ type: "events", events });
+    };
     const client = new RunLiveClient({
       runId,
       url: defaultSocketUrl(window.location),
@@ -71,7 +84,10 @@ export function useRunLive(runId: string): {
       renewSession: async () => {
         await api.GET("/auth/session");
       },
-      onEvent: (event) => dispatch({ type: "event", event }),
+      onEvent: (event) => {
+        queue.push(event);
+        frame ??= requestAnimationFrame(flush);
+      },
       onConnection: (connection) => dispatch({ type: "connection", connection }),
       onError: (error, code) => {
         const refused = terminalInputError(code);
@@ -84,6 +100,8 @@ export function useRunLive(runId: string): {
     return () => {
       clientRef.current = null;
       client.close();
+      if (frame !== null) cancelAnimationFrame(frame);
+      queue = [];
     };
   }, [runId, api]);
 

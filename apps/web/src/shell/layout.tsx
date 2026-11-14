@@ -19,7 +19,7 @@ export function Layout() {
   const api = useApi();
   const organizations = useQuery({
     queryKey: ["organizations"],
-    queryFn: () => unwrap(api.GET("/auth/organizations")),
+    queryFn: ({ signal }) => unwrap(api.GET("/auth/organizations", { signal })),
     enabled: !!account,
   });
   const organization = organizations.data?.items.find(

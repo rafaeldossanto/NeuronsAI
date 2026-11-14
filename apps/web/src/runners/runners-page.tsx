@@ -20,7 +20,7 @@ function Runners({ account }: { account: AccountSession }) {
   const client = useQueryClient();
   const runners = useQuery({
     queryKey: ["runners", account.organizationId],
-    queryFn: () => unwrap(api.GET("/runners")),
+    queryFn: ({ signal }) => unwrap(api.GET("/runners", { signal })),
     refetchInterval: 5_000,
   });
   const [creating, setCreating] = useState(false);
