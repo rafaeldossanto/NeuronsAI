@@ -107,6 +107,8 @@ export interface RunLiveState {
   totals: RunLiveTotals;
   guardEvents: LiveGuardEvent[];
   toolCalls: LiveToolCall[];
+  /** How many of the oldest entries were dropped from each list to keep memory bounded (`MAX_ACTIVITY`). */
+  trimmed: { timeline: number; toolCalls: number; guardEvents: number };
   /** Raw terminal output by agent (escape sequences included), for the xterm.js panel. */
   terminals: Record<string, string>;
   /**

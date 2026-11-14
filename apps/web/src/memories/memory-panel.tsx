@@ -21,11 +21,15 @@ export function AddMemoryPanel({
   const [vaultPath, setVaultPath] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [pending, setPending] = useState(false);
+  // A ref, not the state: two clicks in the same tick both see `pending` as false.
+  const busy = useRef(false);
   const [error, setError] = useState("");
   const folder = useRef<HTMLInputElement>(null);
   const zip = useRef<HTMLInputElement>(null);
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (busy.current) return;
+    busy.current = true;
     setPending(true);
     setError("");
     try {
@@ -51,6 +55,7 @@ export function AddMemoryPanel({
         failure instanceof Error ? failure.message : "Não foi possível adicionar a memória.",
       );
     } finally {
+      busy.current = false;
       setPending(false);
     }
   }

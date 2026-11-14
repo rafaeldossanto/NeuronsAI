@@ -9,7 +9,7 @@ export function useRunList(query: ReturnType<typeof toApiQuery>) {
   const api = useApi();
   return useQuery({
     queryKey: ["runs", "list", query],
-    queryFn: () => unwrap(api.GET("/runs", { params: { query } })),
+    queryFn: ({ signal }) => unwrap(api.GET("/runs", { params: { query }, signal })),
     placeholderData: keepPreviousData,
     refetchInterval: (state) =>
       state.state.data?.items.some((run) => LIVE_STATUSES.has(run.status)) ? 3000 : false,
@@ -21,8 +21,8 @@ export function useVersionsOf(graphId: string | undefined) {
   const api = useApi();
   return useQuery({
     queryKey: ["graphs", graphId, "versions"],
-    queryFn: () =>
-      unwrap(api.GET("/graphs/{id}/versions", { params: { path: { id: graphId! } } })).then(
+    queryFn: ({ signal }) =>
+      unwrap(api.GET("/graphs/{id}/versions", { params: { path: { id: graphId! } }, signal })).then(
         (r) => r.items,
       ),
     enabled: graphId !== undefined,

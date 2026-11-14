@@ -1,6 +1,6 @@
 import type { GraphNode } from "@neurons/graph-schema";
 import { X } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/shared/ui/button";
 import { formatUsd } from "@/shared/format";
 import { ActivityList } from "./activity-list";
@@ -49,6 +49,11 @@ export function AgentPanel({
   const hasTerminal = node?.runtime.kind === "terminal" && node.runtime.mode === "pty";
   const streamJson = node?.runtime.kind === "terminal" && node.runtime.mode === "stream-json";
   const [notSent, setNotSent] = useState(false);
+  const { timeline, toolCalls } = state;
+  const conversation = useMemo(
+    () => selectActivity({ timeline, toolCalls }, name),
+    [timeline, toolCalls, name],
+  );
 
   const send = (data: string) => {
     onClearInputError();
@@ -125,10 +130,7 @@ export function AgentPanel({
 
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-bold">Conversa</h3>
-        <ActivityList
-          items={selectActivity(state, name)}
-          empty="Este agente ainda não trocou mensagens."
-        />
+        <ActivityList items={conversation} empty="Este agente ainda não trocou mensagens." />
       </div>
     </section>
   );

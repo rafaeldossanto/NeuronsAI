@@ -44,6 +44,13 @@ export function RunsPage() {
       <RunsFilterBar filters={filters} onChange={change} />
 
       {runs.isPending && <LoadingRows label="Carregando execuções" />}
+      {/* keepPreviousData keeps the old page on screen while the next loads: say so (isFetching alone
+          would also flash on the background refresh of live runs). */}
+      {runs.isPlaceholderData && runs.isFetching && (
+        <p role="status" className="text-xs text-muted-foreground">
+          Carregando a página…
+        </p>
+      )}
       {runs.isError && <ErrorState error={runs.error} onRetry={() => void runs.refetch()} />}
       {runs.isSuccess && total === 0 && !hasActiveFilters(filters) && (
         <EmptyState
@@ -64,7 +71,12 @@ export function RunsPage() {
       )}
       {runs.isSuccess && runs.data.items.length > 0 && (
         <>
-          <RunsTable runs={runs.data.items} />
+          <div
+            aria-busy={runs.isPlaceholderData}
+            className={runs.isPlaceholderData ? "opacity-60 transition-opacity" : undefined}
+          >
+            <RunsTable runs={runs.data.items} />
+          </div>
           <nav aria-label="Paginação" className="flex items-center justify-between gap-4 text-sm">
             <p className="text-muted-foreground">
               {total === 1 ? "1 execução" : `${total} execuções`} · página {filters.page} de {pages}
