@@ -3,6 +3,7 @@ import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module.js";
 import type { AppConfig } from "./shared/config/app-config.js";
 import { configureApp } from "./configure-app.js";
+import { registerSlowRequestLog } from "./slow-request-log.js";
 import { registerUiRoutes, rewriteForUi, type UiOptions } from "./ui/serve-ui.js";
 
 export interface CreateAppOptions {
@@ -23,6 +24,7 @@ export async function createApp(
     bodyLimit: 30 * 1024 * 1024,
     ...(options.ui ? { rewriteUrl: (req: { url?: string }) => rewriteForUi(req.url ?? "/") } : {}),
   });
+  registerSlowRequestLog(adapter.getInstance());
   adapter.getInstance().addHook("onRoute", (route) => {
     route.bodyLimit =
       route.method === "POST" && route.url === "/memories" ? 30 * 1024 * 1024 : 1024 * 1024;
