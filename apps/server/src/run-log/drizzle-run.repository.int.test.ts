@@ -106,6 +106,31 @@ describe("DrizzleRunRepository.list", () => {
     expect(of("b1")).toMatchObject({ graphName: "Grafo B", graphVersion: 1 });
   });
 
+  it("gives the same cost on a page as on the whole list, with and without the cost deciding", async () => {
+    const whole = (await repository.list({ limit: 50 })).items;
+    const page = await repository.list({ limit: 2, offset: 1 });
+    expect(page.total).toBe(6);
+    expect(page.items.map((item) => item.id)).toEqual(whole.slice(1, 3).map((item) => item.id));
+    for (const item of page.items) {
+      const same = whole.find((other) => other.id === item.id)!;
+      expect([item.costUsd, item.turns, item.unknownCostTurns]).toEqual([
+        same.costUsd,
+        same.turns,
+        same.unknownCostTurns,
+      ]);
+    }
+    // Ordering by cost takes the other path (the totals join the whole list): same numbers.
+    const byCost = await repository.list({ limit: 50, sort: "costUsd" });
+    for (const item of byCost.items) {
+      const same = whole.find((other) => other.id === item.id)!;
+      expect([item.costUsd, item.turns, item.unknownCostTurns]).toEqual([
+        same.costUsd,
+        same.turns,
+        same.unknownCostTurns,
+      ]);
+    }
+  });
+
   it("filters by status, graph and version", async () => {
     expect((await keys({ status: "succeeded" })).keys).toEqual(["a3", "a1"]);
     expect((await keys({ graphId: graphB.graphId })).keys).toEqual(["b1", "b2"]);
