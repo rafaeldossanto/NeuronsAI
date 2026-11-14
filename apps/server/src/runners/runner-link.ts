@@ -251,6 +251,8 @@ export class RunnerLink implements RunnerEndpoint {
         return;
       case "agent.output":
         return this.runtimes.get(frame.instanceId)?.applyOutput(frame.data);
+      case "agent.delta":
+        return this.runtimes.get(frame.instanceId)?.applyDelta(frame);
       case "agent.resized":
         return this.runtimes.get(frame.instanceId)?.applyResized(frame.cols, frame.rows);
       case "call":

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import {
   DEFAULT_TERMINAL_SIZE,
+  type StreamingAgentRuntime,
   type TerminalAgentRuntime,
   type TerminalSize,
 } from "@neurons/agent-runtimes";
@@ -78,6 +79,25 @@ export class TerminalSessions {
       byAgent.delete(agent);
       if (byAgent.size === 0) this.sessions.delete(runId);
     };
+  }
+
+  /**
+   * Starts publishing what a streaming runtime (API, stream-json) writes while the model generates
+   * it, as the ephemeral `AgentOutputDelta`; the returned function ends it. Nothing is kept for
+   * whoever subscribes later: they get the final message through the run log.
+   */
+  attachOutputStream(runId: string, agent: string, runtime: StreamingAgentRuntime): Unsubscribe {
+    return runtime.onOutputDelta(({ turnId, channel, delta }) =>
+      this.subscriptions.publishEphemeral({
+        runId,
+        type: "AgentOutputDelta",
+        agent,
+        turnId,
+        channel,
+        delta,
+        at: new Date(),
+      }),
+    );
   }
 
   /**

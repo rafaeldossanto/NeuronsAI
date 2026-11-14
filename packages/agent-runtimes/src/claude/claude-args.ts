@@ -100,6 +100,8 @@ export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
           "--output-format",
           "stream-json",
           "--verbose",
+          // The raw API events (`stream_event`) as the model writes: the screen shows the text grow.
+          "--include-partial-messages",
           // Nobody can answer a permission prompt in a headless session: deny instead of hanging.
           "--permission-prompts",
           "none",

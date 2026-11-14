@@ -1,6 +1,6 @@
 export { useRunLive } from "./use-run-live";
 export { agentStatusLabel, connectionLabel, messageKindLabel } from "./labels";
-export { selectActivity, type ActivityItem } from "./activity";
+export { selectActivity, selectDrafts, type ActivityDraft, type ActivityItem } from "./activity";
 export { reduceRunEvent, initialRunLiveState } from "./reduce-run-event";
 export type {
   AgentLive,
@@ -15,7 +15,9 @@ export type {
   RunLiveState,
   RunLiveStatus,
   RunLogEvent,
+  LiveDraft,
   LiveToolCall,
+  AgentDeltaChunk,
   TerminalChunk,
   TerminalMeta,
 } from "./types";

@@ -14,7 +14,24 @@ export interface RunEvent {
  * from history: a client that missed it simply does not get it (the terminal output is the case;
  * late joiners receive a snapshot instead).
  */
-export type EphemeralRunEvent = TerminalOutputEvent | TerminalResizedEvent;
+export type EphemeralRunEvent = TerminalOutputEvent | TerminalResizedEvent | AgentOutputDeltaEvent;
+
+/**
+ * A piece of what an agent is writing while the model generates it (API and stream-json agents).
+ * `channel: "text"` is the model's free text (it never reaches another agent); `"message"` is the
+ * body of a `send_message`/`reply`/`ask` still being written. `turnId` ties the pieces of one text
+ * together; the message that is finally sent enters the log as always, and replaces the draft.
+ * Pieces are grouped (about every 50 ms), never stored, and a late subscriber does not get them.
+ */
+export interface AgentOutputDeltaEvent {
+  runId: string;
+  type: "AgentOutputDelta";
+  agent: string;
+  turnId: string;
+  channel: "text" | "message";
+  delta: string;
+  at: Date;
+}
 
 export interface TerminalOutputEvent {
   runId: string;

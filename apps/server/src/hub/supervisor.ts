@@ -4,6 +4,7 @@ import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { GraphToolsService } from "../memories/graph-tools.service.js";
 import { resourceScope } from "../accounts/resource-scope.js";
 import {
+  isStreamingRuntime,
   isTerminalRuntime,
   type AgentRuntime,
   type AgentRuntimeFactory,
@@ -65,6 +66,8 @@ interface AgentSlot {
   unsubscribe: Unsubscribe;
   /** Stops publishing the terminal output of a terminal runtime. */
   detachTerminal: Unsubscribe;
+  /** Stops publishing what a streaming runtime writes while the model generates it. */
+  detachStream: Unsubscribe;
   /** The runtime is being stopped (or already is); stopping again waits for the same stop. */
   stopping: Promise<void> | undefined;
   /** The latest inbox pump; stopping waits for it so no acknowledgement lands after the run ended. */
@@ -240,6 +243,7 @@ export class Supervisor {
       repump: false,
       unsubscribe: () => undefined,
       detachTerminal: () => undefined,
+      detachStream: () => undefined,
       stopping: undefined,
       pumpDone: Promise.resolve(),
       lastState: undefined,
@@ -267,6 +271,9 @@ export class Supervisor {
       // Before `start`, so what the CLI prints while booting (dialogs, login) is watchable too.
       if (isTerminalRuntime(runtime)) {
         slot.detachTerminal = this.terminals.attach(slot.runId, slot.agent.name, runtime);
+      }
+      if (isStreamingRuntime(runtime)) {
+        slot.detachStream = this.terminals.attachOutputStream(slot.runId, slot.agent.name, runtime);
       }
       slot.lastState = "starting";
       await this.enqueueWrite(slot, () =>
@@ -361,6 +368,7 @@ export class Supervisor {
     }
     await slot.booted;
     slot.detachTerminal();
+    slot.detachStream();
     // The run is over for this agent (a failed one keeps saying so). Written before the run's end.
     this.syncState(slot);
     await slot.logWrites;

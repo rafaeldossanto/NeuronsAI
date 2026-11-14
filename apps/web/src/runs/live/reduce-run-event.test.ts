@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/two-terminals-demo.json";
-import { selectActivity } from "./activity";
+import { selectActivity, selectDrafts } from "./activity";
 import {
+  DRAFT_MAX_CHARS,
   initialRunLiveState,
   MAX_ACTIVITY,
+  MAX_MESSAGE_DRAFTS,
   reduceRunEvent,
   TERMINAL_MAX_CHARS,
   TERMINAL_TRIM_SLACK,
 } from "./reduce-run-event";
-import type { RunLiveState, RunLogEvent } from "./types";
+import type { AgentDeltaChunk, RunLiveState, RunLogEvent } from "./types";
 
 const events = fixture.events as RunLogEvent[];
 const fold = (list: RunLogEvent[], from: RunLiveState = initialRunLiveState) =>
@@ -353,5 +355,102 @@ describe("linha do tempo única e terminal", () => {
     expect(state.terminals["A"]).toHaveLength(TERMINAL_MAX_CHARS);
     expect(state.terminals["A"]?.endsWith("z")).toBe(true);
     expect(state.terminalMeta["A"]?.total).toBe(TERMINAL_MAX_CHARS + 10 + TERMINAL_TRIM_SLACK);
+  });
+});
+
+describe("rascunho do que o agente está escrevendo", () => {
+  const delta = (
+    agent: string,
+    turnId: string,
+    channel: "text" | "message",
+    text: string,
+  ): AgentDeltaChunk => ({ type: "AgentOutputDelta", agent, turnId, channel, delta: text });
+  const sent = (seq: number, from: string, body: string) =>
+    event(seq, "MessageSent", from, { messageId: `m${seq}`, from, to: "B", kind: "message", body });
+  const busy = (seq: number, agent: string) =>
+    event(seq, "AgentStateChanged", agent, { state: "busy" });
+  const working = () => fold([busy(1, "A")]);
+  const apply = (state: RunLiveState, ...list: (RunLogEvent | AgentDeltaChunk)[]) =>
+    list.reduce<RunLiveState>(reduceRunEvent, state);
+
+  it("faz o texto crescer, sem tocar no log nem no seq", () => {
+    const state = apply(
+      working(),
+      delta("A", "t1", "text", "Vou "),
+      delta("A", "t1", "text", "avisar."),
+      delta("A", "t1:c1", "message", "Olá"),
+    );
+    expect(state.drafts["A"]).toEqual([
+      { turnId: "t1", channel: "text", body: "Vou avisar.", cut: false },
+      { turnId: "t1:c1", channel: "message", body: "Olá", cut: false },
+    ]);
+    expect(state.lastSeq).toBe(1);
+    expect(state.timeline).toEqual([]);
+    expect(selectDrafts(state, "A").map((d) => d.writing)).toEqual([true, true]);
+    expect(selectDrafts(state, "B")).toEqual([]);
+  });
+
+  it("deixa o texto livre só com o turno mais recente", () => {
+    const state = apply(
+      working(),
+      delta("A", "t1", "text", "velho"),
+      delta("A", "t2", "text", "novo"),
+    );
+    expect(state.drafts["A"]?.map((d) => d.body)).toEqual(["novo"]);
+  });
+
+  it("troca o rascunho da mensagem pela mensagem final, uma por vez e na ordem", () => {
+    let state = apply(
+      working(),
+      delta("A", "t1:c1", "message", "para B"),
+      delta("A", "t1:c2", "message", "para C"),
+    );
+    state = apply(state, sent(2, "A", "para B"));
+    expect(state.drafts["A"]?.map((d) => d.body)).toEqual(["para C"]);
+    expect(state.timeline[0]?.preview).toBe("para B");
+    state = apply(state, sent(3, "A", "para C"));
+    expect(state.drafts["A"]).toBeUndefined();
+  });
+
+  it("descarta a mensagem em escrita quando o agente para de trabalhar, mas guarda a última fala", () => {
+    const state = apply(
+      working(),
+      delta("A", "t1", "text", "pensando"),
+      delta("A", "t1:c1", "message", "nunca enviada"),
+      event(2, "AgentStateChanged", "A", { state: "idle" }),
+    );
+    expect(state.drafts["A"]?.map((d) => d.body)).toEqual(["pensando"]);
+    expect(selectDrafts(state, "A")[0]?.writing).toBe(false);
+  });
+
+  it("limpa tudo quando o agente falha e quando a execução termina", () => {
+    const text = delta("A", "t1", "text", "x");
+    expect(apply(working(), text, event(2, "AgentFailed", "A", { reason: "boom" })).drafts).toEqual(
+      {},
+    );
+    const finished = apply(working(), text, event(2, "RunFinished", null, { reason: "finished" }));
+    expect(finished.drafts).toEqual({});
+    // A late piece does not bring a draft back to a finished run.
+    expect(apply(finished, delta("A", "t2", "text", "tarde")).drafts).toEqual({});
+  });
+
+  it("limita a memória: guarda o fim do texto e poucas mensagens por agente", () => {
+    const long = "a".repeat(DRAFT_MAX_CHARS) + "FIM";
+    const state = apply(working(), delta("A", "t1", "text", long));
+    const draft = state.drafts["A"]![0]!;
+    expect(draft.body).toHaveLength(DRAFT_MAX_CHARS);
+    expect(draft.body.endsWith("FIM")).toBe(true);
+    expect(draft.cut).toBe(true);
+
+    let many = working();
+    for (let i = 0; i < MAX_MESSAGE_DRAFTS + 3; i++)
+      many = apply(many, delta("A", `t:c${i}`, "message", String(i)));
+    expect(many.drafts["A"]).toHaveLength(MAX_MESSAGE_DRAFTS);
+    expect(many.drafts["A"]?.at(-1)?.body).toBe(String(MAX_MESSAGE_DRAFTS + 2));
+  });
+
+  it("não depende do seq: aplicar o log de novo não mexe no rascunho", () => {
+    const state = apply(working(), delta("A", "t1", "text", "x"));
+    expect(apply(state, busy(1, "A"))).toBe(state);
   });
 });

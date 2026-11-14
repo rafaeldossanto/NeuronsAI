@@ -5,6 +5,7 @@ import type { Effort, ModelProvider, TurnClient, ModelEvent, FunctionTool } from
 export * from "./types.js";
 export * from "./pricing.js";
 export * from "./capabilities.js";
+export { StreamCutError, StreamStalledError, STREAM_IDLE_TIMEOUT_MS } from "./streaming.js";
 export { OpenAITurnClient, AnthropicTurnClient, OpenAICompatibleTurnClient };
 export class ProviderRegistry {
   private providers = new Map<string, ModelProvider>();
@@ -30,18 +31,34 @@ export function defaultProviders(
     compatibleFetch?: typeof fetch;
     /** Cap on one reply of the OpenAI and Anthropic adapters; raise it for reasoning models. */
     maxOutputTokens?: number;
+    /** How long a streamed reply may go quiet before it counts as stuck (90 s by default). */
+    streamIdleTimeoutMs?: number;
   } = {},
 ): ProviderRegistry {
   const registry = new ProviderRegistry()
     .register({
       name: "openai",
       createSession: (model, key, effort) =>
-        new OpenAITurnClient(model, key, effort, options.fetcher, options.maxOutputTokens),
+        new OpenAITurnClient(
+          model,
+          key,
+          effort,
+          options.fetcher,
+          options.maxOutputTokens,
+          options.streamIdleTimeoutMs,
+        ),
     })
     .register({
       name: "anthropic",
       createSession: (model, key, effort) =>
-        new AnthropicTurnClient(model, key, effort, options.fetcher, options.maxOutputTokens),
+        new AnthropicTurnClient(
+          model,
+          key,
+          effort,
+          options.fetcher,
+          options.maxOutputTokens,
+          options.streamIdleTimeoutMs,
+        ),
     });
   if (options.compatibleBaseUrl)
     registry.register({
@@ -52,6 +69,7 @@ export function defaultProviders(
           key,
           options.compatibleBaseUrl!,
           options.compatibleFetch ?? options.fetcher,
+          options.streamIdleTimeoutMs,
         ),
     });
   return registry;

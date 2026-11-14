@@ -1,17 +1,24 @@
+import { randomUUID } from "node:crypto";
 import {
   defaultProviders,
   UsageCalculator,
+  type FunctionTool,
+  type ModelDelta,
   type ProviderRegistry,
   type TurnClient,
 } from "@neurons/providers";
 export type { ModelTurn, TurnClient } from "@neurons/providers";
 import {
+  MessageBodyStreams,
+  OutputBatcher,
   Signal,
   type AgentCommunication,
-  type AgentRuntime,
   type AgentRuntimeFactory,
   type AgentRuntimeState,
   type InboundMessage,
+  type OutputDelta,
+  type StreamingAgentRuntime,
+  type Unsubscribe,
 } from "@neurons/agent-runtimes";
 import type { AgentNode } from "@neurons/graph-schema";
 import { z } from "zod";
@@ -71,7 +78,12 @@ export class ApiRuntimeFactory implements AgentRuntimeFactory {
   }
 }
 
-export class ApiRuntime implements AgentRuntime {
+/**
+ * An agent that calls a model API. The reply is requested as a stream: what the model writes goes
+ * to whoever watches (`onOutputDelta`, live only), while the free text stays out of the
+ * communication between agents, as before.
+ */
+export class ApiRuntime implements StreamingAgentRuntime {
   private readonly calculator = new UsageCalculator();
   get reportsCost(): boolean {
     const runtime = this.agent.runtime;
@@ -81,6 +93,8 @@ export class ApiRuntime implements AgentRuntime {
   }
   private current: AgentRuntimeState = "starting";
   private readonly changed = new Signal<AgentRuntimeState>();
+  private readonly writing = new Signal<OutputDelta>();
+  private readonly batcher = new OutputBatcher((delta) => this.writing.emit(delta));
   private readonly lifetime = new AbortController();
   private client: TurnClient | undefined;
   private briefing = "";
@@ -97,6 +111,10 @@ export class ApiRuntime implements AgentRuntime {
   }
   onStateChange(listener: (state: AgentRuntimeState) => void) {
     return this.changed.subscribe(listener);
+  }
+  /** What the agent is writing right now, in groups of a few tokens; never stored in the run log. */
+  onOutputDelta(listener: (delta: OutputDelta) => void): Unsubscribe {
+    return this.writing.subscribe(listener);
   }
   private setState(state: AgentRuntimeState) {
     this.current = state;
@@ -145,7 +163,7 @@ export class ApiRuntime implements AgentRuntime {
       parameters: z.toJSONSchema(schema),
     }));
     for (let step = 0; step < 20 && !this.lifetime.signal.aborted; step++) {
-      const result = await this.client!.respond(this.briefing, tools, this.lifetime.signal);
+      const result = await this.respond(tools);
       const runtime = this.agent.runtime;
       const cost =
         runtime.kind === "api"
@@ -178,6 +196,25 @@ export class ApiRuntime implements AgentRuntime {
       }
     }
     if (!this.lifetime.signal.aborted) throw new Error("Limite de chamadas por turno atingido.");
+  }
+  /** One model reply, streamed to the screen while it is written. */
+  private async respond(tools: FunctionTool[]) {
+    const turnId = randomUUID();
+    const bodies = new MessageBodyStreams();
+    const onDelta = (delta: ModelDelta) => {
+      if (delta.type === "text") {
+        this.batcher.push(turnId, "text", delta.text);
+        return;
+      }
+      // Each message is its own text on screen: a reply may write several (one per tool call).
+      const body = bodies.push(delta.callId, delta.tool, delta.text);
+      this.batcher.push(`${turnId}:${delta.callId}`, "message", body);
+    };
+    try {
+      return await this.client!.respond(this.briefing, tools, this.lifetime.signal, { onDelta });
+    } finally {
+      this.batcher.flush();
+    }
   }
   private async invoke(name: string, input: Record<string, unknown>) {
     const hub = this.communication;
@@ -212,6 +249,7 @@ export class ApiRuntime implements AgentRuntime {
   async stop() {
     if (!this.finishing) this.lifetime.abort();
     await this.work;
+    this.batcher.dispose();
     this.setState("stopped");
   }
 }
