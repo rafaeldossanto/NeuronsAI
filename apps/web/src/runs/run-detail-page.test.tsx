@@ -113,9 +113,10 @@ describe("detalhe da execução ao vivo", () => {
         }),
       );
     });
-    expect(await screen.findByRole("region", { name: "Linha do tempo" })).toBeInTheDocument();
+    // The socket's messages reach the screen in one batch per animation frame.
+    expect(await screen.findByText("Editar nota")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Linha do tempo" })).toBeInTheDocument();
     expect(screen.getAllByText("Criar nota")).toHaveLength(1);
-    expect(screen.getByText("Editar nota")).toBeInTheDocument();
     expect(screen.getByText("CONFLICT")).toBeInTheDocument();
     expect(screen.queryByText(/conteúdo privado/)).not.toBeInTheDocument();
   });

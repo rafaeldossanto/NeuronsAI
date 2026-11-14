@@ -15,6 +15,7 @@
 //  - "Working" on a prompt = running its directive lines (the MCP tools go through the real
 //    neurons MCP server named in --mcp-config):
 //      !ask <to> <question>   !send <to> <text>   !reply <text>   !finish <text>
+//      !text <words>  (free text, streamed as partial messages with --include-partial-messages)
 //      !peers   !sleep <ms>   !env <to> [NAME...]   !pids <to>   !crash
 //    `$last` in a directive stands for the text the previous tool call returned.
 import { readFileSync } from "node:fs";
@@ -43,6 +44,47 @@ const PASTE_START = `${ESCAPE}[200~`;
 const PASTE_END = `${ESCAPE}[201~`;
 const ARROW_DOWN = `${ESCAPE}[B`;
 const KEY_SEQUENCES = [PASTE_START, PASTE_END, ARROW_DOWN];
+
+const emit = (event) => process.stdout.write(JSON.stringify(event) + NEWLINE);
+const wrapPartial = (event) => ({
+  type: "stream_event",
+  event,
+  session_id: "fake",
+  parent_tool_use_id: null,
+  uuid: "u",
+});
+
+/**
+ * What the real CLI prints with --include-partial-messages while the model writes: the raw API
+ * events, the free text and the arguments of the tool call in small pieces.
+ */
+function emitPartials(blocks) {
+  if (!args.includes("--include-partial-messages")) return;
+  const out = (event) => emit(wrapPartial(event));
+  out({ type: "message_start", message: { id: "msg_1", role: "assistant", content: [] } });
+  blocks.forEach((block, index) => {
+    if (block.text !== undefined) {
+      out({ type: "content_block_start", index, content_block: { type: "text", text: "" } });
+      for (const piece of block.text.match(/.{1,3}/gs) ?? [])
+        out({ type: "content_block_delta", index, delta: { type: "text_delta", text: piece } });
+    } else {
+      out({
+        type: "content_block_start",
+        index,
+        content_block: { type: "tool_use", id: "toolu_" + index, name: block.tool, input: {} },
+      });
+      for (const piece of JSON.stringify(block.input).match(/.{1,4}/gs) ?? [])
+        out({
+          type: "content_block_delta",
+          index,
+          delta: { type: "input_json_delta", partial_json: piece },
+        });
+    }
+    out({ type: "content_block_stop", index });
+  });
+  out({ type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } });
+  out({ type: "message_stop" });
+}
 
 /** Answers a one-shot command and exits once stdout is flushed (a pipe may still hold the bytes). */
 const answerAndExit = (text, code) =>
@@ -110,7 +152,13 @@ async function main() {
         case "ask":
           await callTool("ask", { to: words[0], question: text(1) });
           break;
+        case "text":
+          emitPartials([{ text: text(0) }]);
+          break;
         case "send":
+          emitPartials([
+            { tool: "mcp__neurons__send_message", input: { to: words[0], text: text(1) } },
+          ]);
           await callTool("send_message", { to: words[0], text: text(1) });
           break;
         case "reply":
@@ -160,7 +208,6 @@ async function main() {
 // ---- stream-json mode ----------------------------------------------------------------------
 
 function streamJsonMode(work) {
-  const emit = (event) => process.stdout.write(JSON.stringify(event) + NEWLINE);
   let started = false;
   // Like the real CLI, `total_cost_usd` is the cost of the whole session so far.
   let sessionCost = 0;

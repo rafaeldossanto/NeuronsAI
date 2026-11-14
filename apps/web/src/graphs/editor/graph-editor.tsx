@@ -71,6 +71,25 @@ import { IssuesPanel } from "./issues-panel";
 type CanvasNode = BlockNode | AnnotationNode;
 const allNodeTypes = { ...nodeTypes, ...annotationNodeTypes };
 
+const NO_ISSUES: string[] = [];
+const nodeCache = new WeakMap<object, CachedNode>();
+type AnnotationHandlers = Pick<
+  AnnotationNode["data"],
+  "onResizeStart" | "onResize" | "onResizeEnd"
+>;
+/**
+ * What a React Flow node was built from; if none of it changed, the node object is reused. Keyed by the
+ * (immutable) document object, so entries disappear with the objects and nothing is read from a ref.
+ */
+interface CachedNode {
+  selected: boolean;
+  size: { width: number; height: number } | undefined;
+  issues: string[];
+  value: CanvasNode;
+}
+const sameList = (a: readonly string[], b: readonly string[]) =>
+  a === b || (a.length === b.length && a.every((item, i) => item === b[i]));
+
 const TOOL_ICONS: Record<Tool, LucideIcon> = {
   select: MousePointer2,
   rect: Square,
@@ -111,7 +130,10 @@ function Editor({ graph }: { graph: EditorGraph }) {
     createEditorState(createDoc(g)),
   );
   const doc = state.present;
-  const [savedJson, setSavedJson] = useState(() => serialize(state.present));
+  const [saved, setSaved] = useState(() => ({
+    doc: state.present,
+    json: serialize(state.present),
+  }));
   const [selected, setSelected] = useState<{ nodes: string[]; links: string[] }>({
     nodes: [],
     links: [],
@@ -119,11 +141,6 @@ function Editor({ graph }: { graph: EditorGraph }) {
   const [measured, setMeasured] = useState<Record<string, { width: number; height: number }>>({});
   const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [tool, setTool] = useState<Tool>("select");
-  const [draft, setDraft] = useState<{
-    from: { x: number; y: number };
-    to: { x: number; y: number };
-  } | null>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
   const resizing = useRef(false);
   const { setCenter, getZoom, screenToFlowPosition } = useReactFlow();
 
@@ -132,9 +149,27 @@ function Editor({ graph }: { graph: EditorGraph }) {
   const busy = save.isPending || publish.isPending || executing;
 
   const issues = useMemo(() => validateDoc(doc), [doc]);
-  const dirty = serialize(doc) !== savedJson;
+  // JSON.stringify of the whole document is not free: only redo it when `doc` itself changed.
+  const dirty = useMemo(() => doc !== saved.doc && serialize(doc) !== saved.json, [doc, saved]);
 
   // React Flow's nodes and edges are derived from the document; only the sizes it measures are kept.
+  // Dragging changes `doc` on every step but moves a few blocks: the ones that did not change keep the
+  // very same React Flow node object, so React (and the memoized `Block`) skip them.
+  const setResizing = useCallback((value: boolean) => {
+    resizing.current = value;
+  }, []);
+  const annotationHandlers = useMemo<AnnotationHandlers>(
+    () => ({
+      onResizeStart: () => setResizing(true),
+      onResize: (id, position, size) =>
+        dispatch({ type: "resizeAnnotation", id, position, size, gesture: "resize" }),
+      onResizeEnd: () => {
+        setResizing(false);
+        dispatch({ type: "endGesture" });
+      },
+    }),
+    [setResizing],
+  );
   const rfNodes = useMemo<CanvasNode[]>(() => {
     const issuesByNode = new Map<string, string[]>();
     for (const issue of issues) {
@@ -144,31 +179,50 @@ function Editor({ graph }: { graph: EditorGraph }) {
           issue.message,
         ]);
     }
-    const blocks: CanvasNode[] = doc.nodes.map((node) => ({
-      id: node.id,
-      type: node.type,
-      position: node.position,
-      selected: selected.nodes.includes(node.id),
-      data: { node, issues: issuesByNode.get(node.id) ?? [] },
-      ...(measured[node.id] ? { measured: measured[node.id] } : {}),
-    }));
-    const drawings: CanvasNode[] = doc.annotations.map((annotation) => ({
-      ...annotationShell(annotation, selected.nodes.includes(annotation.id)),
-      data: {
-        annotation,
-        onResizeStart: () => {
-          resizing.current = true;
-        },
-        onResize: (id, position, size) =>
-          dispatch({ type: "resizeAnnotation", id, position, size, gesture: "resize" }),
-        onResizeEnd: () => {
-          resizing.current = false;
-          dispatch({ type: "endGesture" });
-        },
-      },
-    }));
+    const blocks: CanvasNode[] = doc.nodes.map((node) => {
+      const isSelected = selected.nodes.includes(node.id);
+      const nodeIssues = issuesByNode.get(node.id) ?? NO_ISSUES;
+      const size = measured[node.id];
+      const before = nodeCache.get(node);
+      if (
+        before &&
+        before.selected === isSelected &&
+        before.size === size &&
+        sameList(before.issues, nodeIssues)
+      )
+        return before.value;
+      const value: CanvasNode = {
+        id: node.id,
+        type: node.type,
+        position: node.position,
+        selected: isSelected,
+        data: { node, issues: nodeIssues },
+        ...(size ? { measured: size } : {}),
+      };
+      nodeCache.set(node, { selected: isSelected, size, issues: nodeIssues, value });
+      return value;
+    });
+    const handlers = annotationHandlers;
+    // The handlers touch the `resizing` ref only when an event calls them, never while rendering.
+    // eslint-disable-next-line react-hooks/refs
+    const drawings: CanvasNode[] = doc.annotations.map((annotation) => {
+      const isSelected = selected.nodes.includes(annotation.id);
+      const before = nodeCache.get(annotation);
+      if (before && before.selected === isSelected) return before.value;
+      const value: CanvasNode = {
+        ...annotationShell(annotation, isSelected),
+        data: { annotation, ...handlers },
+      };
+      nodeCache.set(annotation, {
+        selected: isSelected,
+        size: undefined,
+        issues: NO_ISSUES,
+        value,
+      });
+      return value;
+    });
     return [...drawings, ...blocks];
-  }, [doc.nodes, doc.annotations, issues, selected.nodes, measured]);
+  }, [doc.nodes, doc.annotations, issues, selected.nodes, measured, annotationHandlers]);
 
   const rfEdges = useMemo<Edge[]>(
     () =>
@@ -298,6 +352,16 @@ function Editor({ graph }: { graph: EditorGraph }) {
     [doc],
   );
 
+  const onDelete = useCallback(
+    ({ nodes, edges }: { nodes: CanvasNode[]; edges: Edge[] }) =>
+      removeItems(
+        nodes.map((n) => n.id),
+        edges.map((e) => e.id),
+      ),
+    [removeItems],
+  );
+  const onPaneClick = useCallback(() => setSelected({ nodes: [], links: [] }), []);
+
   const isValidConnection = useCallback(
     (connection: Connection | Edge) =>
       connectionAction(doc, connection.source, connection.target, "check") !== null,
@@ -312,41 +376,22 @@ function Editor({ graph }: { graph: EditorGraph }) {
   };
 
   // ---------- drawing the free layer ----------
-  const startDrawing = (event: ReactMouseEvent) => {
-    if (event.button !== 0 || tool === "select") return;
-    event.preventDefault();
-    const kind: AnnotationKind = tool;
-    const start = { x: event.clientX, y: event.clientY };
-    const area = overlayRef.current?.getBoundingClientRect();
-    const local = (x: number, y: number) => ({ x: x - (area?.left ?? 0), y: y - (area?.top ?? 0) });
-    setDraft({ from: local(start.x, start.y), to: local(start.x, start.y) });
-    const move = (e: MouseEvent) =>
-      setDraft({ from: local(start.x, start.y), to: local(e.clientX, e.clientY) });
-    const up = (e: MouseEvent) => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-      setDraft(null);
-      const at = (x: number, y: number) => {
-        const point = screenToFlowPosition({ x, y });
-        return { x: Math.round(point.x), y: Math.round(point.y) };
-      };
-      const id = crypto.randomUUID();
-      dispatch({
-        type: "addAnnotation",
-        annotation: createAnnotation(
-          kind,
-          id,
-          at(start.x, start.y),
-          at(e.clientX, e.clientY),
-          doc,
-          measured,
-        ),
-      });
-      setSelected({ nodes: [id], links: [] });
-      setTool("select");
+  const finishDrawing = (
+    kind: AnnotationKind,
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+  ) => {
+    const at = (x: number, y: number) => {
+      const point = screenToFlowPosition({ x, y });
+      return { x: Math.round(point.x), y: Math.round(point.y) };
     };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+    const id = crypto.randomUUID();
+    dispatch({
+      type: "addAnnotation",
+      annotation: createAnnotation(kind, id, at(start.x, start.y), at(end.x, end.y), doc, measured),
+    });
+    setSelected({ nodes: [id], links: [] });
+    setTool("select");
   };
 
   const focusIssue = (issue: LocatedIssue) => {
@@ -372,7 +417,7 @@ function Editor({ graph }: { graph: EditorGraph }) {
       draft: snapshot,
       ...(snapshot.name !== graph.name ? { name: snapshot.name } : {}),
     });
-    setSavedJson(serialize(snapshot));
+    setSaved({ doc: snapshot, json: serialize(snapshot) });
     return snapshot;
   };
 
@@ -603,13 +648,8 @@ function Editor({ graph }: { graph: EditorGraph }) {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             isValidConnection={isValidConnection}
-            onDelete={({ nodes, edges }) =>
-              removeItems(
-                nodes.map((n) => n.id),
-                edges.map((e) => e.id),
-              )
-            }
-            onPaneClick={() => setSelected({ nodes: [], links: [] })}
+            onDelete={onDelete}
+            onPaneClick={onPaneClick}
             deleteKeyCode="Delete"
             snapToGrid
             snapGrid={[GRID, GRID]}
@@ -636,17 +676,7 @@ function Editor({ graph }: { graph: EditorGraph }) {
               </div>
             </div>
           )}
-          {tool !== "select" && (
-            <div
-              ref={overlayRef}
-              role="presentation"
-              data-testid="draw-overlay"
-              className="absolute inset-0 z-10 cursor-crosshair"
-              onMouseDown={startDrawing}
-            >
-              {draft && <DraftShape draft={draft} tool={tool} />}
-            </div>
-          )}
+          {tool !== "select" && <DrawOverlay tool={tool} onFinish={finishDrawing} />}
         </div>
         <Inspector doc={doc} selection={inspectorSelection} issues={issues} dispatch={dispatch} />
       </div>
@@ -696,6 +726,71 @@ function Editor({ graph }: { graph: EditorGraph }) {
           </form>
         </Modal>
       )}
+    </div>
+  );
+}
+
+/**
+ * Catches the drag that draws an annotation. The rubber-band rectangle is this component's own state:
+ * every mouse move re-renders only it, not the editor with its canvas and inspector. At mouse-up the
+ * editor gets the start and end points (screen coordinates) and creates the annotation.
+ */
+function DrawOverlay({
+  tool,
+  onFinish,
+}: {
+  tool: Exclude<Tool, "select">;
+  onFinish: (
+    kind: AnnotationKind,
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+  ) => void;
+}) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [draft, setDraft] = useState<{
+    from: { x: number; y: number };
+    to: { x: number; y: number };
+  } | null>(null);
+
+  const startDrawing = (event: ReactMouseEvent) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const kind: AnnotationKind = tool;
+    const start = { x: event.clientX, y: event.clientY };
+    const area = overlayRef.current?.getBoundingClientRect();
+    const local = (x: number, y: number) => ({ x: x - (area?.left ?? 0), y: y - (area?.top ?? 0) });
+    setDraft({ from: local(start.x, start.y), to: local(start.x, start.y) });
+    // At most one state update per frame, however many mouse moves arrive.
+    let last: MouseEvent | null = null;
+    let frame: number | null = null;
+    const paint = () => {
+      frame = null;
+      if (last) setDraft({ from: local(start.x, start.y), to: local(last.clientX, last.clientY) });
+    };
+    const move = (e: MouseEvent) => {
+      last = e;
+      frame ??= requestAnimationFrame(paint);
+    };
+    const up = (e: MouseEvent) => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      if (frame !== null) cancelAnimationFrame(frame);
+      setDraft(null);
+      onFinish(kind, start, { x: e.clientX, y: e.clientY });
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+
+  return (
+    <div
+      ref={overlayRef}
+      role="presentation"
+      data-testid="draw-overlay"
+      className="absolute inset-0 z-10 cursor-crosshair"
+      onMouseDown={startDrawing}
+    >
+      {draft && <DraftShape draft={draft} tool={tool} />}
     </div>
   );
 }

@@ -10,21 +10,18 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { Observable } from "rxjs";
 import { AccountAuth } from "./account-auth.service.js";
 import { RoutePermissionUndeclaredError } from "./account.errors.js";
-import { AccountsService } from "./accounts.service.js";
 import { AuthController } from "./auth.controller.js";
 import { resourceScope } from "./resource-scope.js";
 import { HealthController } from "../health/health.controller.js";
 import { OpenApiController } from "../api/openapi/openapi.controller.js";
+import { requirePermission } from "./organization-access.js";
 import { permissionOf } from "./require-permission.js";
 
 @Injectable()
 export class RequestScopeInterceptor implements NestInterceptor {
   private readonly logger = new Logger(RequestScopeInterceptor.name);
 
-  constructor(
-    @Inject(AccountAuth) private readonly auth: AccountAuth,
-    @Inject(AccountsService) private readonly accounts: AccountsService,
-  ) {}
+  constructor(@Inject(AccountAuth) private readonly auth: AccountAuth) {}
 
   async intercept(context: ExecutionContext, next: CallHandler): Promise<Observable<unknown>> {
     if (context.getType() === "http" && this.auth.browser)
@@ -50,11 +47,8 @@ export class RequestScopeInterceptor implements NestInterceptor {
       throw new RoutePermissionUndeclaredError();
     }
     const permission = writes ? declared! : "read";
-    const access = await this.accounts.requireAccess(
-      scope.userId,
-      scope.organizationId,
-      permission,
-    );
+    // `authenticate` just re-read the membership in this request; reuse that role, don't read again.
+    const access = requirePermission(scope, permission);
     return new Observable((subscriber) =>
       resourceScope.run({ organizationId: scope.organizationId, role: access.role }, () =>
         next.handle().subscribe(subscriber),

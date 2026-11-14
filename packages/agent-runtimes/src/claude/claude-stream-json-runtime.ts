@@ -1,9 +1,17 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { MCP_SERVER_NAME } from "@neurons/mcp-neurons";
 import { z } from "zod";
 import type { InboundMessage } from "../contract/agent-runtime.js";
 import type { AgentUsage } from "../contract/usage.js";
+import {
+  MessageBodyStreams,
+  OutputBatcher,
+  type OutputDelta,
+  type StreamingAgentRuntime,
+} from "../contract/output-stream.js";
+import { Signal, type Unsubscribe } from "../contract/signal.js";
 import { killProcessTree } from "../platform/process-tree.js";
 import { settlesWithin, waitUntil } from "./async.js";
 import { ClaudeRuntimeBase, errorMessage, type LaunchContext } from "./claude-runtime-base.js";
@@ -58,7 +66,7 @@ const resultEvent = z.object({
  * --output-format stream-json`. A message is one JSON line on stdin; the `result` event is the
  * explicit end of the turn and carries the usage and cost. There is no screen to watch.
  */
-export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase {
+export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase implements StreamingAgentRuntime {
   protected readonly mode = "stream-json";
   readonly reportsCost = true;
 
@@ -68,6 +76,19 @@ export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase {
   private model: string | undefined;
   /** The session total the last `result` event reported. */
   private sessionCostUsd = 0;
+
+  private readonly writing = new Signal<OutputDelta>();
+  private readonly batcher = new OutputBatcher((delta) => this.writing.emit(delta));
+  /** The message the CLI is streaming now: what each of its content blocks is. */
+  private streamed: StreamedMessage | undefined;
+
+  /**
+   * What the agent writes while the model generates it (`--include-partial-messages`), in groups of a
+   * few tokens. Live only: the log keeps the message that is finally sent.
+   */
+  onOutputDelta(listener: (delta: OutputDelta) => void): Unsubscribe {
+    return this.writing.subscribe(listener);
+  }
 
   get processId(): number | undefined {
     return this.child?.pid;
@@ -128,6 +149,7 @@ export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase {
   }
 
   protected async terminate(): Promise<void> {
+    this.batcher.dispose();
     const child = this.child;
     if (!child?.pid) return;
     child.stdin.end();
@@ -148,6 +170,7 @@ export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase {
       return; // not an event (a stray log line)
     }
     try {
+      this.onStreamEvent(event);
       const init = initEvent.safeParse(event);
       if (init.success) this.onInit(init.data);
       const result = resultEvent.safeParse(event);
@@ -156,6 +179,58 @@ export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase {
       this.deps.logger.error(
         `Falha ao tratar um evento do agente "${this.agent.name}": ${errorMessage(error)}`,
       );
+    }
+  }
+
+  /**
+   * The partial messages: raw Anthropic API events wrapped as `{ type: "stream_event", event }`
+   * (checked against the CLI docs; the real wire format still wants a run with the CLI). Anything
+   * unexpected is ignored: the screen is optional, the turn is not.
+   */
+  private onStreamEvent(raw: unknown): void {
+    const wrapper = raw as { type?: unknown; parent_tool_use_id?: unknown; event?: unknown };
+    if (wrapper?.type !== "stream_event" || wrapper.parent_tool_use_id) return;
+    const event = wrapper.event as StreamApiEvent | undefined;
+    switch (event?.type) {
+      case "message_start":
+        this.batcher.flush();
+        this.streamed = {
+          turnId: randomUUID(),
+          blocks: new Map(),
+          bodies: new MessageBodyStreams(),
+        };
+        return;
+      case "content_block_start": {
+        const block = event.content_block;
+        if (this.streamed && typeof event.index === "number" && block?.type === "tool_use") {
+          this.streamed.blocks.set(event.index, {
+            callId: block.id ?? String(event.index),
+            tool: block.name ?? "",
+          });
+        }
+        return;
+      }
+      case "content_block_delta": {
+        const streamed = this.streamed;
+        const delta = event.delta;
+        if (!streamed || !delta) return;
+        if (delta.type === "text_delta" && delta.text) {
+          this.batcher.push(streamed.turnId, "text", delta.text);
+        } else if (delta.type === "input_json_delta" && delta.partial_json) {
+          const call =
+            typeof event.index === "number" ? streamed.blocks.get(event.index) : undefined;
+          if (!call) return;
+          const body = streamed.bodies.push(call.callId, call.tool, delta.partial_json);
+          this.batcher.push(`${streamed.turnId}:${call.callId}`, "message", body);
+        }
+        return;
+      }
+      case "message_stop":
+        this.batcher.flush();
+        this.streamed = undefined;
+        return;
+      default:
+        return;
     }
   }
 
@@ -170,6 +245,7 @@ export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase {
   }
 
   private async onResult(event: z.infer<typeof resultEvent>): Promise<void> {
+    this.batcher.flush();
     try {
       await this.reportUsage(toUsage(event, this.model, this.takeTurnCost(event)));
     } catch (error) {
@@ -213,6 +289,20 @@ export class ClaudeStreamJsonRuntime extends ClaudeRuntimeBase {
     const detail = this.stderrTail.trim();
     return `O Claude Code encerrou de forma inesperada (código ${code ?? "?"}).${detail ? ` ${detail}` : ""}`;
   }
+}
+
+/** The part of an API stream event the screen needs; every field is checked before it is used. */
+interface StreamApiEvent {
+  type?: string;
+  index?: number;
+  content_block?: { type?: string; id?: string; name?: string };
+  delta?: { type?: string; text?: string; partial_json?: string };
+}
+
+interface StreamedMessage {
+  turnId: string;
+  blocks: Map<number, { callId: string; tool: string }>;
+  bodies: MessageBodyStreams;
 }
 
 function toUsage(

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import type { OutputDelta, StreamingAgentRuntime } from "@neurons/agent-runtimes";
 import type { EphemeralRunEvent, EventSink, RunEvent } from "./run-event.js";
+import { Signal } from "../shared/signal.js";
 import { RunSubscriptions } from "./run-subscriptions.js";
 import { TerminalNotFoundError, TerminalSessions } from "./terminal-sessions.js";
 import { FakeTerminal } from "./testing/fake-terminal.js";
@@ -16,6 +18,39 @@ class RecordingSink implements EventSink {
     this.ephemeral.push(event);
   }
 }
+
+describe("TerminalSessions: texto em escrita", () => {
+  it("publica cada trecho como AgentOutputDelta efêmero, sem guardar nada para quem assina depois", async () => {
+    const subscriptions = new RunSubscriptions({ readFrom: () => Promise.resolve([]) });
+    const sessions = new TerminalSessions(subscriptions);
+    const early = new RecordingSink();
+    await subscriptions.subscribe(early, RUN);
+    const writing = new Signal<OutputDelta>();
+    const stop = sessions.attachOutputStream(RUN, "Escritor", {
+      onOutputDelta: (listener) => writing.subscribe(listener),
+    } as StreamingAgentRuntime);
+
+    writing.emit({ turnId: "t1", channel: "message", delta: "Olá" });
+    const late = new RecordingSink();
+    await subscriptions.subscribe(late, RUN);
+    sessions.replayTo(late, RUN);
+    stop();
+    writing.emit({ turnId: "t1", channel: "message", delta: "!" });
+
+    expect(early.stored).toEqual([]);
+    expect(early.ephemeral).toMatchObject([
+      {
+        runId: RUN,
+        type: "AgentOutputDelta",
+        agent: "Escritor",
+        turnId: "t1",
+        channel: "message",
+        delta: "Olá",
+      },
+    ]);
+    expect(late.ephemeral).toEqual([]);
+  });
+});
 
 describe("TerminalSessions", () => {
   let subscriptions: RunSubscriptions;

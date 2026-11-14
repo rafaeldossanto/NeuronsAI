@@ -13,10 +13,11 @@ export function useTriggerState(graphId: string, triggerId: string) {
   const api = useApi();
   return useQuery({
     queryKey: triggerKey(graphId, triggerId),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       unwrap(
         api.GET("/graphs/{id}/triggers/{triggerId}", {
           params: { path: { id: graphId, triggerId } },
+          signal,
         }),
       ),
     refetchInterval: 15_000,

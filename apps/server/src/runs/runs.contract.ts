@@ -130,7 +130,7 @@ export const listRunsQuery = z
     order: z.enum(["asc", "desc"]).default("desc"),
     limit: limitQuery(50, 200),
     /** How many runs to skip, for paging. */
-    offset: z.coerce.number().int().min(0).default(0),
+    offset: z.coerce.number().int().min(0).max(100_000).default(0),
   })
   .refine(
     (q) => q.minCostUsd === undefined || q.maxCostUsd === undefined || q.minCostUsd <= q.maxCostUsd,

@@ -18,5 +18,19 @@ export { DEFAULT_OUTPUT_BUFFER_CHARS, OutputBuffer } from "./claude/output-buffe
 export { DEFAULT_TERMINAL_SIZE, isTerminalRuntime } from "./contract/terminal-runtime.js";
 export type { TerminalAgentRuntime, TerminalSize } from "./contract/terminal-runtime.js";
 export type { ToolCallReport } from "./contract/tool-call.js";
+export {
+  DEFAULT_BATCH_INTERVAL_MS,
+  DEFAULT_BATCH_MAX_CHARS,
+  JsonStringFieldStream,
+  MessageBodyStreams,
+  OutputBatcher,
+  isStreamingRuntime,
+  messageFieldOf,
+} from "./contract/output-stream.js";
+export type {
+  OutputChannel,
+  OutputDelta,
+  StreamingAgentRuntime,
+} from "./contract/output-stream.js";
 export { DEFAULT_USAGE_FLUSH_MS } from "./contract/usage.js";
 export type { AgentUsage } from "./contract/usage.js";

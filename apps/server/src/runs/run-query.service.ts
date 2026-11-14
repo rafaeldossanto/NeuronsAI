@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { totalsByAgent, sumOf, USAGE_RECORDED, type UsageTotals } from "../guards/usage-totals.js";
+import { sumOf, type UsageTotals } from "../guards/usage-totals.js";
 import type { MessageRecord } from "../hub/message.js";
 import { MESSAGE_STORE, type MessageStore } from "../hub/message-store.js";
 import { RUN_EVENT_HISTORY, type RunEventHistory } from "../realtime/run-event-history.js";
@@ -50,12 +50,11 @@ export class RunQueryService {
   /** @throws RunNotFoundError */
   async detail(runId: string): Promise<RunDetailView> {
     const run = await this.require(runId);
-    const [started, finished, usage] = await Promise.all([
+    const [started, finished, byAgent] = await Promise.all([
       this.history.readByType(runId, "RunStarted"),
       this.history.readByType(runId, "RunFinished"),
-      this.history.readByType(runId, USAGE_RECORDED),
+      this.history.usageByAgent(runId),
     ]);
-    const byAgent = totalsByAgent(usage);
     return {
       run,
       input: (started[0]?.payload as { input?: string } | undefined)?.input ?? "",
@@ -64,16 +63,18 @@ export class RunQueryService {
     };
   }
 
-  /** @throws RunNotFoundError */
-  async events(runId: string, fromSeq: number, limit: number): Promise<RunEvent[]> {
+  /** One page of events plus how many the run has in all: one ownership check, both reads together. @throws RunNotFoundError */
+  async eventsPage(
+    runId: string,
+    fromSeq: number,
+    limit: number,
+  ): Promise<{ items: RunEvent[]; total: number }> {
     await this.require(runId);
-    return this.history.readFrom(runId, fromSeq, limit);
-  }
-
-  /** How many events the run has in all (the answer for `total`). @throws RunNotFoundError */
-  async eventCount(runId: string): Promise<number> {
-    await this.require(runId);
-    return this.runs.countEvents(runId);
+    const [items, total] = await Promise.all([
+      this.history.readFrom(runId, fromSeq, limit),
+      this.runs.countEvents(runId),
+    ]);
+    return { items, total };
   }
 
   /** @throws RunNotFoundError */

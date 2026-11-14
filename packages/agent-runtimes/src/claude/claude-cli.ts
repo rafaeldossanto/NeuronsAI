@@ -79,6 +79,11 @@ export class ClaudeCli {
     this.loginCheckedAt = Date.now();
   }
 
+  /** Forgets the cached login (e.g. right after `claude auth login` ends) so the next check asks the CLI. */
+  invalidateLoginCache(): void {
+    this.loginCheckedAt = 0;
+  }
+
   /** Whether `claude --help` lists the flag (the CLI changes between versions). */
   async supportsFlag(flag: string): Promise<boolean> {
     this.helpText ??= this.capture(["--help"]);

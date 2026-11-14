@@ -27,13 +27,14 @@ export function useRunEvents(runId: string, enabled: boolean) {
     queryKey: ["runs", runId, "replay-events"],
     enabled,
     staleTime: Infinity,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const all: RunLogEvent[] = [];
       let fromSeq = 1;
       for (;;) {
         const { items, total: whole } = await unwrap(
           api.GET("/runs/{id}/events", {
             params: { path: { id: runId }, query: { fromSeq, limit: EVENTS_PAGE_SIZE } },
+            signal,
           }),
         );
         for (const item of items)

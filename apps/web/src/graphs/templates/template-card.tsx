@@ -1,8 +1,14 @@
+import { lazy, Suspense } from "react";
 import { KeyRound } from "lucide-react";
 import type { GraphTemplate, TemplateCategory } from "@neurons/graph-schema";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
-import { GraphViewer } from "@/graphs/editor/graph-viewer";
+import { Skeleton } from "@/shared/ui/skeleton";
+
+// React Flow is heavy and only the preview needs it: keep it out of the project list's first load.
+const GraphViewer = lazy(() =>
+  import("@/graphs/editor/graph-viewer").then((m) => ({ default: m.GraphViewer })),
+);
 
 const categories: Record<TemplateCategory, string> = {
   sales: "Vendas",
@@ -43,13 +49,15 @@ export function TemplateCard({
         role="group"
         aria-label={`Prévia de ${template.name}`}
       >
-        <GraphViewer
-          doc={template.graph}
-          live={empty}
-          pulses={empty}
-          selectedId={null}
-          onSelect={ignoreSelection}
-        />
+        <Suspense fallback={<Skeleton className="h-full w-full rounded-none" />}>
+          <GraphViewer
+            doc={template.graph}
+            live={empty}
+            pulses={empty}
+            selectedId={null}
+            onSelect={ignoreSelection}
+          />
+        </Suspense>
       </div>
       <p className="text-xs text-muted-foreground">
         {template.requiresWorkdir

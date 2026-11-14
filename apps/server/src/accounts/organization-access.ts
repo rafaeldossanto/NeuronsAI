@@ -17,6 +17,15 @@ const permissions: Record<OrganizationRole, readonly OrganizationPermission[]> =
   viewer: ["read"],
 };
 
+/** Checks a role already read in this very request (no extra query); throws like `requireOrganizationAccess`. */
+export function requirePermission(
+  scope: OrganizationScope,
+  permission: OrganizationPermission,
+): OrganizationScope {
+  if (!permissions[scope.role].includes(permission)) throw new OrganizationAccessError();
+  return scope;
+}
+
 /** Always re-read membership; a previously resolved scope is not a long-lived authorization. */
 export async function requireOrganizationAccess(
   db: Database | DatabaseTransaction,

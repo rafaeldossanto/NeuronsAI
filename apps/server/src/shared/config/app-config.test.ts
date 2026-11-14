@@ -29,6 +29,8 @@ const defaults = {
   database: { kind: "embedded" },
 };
 
+const POOL_DEFAULTS = { max: 10, idleTimeoutMs: 30_000, statementTimeoutMs: 30_000 };
+
 describe("loadConfig", () => {
   it("applies defaults when nothing is set", () => {
     expect(loadConfig({})).toEqual(defaults);
@@ -123,6 +125,7 @@ describe("loadConfig", () => {
     expect(loadConfig({ NEURONS_DB: "postgres", NEURONS_DB_URL: url }).database).toEqual({
       kind: "postgres",
       connection: { connectionString: url },
+      pool: POOL_DEFAULTS,
     });
   });
 
@@ -144,6 +147,7 @@ describe("loadConfig", () => {
         database: "neurons_dev",
         password: "p@ss:word/with#chars",
       },
+      pool: POOL_DEFAULTS,
     });
   });
 
@@ -156,7 +160,11 @@ describe("loadConfig", () => {
       NEURONS_DB_HOST: "other",
     });
 
-    expect(config.database).toEqual({ kind: "postgres", connection: { connectionString: url } });
+    expect(config.database).toEqual({
+      kind: "postgres",
+      connection: { connectionString: url },
+      pool: POOL_DEFAULTS,
+    });
   });
 
   it("uses the embedded database by default and ignores the Postgres variables then", () => {
@@ -166,7 +174,35 @@ describe("loadConfig", () => {
   });
 
   it("leaves the Postgres connection out when NEURONS_DB=postgres has no variables", () => {
-    expect(loadConfig({ NEURONS_DB: "postgres" }).database).toEqual({ kind: "postgres" });
+    expect(loadConfig({ NEURONS_DB: "postgres" }).database).toEqual({
+      kind: "postgres",
+      pool: POOL_DEFAULTS,
+    });
+  });
+
+  it("configures the Postgres pool from the environment, and 0 turns the statement timeout off", () => {
+    const config = loadConfig({
+      NEURONS_DB: "postgres",
+      NEURONS_DB_POOL_MAX: "25",
+      NEURONS_DB_IDLE_TIMEOUT_MS: "5000",
+      NEURONS_DB_STATEMENT_TIMEOUT_MS: "0",
+    });
+
+    expect(config.database).toEqual({
+      kind: "postgres",
+      pool: { max: 25, idleTimeoutMs: 5_000, statementTimeoutMs: 0 },
+    });
+  });
+
+  it.each([
+    ["a pool with no connection", { NEURONS_DB_POOL_MAX: "0" }, "NEURONS_DB_POOL_MAX"],
+    [
+      "a negative statement timeout",
+      { NEURONS_DB_STATEMENT_TIMEOUT_MS: "-1" },
+      "NEURONS_DB_STATEMENT_TIMEOUT_MS",
+    ],
+  ])("rejects %s", (_name, env, variable) => {
+    expect(() => loadConfig({ NEURONS_DB: "postgres", ...env })).toThrow(variable);
   });
 
   it("uses NEURONS_DATA_DIR when set, resolved to an absolute path", () => {

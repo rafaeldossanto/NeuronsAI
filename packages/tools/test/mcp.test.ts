@@ -163,6 +163,48 @@ describe("mcp tools (stdio)", () => {
       });
     });
 
+    it("desiste de um servidor que não responde e encerra o processo", async () => {
+      const pidFile = path.join(sandbox, "silent.pid");
+      const script = `require("fs").writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000)`;
+      await expect(
+        createTools(
+          toolNode({
+            kind: "mcp",
+            transport: "stdio",
+            command: process.execPath,
+            args: ["-e", script, pidFile],
+            env: {},
+            allowedTools: ["echo"],
+          }),
+          { secrets, limits: { mcpConnectTimeoutMs: 1_000 } },
+        ),
+      ).rejects.toMatchObject({ code: "CONNECTION_FAILED" });
+      const pid = Number(await readFile(pidFile, "utf8"));
+      expect(isProcessAlive(pid)).toBe(false);
+    }, 15_000);
+
+    it("desiste de um servidor HTTP que não responde", async () => {
+      const silent = createServer(() => undefined);
+      await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+      try {
+        const { port } = silent.address() as AddressInfo;
+        await expect(
+          createTools(
+            toolNode({
+              kind: "mcp",
+              transport: "http",
+              url: `http://127.0.0.1:${port}/mcp`,
+              allowedTools: ["echo"],
+            }),
+            { secrets, limits: { mcpConnectTimeoutMs: 500 } },
+          ),
+        ).rejects.toMatchObject({ code: "CONNECTION_FAILED" });
+      } finally {
+        silent.closeAllConnections();
+        silent.close();
+      }
+    }, 15_000);
+
     it("falha com CONNECTION_FAILED quando o comando não existe", async () => {
       await expect(
         createTools(toolNode({ ...missingCommand, allowedTools: ["echo"] }), { secrets }),

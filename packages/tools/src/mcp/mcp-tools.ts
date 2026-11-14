@@ -81,6 +81,20 @@ function remoteTool(client: Client, remote: RemoteTool): Tool {
   };
 }
 
+/** Rejects when `work` takes longer than `ms`; the caller then closes the transport. */
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`o servidor MCP não respondeu em ${Math.round(ms / 1000)} s`)),
+      ms,
+    );
+  });
+  // A late rejection of `work` (after the timeout) must not become an unhandled rejection.
+  work.catch(() => undefined);
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
+
 export async function createMcpTools(
   node: ToolNodeOf<"mcp">,
   deps: ResolvedDeps,
@@ -93,8 +107,10 @@ export async function createMcpTools(
   const close = () => connection.shutdown();
 
   try {
-    await client.connect(connection.transport);
-    const available = await listAllTools(client);
+    const available = await withTimeout(
+      client.connect(connection.transport).then(() => listAllTools(client)),
+      deps.limits.mcpConnectTimeoutMs,
+    );
     const missing = allowedTools.filter((name) => !available.some((tool) => tool.name === name));
     if (missing.length > 0) {
       throw new ToolSetupError(

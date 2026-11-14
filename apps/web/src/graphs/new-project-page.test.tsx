@@ -49,21 +49,25 @@ function renderStrict(replies: Routes) {
 }
 
 describe("novo projeto e templates", () => {
-  it("lista os três templates, mostra prévias só leitura e não cria projeto ao abrir a página", () => {
+  it("lista os três templates, mostra prévias só leitura e não cria projeto ao abrir a página", async () => {
     const mocked = renderStrict(resources);
     expect(screen.getByRole("heading", { level: 1, name: "Novo projeto" })).toBeInTheDocument();
     expect(screen.getByRole("article", { name: "Projeto em branco" })).toBeInTheDocument();
     for (const template of listTemplates()) {
       const card = screen.getByRole("article", { name: template.name });
       expect(within(card).getByText(template.description)).toBeInTheDocument();
-      const preview = within(card).getByRole("region", { name: "Canvas da execução" });
+      // The preview (React Flow) loads on demand.
+      const preview = await within(card).findByRole("region", { name: "Canvas da execução" });
+      await waitFor(() =>
+        expect(preview.querySelectorAll(".react-flow__node").length).toBeGreaterThan(0),
+      );
       expect(preview.querySelectorAll(".react-flow__node.draggable")).toHaveLength(0);
       expect(preview.querySelectorAll(".react-flow__node").length).toBeGreaterThan(0);
       expect(within(card).queryByText("Precisa de chave de API") !== null).toBe(
         template.requiresApiKey,
       );
     }
-    expect(screen.getAllByRole("region", { name: "Canvas da execução" })).toHaveLength(3);
+    expect(await screen.findAllByRole("region", { name: "Canvas da execução" })).toHaveLength(3);
     expect(mocked.calls.filter((call) => call.method === "POST")).toHaveLength(0);
   });
 

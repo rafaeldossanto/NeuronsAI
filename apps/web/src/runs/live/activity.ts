@@ -1,4 +1,26 @@
-import type { LiveMessage, LiveToolCall, RunLiveState } from "./types";
+import type { LiveDraft, LiveMessage, LiveToolCall, RunLiveState } from "./types";
+
+/** A text an agent is writing now, ready to show under the timeline or in the agent's panel. */
+export interface ActivityDraft extends LiveDraft {
+  agent: string;
+  /** The agent is still working, so the text is still growing (otherwise it is its latest words). */
+  writing: boolean;
+}
+
+/**
+ * What agents are writing now, the free text first and then the messages, by agent name. With
+ * `agent`, only that one's. It reads `drafts` and the agents' status, nothing is stored twice.
+ */
+export function selectDrafts(
+  state: Pick<RunLiveState, "drafts" | "agents">,
+  agent?: string,
+): ActivityDraft[] {
+  const names = agent ? [agent] : Object.keys(state.drafts).sort();
+  return names.flatMap((name) => {
+    const writing = state.agents[name]?.status === "busy";
+    return (state.drafts[name] ?? []).map((draft) => ({ ...draft, agent: name, writing }));
+  });
+}
 
 /** One row of the run's single timeline: a message between agents or a tool call. */
 export type ActivityItem = ({ type: "message" } & LiveMessage) | ({ type: "tool" } & LiveToolCall);

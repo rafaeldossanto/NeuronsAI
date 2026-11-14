@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { OutputDelta } from "../contract/output-stream.js";
 import type { InboundMessage } from "../contract/agent-runtime.js";
 import { readHostEnvironment } from "../platform/host-environment.js";
 import {
@@ -67,6 +68,28 @@ describe("ClaudeStreamJsonRuntime (fake CLI)", () => {
     await untilState(runtime, "idle");
 
     expect(communication.sent).toEqual([{ to: "Pesquisador", text: "oi" }]);
+  });
+
+  it("publishes what the model writes as it comes: the free text and the body of a message", async () => {
+    const { runtime } = await started();
+    const seen: OutputDelta[] = [];
+    runtime.onOutputDelta((delta) => seen.push(delta));
+
+    await runtime.deliver(message("!text Vou avisar o colega.\n!send Pesquisador olá, colega"));
+    await untilState(runtime, "idle");
+
+    const joined = (channel: OutputDelta["channel"]) =>
+      seen
+        .filter((delta) => delta.channel === channel)
+        .map((delta) => delta.delta)
+        .join("");
+    expect(joined("text")).toBe("Vou avisar o colega.");
+    expect(joined("message")).toBe("olá, colega");
+    // The `to` argument and the JSON syntax never leak into the draft.
+    expect(JSON.stringify(seen)).not.toContain("Pesquisador");
+    expect(new Set(seen.filter((d) => d.channel === "text").map((d) => d.turnId)).size).toBe(1);
+    // The message that is finally sent is the same, and the turn still ends the usual way.
+    expect(communication.sent).toEqual([{ to: "Pesquisador", text: "olá, colega" }]);
   });
 
   it("reports the usage and cost of each turn before going idle", async () => {

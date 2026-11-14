@@ -15,5 +15,7 @@ export async function openDatabaseProvider(
   if (database.kind === "embedded") {
     return PgliteDatabaseProvider.open(path.join(config.dataDir, EMBEDDED_DB_FOLDER));
   }
-  return database.connection ? new PostgresDatabaseProvider(database.connection) : undefined;
+  return database.connection
+    ? new PostgresDatabaseProvider(database.connection, undefined, database.pool)
+    : undefined;
 }

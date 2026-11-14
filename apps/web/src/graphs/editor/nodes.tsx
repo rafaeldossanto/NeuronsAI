@@ -1,4 +1,5 @@
 import type { GraphNode } from "@neurons/graph-schema";
+import { memo } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import {
   Cloud,
@@ -84,7 +85,7 @@ function describe(node: GraphNode): {
   }
 }
 
-function Block({ data, selected }: NodeProps<BlockNode>) {
+const Block = memo(function Block({ data, selected }: NodeProps<BlockNode>) {
   const { node, issues, live } = data;
   const { icon: Icon, kindLabel, title, detail } = describe(node);
   const invalid = issues.length > 0;
@@ -141,7 +142,7 @@ function Block({ data, selected }: NodeProps<BlockNode>) {
       )}
     </div>
   );
-}
+});
 
 const DOT: Record<AgentLiveStatus, string> = {
   starting: "bg-muted-foreground/50",

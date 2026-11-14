@@ -37,10 +37,14 @@ class FakeHistory implements Pick<RunEventHistory, "readFrom"> {
   gate: Promise<void> | undefined;
   failure: Error | undefined;
 
-  async readFrom(runId: string, fromSeq: number): Promise<RunEvent[]> {
+  readCalls: { fromSeq: number; limit: number | undefined }[] = [];
+
+  async readFrom(runId: string, fromSeq: number, limit?: number): Promise<RunEvent[]> {
+    this.readCalls.push({ fromSeq, limit });
     await this.gate;
     if (this.failure) throw this.failure;
-    return this.events.filter((e) => e.runId === runId && e.seq >= fromSeq);
+    const found = this.events.filter((e) => e.runId === runId && e.seq >= fromSeq);
+    return limit === undefined ? found : found.slice(0, limit);
   }
 }
 
@@ -173,5 +177,16 @@ describe("RunSubscriptions", () => {
 
   it("ignores events of runs nobody listens to", () => {
     expect(() => subscriptions.publish(event(1))).not.toThrow();
+  });
+
+  it("replays a long log in batches, in order and without gaps", async () => {
+    history.events = Array.from({ length: 2_500 }, (_, index) => event(index + 1));
+    const sink = new RecordingSink();
+
+    await subscriptions.subscribe(sink, RUN, 1);
+
+    expect(sink.seqs).toEqual(history.events.map((e) => e.seq));
+    expect(history.readCalls.length).toBeGreaterThan(1);
+    expect(history.readCalls.every((call) => call.limit !== undefined)).toBe(true);
   });
 });

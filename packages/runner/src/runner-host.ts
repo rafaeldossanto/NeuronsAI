@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  isStreamingRuntime,
   isTerminalRuntime,
   silentLogger,
   type AgentCommunication,
@@ -18,6 +19,7 @@ import {
   PROTOCOL_VERSION,
   REVISION_TOOL_CALLS,
   REVISION_GRAPH_TOOLS,
+  REVISION_OUTPUT_STREAM,
   REVISION_TERMINAL_RESIZE,
   revisionOf,
   type AgentDeliverFrame,
@@ -313,6 +315,22 @@ export class RunnerHost {
             instanceId: frame.instanceId,
             cols,
             rows,
+          });
+        }),
+      );
+    }
+    if (isStreamingRuntime(runtime)) {
+      subscriptions.push(
+        // An older server would refuse the frame (and the connection with it): it gets no live text.
+        runtime.onOutputDelta(({ turnId, channel, delta }) => {
+          if (!this.serverSupports(REVISION_OUTPUT_STREAM)) return;
+          this.send({
+            v: PROTOCOL_VERSION,
+            type: "agent.delta",
+            instanceId: frame.instanceId,
+            turnId,
+            channel,
+            delta,
           });
         }),
       );

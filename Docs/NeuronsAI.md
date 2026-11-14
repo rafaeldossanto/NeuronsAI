@@ -80,6 +80,7 @@ sequenceDiagram
 - Mensagem que chega com o agente ocupado espera na caixa de entrada e é entregue quando ele
   termina o turno (no terminal: quando a CLI fica ociosa, como o `tui-idle` do Orca).
 - Você também é um participante: dá para escrever para qualquer agente durante a execução.
+- **Streaming:** na execução ao vivo a tela mostra o texto de cada agente (API e stream-json) crescendo token por token, como evento passageiro `AgentOutputDelta` (`text`: texto livre do modelo; `message`: o corpo de uma mensagem ainda sendo escrito). Nada disso entra no log, que continua com a mensagem final; o texto livre nunca vai para os outros agentes.
 
 ## Decisões
 

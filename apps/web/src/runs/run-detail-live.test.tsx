@@ -375,3 +375,77 @@ describe("painel do agente", () => {
     expect(fake.FakeTerminal.instances).toHaveLength(0);
   });
 });
+
+describe("texto em escrita", () => {
+  const writing = (agent: string, turnId: string, channel: "text" | "message", delta: string) => ({
+    runId,
+    type: "AgentOutputDelta",
+    agent,
+    turnId,
+    channel,
+    delta,
+  });
+
+  async function openRevisor() {
+    renderApp(`/runs/${runId}`, routes);
+    const socket = await openSocket();
+    act(() => {
+      socket.push("run.event", frame(1, "RunStarted", null, { input: "x", budgetUsd: null }));
+      socket.push("run.event", state(2, "Revisor", "busy"));
+    });
+    fireEvent.click(await screen.findByTestId("block-b"));
+    const panel = await screen.findByRole("region", { name: "Painel do agente Revisor" });
+    return { socket, panel };
+  }
+
+  it("mostra o texto crescendo no painel e na linha do tempo, com o aviso de que está escrevendo", async () => {
+    const { socket, panel } = await openRevisor();
+
+    act(() => {
+      socket.push("run.ephemeral", writing("Revisor", "t1", "text", "Vou "));
+      socket.push("run.ephemeral", writing("Revisor", "t1", "text", "responder."));
+      socket.push("run.ephemeral", writing("Revisor", "t1:c1", "message", "Olá, Pesquisador"));
+    });
+
+    const text = await within(panel).findByLabelText("Texto de Revisor em escrita");
+    expect(text).toHaveTextContent("Vou responder.");
+    expect(text).toHaveTextContent("não vai para os outros agentes");
+    const message = within(panel).getByLabelText("Mensagem de Revisor em escrita");
+    expect(message).toHaveTextContent("Olá, Pesquisador");
+    expect(within(message).getByRole("status")).toHaveTextContent("Escrevendo…");
+    // The run's own timeline shows it too.
+    const timeline = screen.getByRole("region", { name: "Linha do tempo" });
+    expect(within(timeline).getByLabelText("Mensagem de Revisor em escrita")).toBeInTheDocument();
+  });
+
+  it("troca o rascunho da mensagem pela mensagem final e some com o aviso quando o agente descansa", async () => {
+    const { socket, panel } = await openRevisor();
+    act(() => {
+      socket.push("run.ephemeral", writing("Revisor", "t1", "text", "pensando"));
+      socket.push("run.ephemeral", writing("Revisor", "t1:c1", "message", "Olá"));
+    });
+    await within(panel).findByLabelText("Mensagem de Revisor em escrita");
+
+    act(() => {
+      socket.push(
+        "run.event",
+        frame(3, "MessageSent", "Revisor", {
+          messageId: "m1",
+          from: "Revisor",
+          to: "Pesquisador",
+          kind: "message",
+          body: "Olá, pronto",
+        }),
+      );
+      socket.push("run.event", state(4, "Revisor", "idle"));
+    });
+
+    await waitFor(() =>
+      expect(within(panel).queryByLabelText("Mensagem de Revisor em escrita")).toBeNull(),
+    );
+    expect(within(panel).getByText("Olá, pronto")).toBeInTheDocument();
+    const text = within(panel).getByLabelText("Texto de Revisor em escrita");
+    expect(within(text).queryByRole("status")).toBeNull();
+    expect(text).toHaveTextContent("Última fala");
+  });
+});

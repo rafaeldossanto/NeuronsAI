@@ -32,13 +32,14 @@ function Organizations({ account }: { account: AccountSession }) {
   const session = useSession();
   const organizations = useQuery({
     queryKey: ["organizations"],
-    queryFn: () => unwrap(api.GET("/auth/organizations")),
+    queryFn: ({ signal }) => unwrap(api.GET("/auth/organizations", { signal })),
   });
   const members = useQuery({
     queryKey: ["members", account.organizationId],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       unwrap(
         api.GET("/auth/organizations/{id}/members", {
+          signal,
           params: { path: { id: account.organizationId } },
         }),
       ),
@@ -507,9 +508,10 @@ function LocalDataAdoption({
   const client = useQueryClient();
   const found = useQuery({
     queryKey: ["local-data", organizationId],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       unwrap(
         api.GET("/auth/organizations/{id}/local-data", {
+          signal,
           params: { path: { id: organizationId } },
         }),
       ),
@@ -534,6 +536,8 @@ function LocalDataAdoption({
       );
       setDone(moved);
       setConfirming(false);
+      // Adopting local data moves graphs, runs, memories, connections and more into this organization:
+      // nearly every cached query changed, so the unscoped invalidation is intended.
       await client.invalidateQueries();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Não foi possível mover os dados.");

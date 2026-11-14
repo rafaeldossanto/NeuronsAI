@@ -24,10 +24,11 @@ export function InvitationsPanel({
   const key = ["invitations", organizationId];
   const invitations = useQuery({
     queryKey: key,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       unwrap(
         api.GET("/auth/organizations/{id}/invitations", {
           params: { path: { id: organizationId } },
+          signal,
         }),
       ),
   });

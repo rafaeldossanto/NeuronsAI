@@ -9,7 +9,7 @@ export function useRunDetail(id: string) {
   const api = useApi();
   return useQuery({
     queryKey: ["runs", id, "detail"],
-    queryFn: () => unwrap(api.GET("/runs/{id}", { params: { path: { id } } })),
+    queryFn: ({ signal }) => unwrap(api.GET("/runs/{id}", { params: { path: { id } }, signal })),
   });
 }
 
@@ -41,16 +41,17 @@ export function useRunGraph(graphId: string | undefined, versionId: string | und
     queryKey: ["run-graph", graphId, versionId],
     enabled: Boolean(graphId && versionId),
     staleTime: Infinity,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const id = graphId ?? "";
       const { items } = await unwrap(
-        api.GET("/graphs/{id}/versions", { params: { path: { id } } }),
+        api.GET("/graphs/{id}/versions", { params: { path: { id } }, signal }),
       );
       const found = items.find((item) => item.id === versionId);
       if (!found) throw new Error("A versão do grafo desta execução não foi encontrada.");
       const version = await unwrap(
         api.GET("/graphs/{id}/versions/{version}", {
           params: { path: { id, version: found.version } },
+          signal,
         }),
       );
       return version.definition;

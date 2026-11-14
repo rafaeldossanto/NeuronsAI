@@ -31,6 +31,8 @@ export const runs = pgTable(
   (table) => [
     // The listing joins on the version and sorts by start.
     index("runs_graph_version_id_idx").on(table.graphVersionId),
+    // Active-run counts (quota) and the status filter of the listing.
+    index("runs_status_idx").on(table.status),
     index("runs_started_at_idx").on(table.startedAt.desc(), table.id.desc()),
     check(
       "runs_status_check",

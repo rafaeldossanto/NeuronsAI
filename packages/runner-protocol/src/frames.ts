@@ -128,6 +128,21 @@ export const agentOutputFrame = frame("agent.output", { instanceId, data: z.stri
  */
 export const callFrame = frame("call", { callId: requestId, instanceId, call: callSchema });
 
+/** Biggest piece of live text one `agent.delta` carries (the runner groups tokens: pieces are small). */
+export const MAX_OUTPUT_DELTA_CHARS = 20_000;
+
+/**
+ * A piece of what an agent writes while the model generates it. Revision 6. Live only, like
+ * `agent.output`: never stored, not resent after a reconnection. `channel` and `turnId` are those
+ * of `AgentOutputDelta` (`text`: the model's free text; `message`: a message body being written).
+ */
+export const agentDeltaFrame = frame("agent.delta", {
+  instanceId,
+  turnId: z.string().min(1).max(200),
+  channel: z.enum(["text", "message"]),
+  delta: z.string().min(1).max(MAX_OUTPUT_DELTA_CHARS),
+});
+
 /** Biggest terminal the protocol carries; the server applies its own, smaller, limits before asking. */
 export const MAX_TERMINAL_COLS = 1_000;
 export const MAX_TERMINAL_ROWS = 1_000;
@@ -163,6 +178,7 @@ export const runnerFrameSchema = z.discriminatedUnion("type", [
   runnerHeartbeatFrame,
   agentStateFrame,
   agentOutputFrame,
+  agentDeltaFrame,
   agentResizedFrame,
   agentSnapshotFrame,
   callFrame,
@@ -242,6 +258,7 @@ export type RegisteredFrame = z.infer<typeof registeredFrame>;
 export type RejectFrame = z.infer<typeof rejectFrame>;
 export type AgentStateFrame = z.infer<typeof agentStateFrame>;
 export type AgentOutputFrame = z.infer<typeof agentOutputFrame>;
+export type AgentDeltaFrame = z.infer<typeof agentDeltaFrame>;
 export type CallFrame = z.infer<typeof callFrame>;
 export type ResponseFrame = z.infer<typeof responseFrame>;
 export type AgentStartFrame = z.infer<typeof agentStartFrame>;

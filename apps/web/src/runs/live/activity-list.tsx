@@ -1,6 +1,6 @@
 import { Network, Wrench } from "lucide-react";
 import { formatTime } from "@/shared/format";
-import type { ActivityItem } from "./activity";
+import type { ActivityDraft, ActivityItem } from "./activity";
 import { messageKindLabel } from "./labels";
 
 const TOOL_LABELS: Record<string, string> = {
@@ -15,8 +15,17 @@ const TOOL_LABELS: Record<string, string> = {
  * The run's timeline: messages between agents and tool calls (memories included) in one list. A tool
  * call shows its operation and path, never the content of a note.
  */
-export function ActivityList({ items, empty }: { items: ActivityItem[]; empty: string }) {
-  if (items.length === 0) {
+export function ActivityList({
+  items,
+  empty,
+  drafts = [],
+}: {
+  items: ActivityItem[];
+  empty: string;
+  /** What agents are writing now: shown after the last entry, until the final message replaces it. */
+  drafts?: ActivityDraft[];
+}) {
+  if (items.length === 0 && drafts.length === 0) {
     return (
       <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
         {empty}
@@ -42,6 +51,9 @@ export function ActivityList({ items, empty }: { items: ActivityItem[]; empty: s
           <ToolRow key={`t${item.seq}`} call={item} />
         ),
       )}
+      {drafts.map((draft) => (
+        <DraftRow key={`d${draft.agent}:${draft.turnId}`} draft={draft} />
+      ))}
     </ol>
   );
 }
@@ -65,6 +77,45 @@ function ToolRow({ call }: { call: Extract<ActivityItem, { type: "tool" }> }) {
         {call.path && <p className="mt-1 break-words text-muted-foreground">{call.path}</p>}
         {call.errorCode && <p className="mt-1 text-destructive">{call.errorCode}</p>}
       </div>
+    </li>
+  );
+}
+
+/**
+ * A text still being written. The final message replaces a message draft; the free text is only
+ * ever on screen (it is not part of what the agents say to each other).
+ */
+export function DraftRow({ draft }: { draft: ActivityDraft }) {
+  const message = draft.channel === "message";
+  return (
+    <li
+      aria-label={`${message ? "Mensagem" : "Texto"} de ${draft.agent} em escrita`}
+      className="rounded-md border border-dashed bg-card px-4 py-2 text-sm"
+    >
+      <div className="flex flex-wrap items-center gap-x-3">
+        <span className="font-bold">@{draft.agent}</span>
+        <span className="text-muted-foreground">
+          {message ? "mensagem" : "texto do modelo (não vai para os outros agentes)"}
+        </span>
+        {draft.writing ? (
+          <span
+            role="status"
+            className="ml-auto flex items-center gap-1 text-xs text-muted-foreground"
+          >
+            <span
+              aria-hidden
+              className="inline-block size-2 animate-pulse rounded-full bg-primary"
+            />
+            Escrevendo…
+          </span>
+        ) : (
+          <span className="ml-auto text-xs text-muted-foreground">Última fala</span>
+        )}
+      </div>
+      <p className="mt-1 whitespace-pre-wrap break-words">
+        {draft.cut && "… "}
+        {draft.body}
+      </p>
     </li>
   );
 }

@@ -143,6 +143,42 @@ describe("RunLiveClient", () => {
     expect(errors).toEqual(["ruim"]);
   });
 
+  it("repassa os pedaços do texto em escrita e ignora os malformados", () => {
+    const { events } = setup();
+    FakeSocket.last.open();
+    const piece = { runId, type: "AgentOutputDelta", agent: "A", turnId: "t1", channel: "message" };
+    FakeSocket.last.push("run.ephemeral", { ...piece, delta: "Olá" });
+    FakeSocket.last.push("run.ephemeral", { ...piece, channel: "text", delta: "!" });
+    for (const bad of [
+      { delta: "" },
+      { delta: 5 },
+      { delta: "x", channel: "terminal" },
+      { delta: "x", turnId: 1 },
+      { delta: "x", agent: undefined },
+      { delta: "x", runId: "outra" },
+    ])
+      FakeSocket.last.push("run.ephemeral", { ...piece, ...bad });
+
+    expect(events).toEqual([
+      { type: "AgentOutputDelta", agent: "A", turnId: "t1", channel: "message", delta: "Olá" },
+      { type: "AgentOutputDelta", agent: "A", turnId: "t1", channel: "text", delta: "!" },
+    ]);
+  });
+
+  it("não conta o pedaço como evento do log: o seq e a reassinatura seguem só o log", () => {
+    const { client } = setup();
+    FakeSocket.last.open();
+    FakeSocket.last.push("run.ephemeral", {
+      runId,
+      type: "AgentOutputDelta",
+      agent: "A",
+      turnId: "t",
+      channel: "text",
+      delta: "x",
+    });
+    expect(client.lastSeenSeq).toBe(0);
+  });
+
   it("para ao ver o fim da execução e não reconecta", () => {
     const { states } = setup();
     FakeSocket.last.open();

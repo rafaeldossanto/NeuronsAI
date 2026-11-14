@@ -214,6 +214,23 @@ export class RunLiveClient {
         this.options.onEvent({ type: "TerminalResized", agent: e["agent"], cols, rows });
       return;
     }
+    if (e["type"] === "AgentOutputDelta") {
+      const { turnId, channel, delta } = e;
+      if (
+        typeof turnId === "string" &&
+        (channel === "text" || channel === "message") &&
+        typeof delta === "string" &&
+        delta !== ""
+      )
+        this.options.onEvent({
+          type: "AgentOutputDelta",
+          agent: e["agent"],
+          turnId,
+          channel,
+          delta,
+        });
+      return;
+    }
     if (e["type"] !== "TerminalOutput" || typeof e["data"] !== "string") return;
     this.options.onEvent({
       type: "TerminalOutput",
