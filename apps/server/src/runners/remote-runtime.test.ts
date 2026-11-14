@@ -1,7 +1,7 @@
 import { Logger } from "@nestjs/common";
 import type { FakeTerminalRuntime } from "../agents/testing/fake-agent-runtime.js";
 import { TerminalUnavailableError } from "../realtime/terminal-errors.js";
-import type { EphemeralRunEvent, EventSink, RunEvent } from "../realtime/run-event.js";
+import type { EphemeralRunEvent, EventSink } from "../realtime/run-event.js";
 import {
   PROTOCOL_REVISION,
   PROTOCOL_VERSION,
@@ -634,7 +634,7 @@ describe("a runner of another protocol revision than the server's", () => {
   async function watch(wiring: ReturnType<typeof createHubWiring>, runId: string) {
     const live: EphemeralRunEvent[] = [];
     const sink: EventSink = {
-      send: (_event: RunEvent) => undefined,
+      send: () => undefined,
       sendEphemeral: (event) => void live.push(event),
     };
     await wiring.subscriptions.subscribe(sink, runId);
