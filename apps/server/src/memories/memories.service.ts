@@ -78,7 +78,7 @@ export class MemoriesService {
     if (resourceScope.current().organizationId === null) return;
     const limits = this.config.quotas ?? DEFAULT_QUOTAS;
     if (creating && limits.memoriesPerOrganization > 0) {
-      const existing = (await this.list()).length;
+      const existing = await this.count();
       if (existing >= limits.memoriesPerOrganization) {
         throw new QuotaExceededError(
           "quota_memories",
@@ -96,6 +96,26 @@ export class MemoriesService {
         );
       }
     }
+  }
+
+  /** How many memories exist: the folders holding a `memory.json`, without reading or parsing them. */
+  private async count(): Promise<number> {
+    await mkdir(this.root, { recursive: true });
+    const folders = (await readdir(this.root, { withFileTypes: true })).filter(
+      (entry) => entry.isDirectory() && z.uuid().safeParse(entry.name).success,
+    );
+    const present = await Promise.all(
+      folders.map((folder) =>
+        stat(path.join(this.root, folder.name, "memory.json")).then(
+          () => true,
+          (error: NodeJS.ErrnoException) => {
+            if (error.code === "ENOENT") return false;
+            throw error;
+          },
+        ),
+      ),
+    );
+    return present.filter(Boolean).length;
   }
 
   async list(): Promise<MemoryRecord[]> {
@@ -273,7 +293,6 @@ export class MemoriesService {
 
 /** Total size of the files under `directory` (0 when it does not exist yet). */
 async function directorySize(directory: string): Promise<number> {
-  let total = 0;
   let entries;
   try {
     entries = await readdir(directory, { withFileTypes: true });
@@ -281,10 +300,12 @@ async function directorySize(directory: string): Promise<number> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
     throw error;
   }
-  for (const entry of entries) {
-    const target = path.join(directory, entry.name);
-    if (entry.isDirectory()) total += await directorySize(target);
-    else if (entry.isFile()) total += (await stat(target)).size;
-  }
-  return total;
+  const sizes = await Promise.all(
+    entries.map(async (entry) => {
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) return directorySize(target);
+      return entry.isFile() ? (await stat(target)).size : 0;
+    }),
+  );
+  return sizes.reduce((sum, size) => sum + size, 0);
 }

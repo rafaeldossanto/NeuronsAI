@@ -52,7 +52,11 @@ export const webhookDeliveries = pgTable(
     signature: text("signature").notNull(),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
   },
-  (table) => [primaryKey({ columns: [table.hookId, table.signature] })],
+  (table) => [
+    primaryKey({ columns: [table.hookId, table.signature] }),
+    // The purge of rows past the signature window.
+    index("webhook_deliveries_received_at_idx").on(table.receivedAt),
+  ],
 );
 
 /**

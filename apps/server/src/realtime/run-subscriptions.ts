@@ -2,6 +2,8 @@ import { Inject, Injectable } from "@nestjs/common";
 import { RUN_EVENT_HISTORY, type RunEventHistory } from "./run-event-history.js";
 import type { EphemeralRunEvent, EventSink, RunEvent } from "./run-event.js";
 
+const REPLAY_BATCH = 1000;
+
 interface Subscription {
   /** Lowest seq still owed to the sink; undefined until the first event when no resume point was given. */
   nextSeq: number | undefined;
@@ -34,8 +36,14 @@ export class RunSubscriptions {
     if (fromSeq === undefined) return;
 
     try {
-      for (const event of await this.history.readFrom(runId, fromSeq))
-        this.deliver(sink, subscription, event);
+      // In batches, so a long log is never held in memory whole; `seq` keeps the order.
+      let next = fromSeq;
+      for (;;) {
+        const batch = await this.history.readFrom(runId, next, REPLAY_BATCH);
+        for (const event of batch) this.deliver(sink, subscription, event);
+        if (batch.length < REPLAY_BATCH) break;
+        next = batch[batch.length - 1]!.seq + 1;
+      }
     } catch (error) {
       this.unsubscribe(sink, runId);
       throw error;

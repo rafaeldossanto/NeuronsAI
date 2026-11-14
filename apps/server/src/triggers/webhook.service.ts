@@ -30,6 +30,7 @@ export interface WebhookRequest {
 }
 
 /** How long a signature is remembered: a request stamped in the future stays valid for the window after that. */
+const PURGE_EVERY_MS = 60_000;
 const REPLAY_MEMORY_MS = (2 * SIGNATURE_WINDOW_SEC + 60) * 1000;
 
 /** The shared bucket of every id nobody has: scanning for ids is throttled as a whole. */
@@ -50,6 +51,7 @@ const EMPTY_BODY_INPUT = "(requisição sem corpo)";
 export class WebhookService {
   private readonly logger = new Logger(WebhookService.name);
   private readonly limiter: RateLimiter;
+  private lastPurgeAt = 0;
 
   constructor(
     @Inject(TRIGGER_STATE_REPOSITORY) private readonly states: TriggerStateRepository,
@@ -96,9 +98,13 @@ export class WebhookService {
     if (!(await this.states.recordDelivery(request.hookId, check.signature, now))) {
       return this.refuse(request.hookId, "replay");
     }
-    void this.states
-      .purgeDeliveries(new Date(now.getTime() - REPLAY_MEMORY_MS))
-      .catch(() => undefined);
+    // At most once a minute: the purge scans for old rows, not worth doing per accepted request.
+    if (now.getTime() - this.lastPurgeAt >= PURGE_EVERY_MS) {
+      this.lastPurgeAt = now.getTime();
+      void this.states
+        .purgeDeliveries(new Date(now.getTime() - REPLAY_MEMORY_MS))
+        .catch(() => undefined);
+    }
 
     return this.start(state, request.body, now);
   }
