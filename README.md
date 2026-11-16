@@ -62,7 +62,7 @@ Provedores OpenAI, Anthropic e APIs compatíveis já usam a abstração de sess�
 estimativas de custo para o catálogo conhecido. Veja a [entrega local sem custo](Docs/Plano/Entrega%20local%20sem%20custo.md).
 Permanecem pendentes a aceitação com Google/modelos reais, a primeira release pública e a publicação da landing.
 WhatsApp, AWS e assinatura de código estão nas etapas restantes do plano. O terminal
-executa Claude Code; Codex/Gemini/custom ainda não têm adaptadores. A conexão remota do
+executa Claude Code e Codex CLI (conta do ChatGPT); Gemini/custom ainda não têm adaptadores. A conexão remota do
 desktop abre a interface do servidor, mas o runner separado precisa ser iniciado à parte.
 
 As instruções de distribuição descrevem os pipelines disponíveis; não indicam que já
