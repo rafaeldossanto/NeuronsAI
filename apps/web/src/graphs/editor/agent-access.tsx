@@ -3,7 +3,7 @@ import { Button } from "@/shared/ui/button";
 import { Field, Select } from "@/shared/ui/fields";
 import type { FieldPath } from "@/graphs/editor/model";
 import { useWorkspace } from "@/workspace/resources";
-import { ClaudeConnection } from "@/connections/connections-panel";
+import { ChatgptConnection, ClaudeConnection } from "@/connections/connections-panel";
 
 export function AgentAccess({
   node,
@@ -16,7 +16,8 @@ export function AgentAccess({
   const runtime = node.runtime;
   const mode = runtime.access ?? (runtime.kind === "terminal" ? "subscription" : "api-key");
   const terminal = runtime.kind === "terminal";
-  const supportedSubscription = terminal && runtime.cli === "claude";
+  const cli = runtime.kind === "terminal" ? runtime.cli : undefined;
+  const supportedSubscription = cli === "claude" || cli === "codex";
   const supportedAccess = !terminal || supportedSubscription;
   return (
     <section className="flex flex-col gap-3 rounded-lg border bg-background p-3">
@@ -41,10 +42,15 @@ export function AgentAccess({
       </div>
       {!supportedAccess ? (
         <p className="text-xs text-muted-foreground">
-          A conexão desta CLI ainda não está implementada. Use Claude Code ou um agente de API.
+          A conexão desta CLI ainda não está implementada. Use Claude Code, Codex ou um agente de
+          API.
         </p>
       ) : mode === "subscription" ? (
-        <ClaudeConnection />
+        cli === "codex" ? (
+          <ChatgptConnection />
+        ) : (
+          <ClaudeConnection />
+        )
       ) : (
         <>
           <Field label="Chave de API" hint="Cobrança por uso na conta do provedor.">
@@ -70,10 +76,19 @@ export function AgentAccess({
       )}
       {!supportedSubscription && (
         <p className="text-xs text-muted-foreground">
-          Assinaturas só aparecem quando a integração oficial está disponível. A assinatura do
-          ChatGPT ainda não está integrada.
+          Assinaturas só aparecem quando a integração oficial está disponível: hoje, Claude Code e
+          Codex (conta do ChatGPT).
         </p>
       )}
+      {runtime.kind === "terminal" &&
+        cli === "codex" &&
+        mode === "api-key" &&
+        runtime.mode === "pty" && (
+          <p role="status" className="text-xs text-muted-foreground">
+            O Codex só aceita chave de API no modo stream-json. Troque o modo do agente ou use a
+            assinatura.
+          </p>
+        )}
       {workspace?.secrets.isError && mode === "api-key" && (
         <p role="alert" className="text-xs text-destructive">
           Não foi possível carregar as chaves salvas.
