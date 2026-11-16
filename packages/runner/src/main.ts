@@ -11,6 +11,7 @@ function main(): void {
     token: config.token,
     name: config.name,
     ...(config.claudeBin && { claudeBin: config.claudeBin }),
+    ...(config.codexBin && { codexBin: config.codexBin }),
     logger: {
       warn: (message) => console.warn(`[runner] ${message}`),
       error: (message) => console.error(`[runner] ${message}`),

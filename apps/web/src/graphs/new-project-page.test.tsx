@@ -23,7 +23,13 @@ const resources = {
         signingIn: false,
         message: "Instale o Claude Code.",
       },
-      chatgpt: { available: false, message: "Em breve" },
+      chatgpt: {
+        available: true,
+        installed: false,
+        connected: false,
+        signingIn: false,
+        message: "Instale o Codex CLI.",
+      },
     },
   },
 };

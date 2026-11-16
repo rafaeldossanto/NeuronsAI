@@ -1,6 +1,6 @@
 import os from "node:os";
 import type { RuntimeLogger } from "@neurons/agent-runtimes";
-import type { ClaudeCommand } from "@neurons/agent-runtimes/claude";
+import type { ClaudeCommand, CodexCommand } from "@neurons/agent-runtimes/claude";
 import {
   RunnerConnection,
   type ConnectionStatus,
@@ -16,6 +16,8 @@ export interface StartRunnerOptions {
   name?: string;
   claudeBin?: string;
   claudeCommand?: ClaudeCommand;
+  codexBin?: string;
+  codexCommand?: CodexCommand;
   reconnect?: ReconnectPolicy;
   logger?: RuntimeLogger;
   onStatus?: (status: ConnectionStatus) => void;
@@ -36,6 +38,8 @@ export function startRunner(options: StartRunnerOptions): RunningRunner {
     createFactory: terminalFactoryProvider({
       ...(options.claudeBin && { claudeBin: options.claudeBin }),
       ...(options.claudeCommand && { claudeCommand: options.claudeCommand }),
+      ...(options.codexBin && { codexBin: options.codexBin }),
+      ...(options.codexCommand && { codexCommand: options.codexCommand }),
       ...(options.logger && { logger: options.logger }),
     }),
     ...(options.logger && { logger: options.logger }),

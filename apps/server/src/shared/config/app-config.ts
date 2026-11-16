@@ -85,11 +85,15 @@ export interface AppConfig {
   masterKey?: Buffer;
   /** Path of the Claude Code executable (NEURONS_CLAUDE_BIN); absent means "find it". */
   claudeBin?: string;
+  /** Path of the Codex CLI executable (NEURONS_CODEX_BIN); absent means "find it". */
+  codexBin?: string;
   /**
    * What to run as the Claude Code CLI, program and leading arguments. Not an environment variable:
    * set in code by whoever embeds the server (the demo points it at the fake CLI).
    */
   claudeCommand?: { command: string; args: string[] };
+  /** The same for the Codex CLI (tests point it at the fake). */
+  codexCommand?: { command: string; args: string[] };
   /**
    * How agents' Claude Code starts the `neurons` MCP server. Set in code by whoever embeds the
    * server in something that is not plain Node (the desktop app runs Electron as Node here).
@@ -126,6 +130,7 @@ const envSchema = z.object({
   ...terminalEnvShape,
   ...runnerEnvShape,
   NEURONS_CLAUDE_BIN: unlessEmpty(z.string().trim().min(1).optional()),
+  NEURONS_CODEX_BIN: unlessEmpty(z.string().trim().min(1).optional()),
   NEURONS_MASTER_KEY: unlessEmpty(
     z
       .string()
@@ -202,5 +207,6 @@ export function loadConfig(
     database: resolveDatabase(values),
     ...(masterKey && { masterKey: Buffer.from(masterKey, "base64") }),
     ...(values.NEURONS_CLAUDE_BIN && { claudeBin: values.NEURONS_CLAUDE_BIN }),
+    ...(values.NEURONS_CODEX_BIN && { codexBin: values.NEURONS_CODEX_BIN }),
   };
 }

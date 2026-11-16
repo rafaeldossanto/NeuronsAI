@@ -17,6 +17,8 @@ const COMMON_VARIABLES = [
   "NODE_EXTRA_CA_CERTS",
   // Where the user's own Claude Code login lives, when they moved it.
   "CLAUDE_CONFIG_DIR",
+  // The same for the Codex CLI: `codex login` keeps its login in CODEX_HOME (`~/.codex` by default).
+  "CODEX_HOME",
 ];
 
 const WINDOWS_VARIABLES = [
