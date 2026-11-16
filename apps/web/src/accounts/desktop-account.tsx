@@ -1,4 +1,11 @@
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { Modal } from "@/shared/modal";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -17,7 +24,23 @@ export interface DesktopAccountBridge {
   forget: () => Promise<void>;
 }
 
-export function DesktopAccount({ account }: { account: DesktopAccountBridge }) {
+interface DesktopConnection {
+  state: DesktopAccountState | null;
+  busy: boolean;
+  error: string;
+  openConnection: () => void;
+  openLocal: () => void;
+}
+const DesktopConnectionContext = createContext<DesktopConnection | null>(null);
+export const useDesktopConnection = () => useContext(DesktopConnectionContext);
+
+export function DesktopAccount({
+  account,
+  children,
+}: {
+  account: DesktopAccountBridge;
+  children?: ReactNode;
+}) {
   const [state, setState] = useState<DesktopAccountState | null>(null);
   const [open, setOpen] = useState(false);
   const [origin, setOrigin] = useState("");
@@ -68,34 +91,44 @@ export function DesktopAccount({ account }: { account: DesktopAccountBridge }) {
     }
   }
   return (
-    <>
-      <div
-        className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-2"
-        aria-label="Conexão do aplicativo"
-      >
-        <p className="caption-4 min-w-0 break-all text-muted-foreground">
-          {state?.mode === "remote" ? state.serverOrigin : "Espaço local"}
-        </p>
-        {state?.mode === "remote" ? (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() => void act(() => account.openLocal())}
-          >
-            Voltar ao local
-          </Button>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-            Conectar servidor
-          </Button>
-        )}
-        {error && !open && (
-          <p role="alert" className="body-6 w-full text-destructive">
-            {error}
+    <DesktopConnectionContext.Provider
+      value={{
+        state,
+        busy,
+        error,
+        openConnection: () => setOpen(true),
+        openLocal: () => void act(() => account.openLocal()),
+      }}
+    >
+      {children ?? (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-2"
+          aria-label="Conexão do aplicativo"
+        >
+          <p className="caption-4 min-w-0 break-all text-muted-foreground">
+            {state?.mode === "remote" ? state.serverOrigin : "Espaço local"}
           </p>
-        )}
-      </div>
+          {state?.mode === "remote" ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => void act(() => account.openLocal())}
+            >
+              Voltar ao local
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+              Conectar servidor
+            </Button>
+          )}
+          {error && !open && (
+            <p role="alert" className="body-6 w-full text-destructive">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
       {open && (
         <Modal
           title="Conectar servidor"
@@ -145,6 +178,6 @@ export function DesktopAccount({ account }: { account: DesktopAccountBridge }) {
           </form>
         </Modal>
       )}
-    </>
+    </DesktopConnectionContext.Provider>
   );
 }

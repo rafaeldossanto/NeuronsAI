@@ -6,6 +6,7 @@ import { LoadingRows } from "@/shared/states";
 import { ApiError, expectNoContent, unwrap } from "@/shared/api";
 import { SessionContext, type AccountSession } from "./session-context";
 import { invalidateWorkspaceRequests } from "./session-fetch";
+import { useDesktopConnection } from "@/accounts/desktop-account";
 
 const SIGNUP_CLOSED_MESSAGE =
   "Acesso só por convite. Peça a um administrador da sua organização para convidar o seu e-mail e entre de novo.";
@@ -42,6 +43,7 @@ export function SessionGate({
   navigate?: (url: string) => void;
 }) {
   const [status, setStatus] = useState<Status>("checking");
+  const desktopConnection = useDesktopConnection();
   const [error, setError] = useState(takeLoginError);
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -155,10 +157,6 @@ export function SessionGate({
     },
     [api, check],
   );
-  const sessionValue = useMemo(
-    () => (account ? { account, reload: check, switchOrganization } : null),
-    [account, check, switchOrganization],
-  );
 
   async function signIn() {
     setBusy(true);
@@ -179,7 +177,7 @@ export function SessionGate({
       setBusy(false);
     }
   }
-  async function signOut() {
+  const signOut = useCallback(async () => {
     setBusy(true);
     setError("");
     try {
@@ -195,24 +193,26 @@ export function SessionGate({
     } finally {
       setBusy(false);
     }
-  }
+  }, [api]);
+  const sessionValue = useMemo(
+    () =>
+      account
+        ? { account, reload: check, switchOrganization, signOut, signingOut: busy, error }
+        : null,
+    [account, check, switchOrganization, signOut, busy, error],
+  );
   if (status === "local") return children;
   // `switchOrganization` touches refs only when called (from an event), never while rendering.
   // eslint-disable-next-line react-hooks/refs
   if (status === "authenticated" && account && sessionValue)
     return (
       <SessionContext.Provider value={sessionValue}>
-        <div className="flex items-center justify-end gap-4 bg-muted px-6 py-2">
-          {error && (
-            <p role="alert" className="body-6 text-destructive">
-              {error}
-            </p>
-          )}
-          <Button size="sm" variant="outline" onClick={() => void signOut()} disabled={busy}>
-            Sair da conta
-          </Button>
+        <div
+          className="session-content"
+          key={`${account.userId}:${account.organizationId}:${account.role}`}
+        >
+          {children}
         </div>
-        <div key={`${account.userId}:${account.organizationId}:${account.role}`}>{children}</div>
       </SessionContext.Provider>
     );
   return (
@@ -221,6 +221,26 @@ export function SessionGate({
         className="flex w-full max-w-md flex-col gap-6 rounded-lg bg-card p-8"
         aria-label="Acesso ao NeuronsAI"
       >
+        {desktopConnection && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={desktopConnection.busy}
+              onClick={desktopConnection.openLocal}
+            >
+              Voltar ao local
+            </Button>
+            <Button size="sm" variant="ghost" onClick={desktopConnection.openConnection}>
+              Conectar servidor
+            </Button>
+            {desktopConnection.error && (
+              <p role="alert" className="body-6 text-destructive">
+                {desktopConnection.error}
+              </p>
+            )}
+          </div>
+        )}
         <div className="flex flex-col gap-3">
           <p className="caption-4 text-muted-foreground">NeuronsAI</p>
           <h1 className="heading-5">

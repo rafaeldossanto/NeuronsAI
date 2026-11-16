@@ -1,12 +1,10 @@
 import { NavLink, Outlet, useMatch } from "react-router";
 import { cn } from "@/shared/utils";
-import { Button } from "@/shared/ui/button";
-import { Plug } from "lucide-react";
-import { useWorkspace } from "@/workspace/resources";
 import { useQuery } from "@tanstack/react-query";
 import { useSession } from "@/accounts/auth/session-context";
 import { unwrap, useApi } from "@/shared/api";
-import { desktopSettings } from "@/settings/desktop-settings";
+import { AccountMenu } from "./account-menu";
+import "./shell.css";
 
 const links = [
   { to: "/graphs", label: "Meus projetos" },
@@ -14,7 +12,6 @@ const links = [
 ];
 
 export function Layout() {
-  const workspace = useWorkspace();
   const { account } = useSession();
   const api = useApi();
   const organizations = useQuery({
@@ -25,17 +22,6 @@ export function Layout() {
   const organization = organizations.data?.items.find(
     (item) => item.id === account?.organizationId,
   );
-  const accountLinks = account
-    ? [
-        ...links,
-        { to: "/organizations", label: "Organizações" },
-        { to: "/runners", label: "Runners" },
-      ]
-    : links;
-  // The app's own settings (external triggers' port) exist only in the desktop app.
-  const navigation = desktopSettings()
-    ? [...accountLinks, { to: "/settings", label: "Configurações" }]
-    : accountLinks;
   // The editor needs room for the canvas and the inspector.
   const wide = useMatch("/graphs/:id") !== null;
   return (
@@ -46,25 +32,17 @@ export function Layout() {
       >
         Pular para o conteúdo
       </a>
-      <header className="border-b">
-        <div
-          className={cn(
-            "mx-auto flex min-h-16 max-w-5xl flex-wrap items-center gap-x-8 gap-y-3 px-6 py-4",
-            wide && "max-w-none",
-          )}
-        >
+      <header className="app-header border-b">
+        <div className={cn("app-header-content mx-auto max-w-5xl", wide && "max-w-none")}>
           <NavLink
             to="/graphs"
-            className="flex items-center gap-2 text-lg font-extrabold tracking-tight"
+            className="app-brand flex items-center gap-2 text-lg font-bold tracking-tight"
           >
-            <span aria-hidden className="size-2.5 rounded-full bg-accent" />
-            NeuronsAI
+            <img src="/neurons-icon.png" alt="" className="size-8 object-contain" />
+            <span className="app-brand-name">NeuronsAI</span>
           </NavLink>
-          <nav
-            aria-label="Principal"
-            className="order-last flex w-full flex-wrap gap-1 sm:order-none sm:w-auto"
-          >
-            {navigation.map((link) => (
+          <nav aria-label="Principal" className="flex items-center gap-1">
+            {links.map((link) => (
               <NavLink
                 key={link.to}
                 to={link.to}
@@ -79,20 +57,8 @@ export function Layout() {
               </NavLink>
             ))}
           </nav>
-          <Button
-            size="sm"
-            variant="outline"
-            className="ml-auto"
-            onClick={() => workspace?.openConnections()}
-          >
-            <Plug className="size-4" /> Conexões de IA
-          </Button>
+          <AccountMenu organizationName={organization?.name} />
         </div>
-        {organization && (
-          <div className="caption-4 mx-auto max-w-5xl break-words px-6 pb-4 text-muted-foreground">
-            Espaço atual: {organization.name}
-          </div>
-        )}
       </header>
       <main
         id="conteudo"
