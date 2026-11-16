@@ -38,6 +38,7 @@ it("declares who may call every writing route; only credential routes ask for mo
       "DELETE /graphs/:id → write",
       "DELETE /runners/:name → manage_credentials",
       "PATCH /graphs/:id → write",
+      "POST /connections/chatgpt/login → manage_credentials",
       "POST /connections/claude/login → manage_credentials",
       "POST /graphs/ → write",
       "POST /graphs/:id/triggers/:triggerId/secret → manage_credentials",

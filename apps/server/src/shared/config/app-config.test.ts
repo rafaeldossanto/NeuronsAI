@@ -93,6 +93,11 @@ describe("loadConfig", () => {
     expect(loadConfig({ NEURONS_CLAUDE_BIN: "" })).not.toHaveProperty("claudeBin");
   });
 
+  it("reads the path of the Codex CLI executable, which is optional", () => {
+    expect(loadConfig({ NEURONS_CODEX_BIN: " /opt/codex " }).codexBin).toBe("/opt/codex");
+    expect(loadConfig({ NEURONS_CODEX_BIN: "" })).not.toHaveProperty("codexBin");
+  });
+
   it("reads the cap on a model reply, which is optional and bounded", () => {
     expect(loadConfig({ NEURONS_MODEL_MAX_OUTPUT_TOKENS: "32000" }).modelMaxOutputTokens).toBe(
       32_000,

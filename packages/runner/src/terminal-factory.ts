@@ -2,6 +2,7 @@ import type { RuntimeLogger } from "@neurons/agent-runtimes";
 import {
   TerminalRuntimeFactory,
   type ClaudeCommand,
+  type CodexCommand,
   type McpServerCommand,
 } from "@neurons/agent-runtimes/claude";
 import type { RuntimeFactoryProvider } from "./runner-host.js";
@@ -11,12 +12,16 @@ export interface TerminalFactoryOptions {
   claudeBin?: string;
   /** What to run as the CLI, program and leading arguments (tests and demos point it at a fake). */
   claudeCommand?: ClaudeCommand;
+  /** `NEURONS_CODEX_BIN`: empty means "find the Codex CLI". */
+  codexBin?: string;
+  /** What to run as the Codex CLI, program and leading arguments (tests and demos point it at a fake). */
+  codexCommand?: CodexCommand;
   /** How to start the `neurons` MCP server; absent means this process's Node running `@neurons/mcp-neurons`. */
   mcpServer?: McpServerCommand;
   logger?: RuntimeLogger;
 }
 
-/** The runtimes a runner hosts today: the Claude Code CLI as a terminal or as stream-json. */
+/** The runtimes a runner hosts today: the Claude Code and Codex CLIs, as a terminal or as stream-json. */
 export function terminalFactoryProvider(
   options: TerminalFactoryOptions = {},
 ): RuntimeFactoryProvider {
@@ -28,6 +33,10 @@ export function terminalFactoryProvider(
       cli: {
         ...(options.claudeBin && { configuredBinary: options.claudeBin }),
         ...(options.claudeCommand && { command: options.claudeCommand }),
+      },
+      codex: {
+        ...(options.codexBin && { configuredBinary: options.codexBin }),
+        ...(options.codexCommand && { command: options.codexCommand }),
       },
       ...(options.mcpServer && { mcpServer: options.mcpServer }),
       ...(options.logger && { logger: options.logger }),

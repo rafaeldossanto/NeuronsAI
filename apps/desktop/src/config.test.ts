@@ -21,6 +21,18 @@ describe("loadDesktopConfig", () => {
     });
   });
 
+  it("reads a replacement Codex CLI the same way, and refuses its arguments alone", () => {
+    expect(
+      loadDesktopConfig({
+        NEURONS_DESKTOP_CODEX_COMMAND: "node",
+        NEURONS_DESKTOP_CODEX_ARGS: '["fake-codex.mjs"]',
+      }),
+    ).toEqual({ codexCommand: { command: "node", args: ["fake-codex.mjs"] } });
+    expect(() => loadDesktopConfig({ NEURONS_DESKTOP_CODEX_ARGS: "[]" })).toThrow(
+      DesktopConfigError,
+    );
+  });
+
   it("reads the update switch and the AppImage marker", () => {
     expect(
       loadDesktopConfig({ NEURONS_DESKTOP_UPDATES: "off", APPIMAGE: "/x/NeuronsAI.AppImage" }),

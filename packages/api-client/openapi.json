@@ -1547,16 +1547,28 @@
                     "chatgpt": {
                       "type": "object",
                       "properties": {
-                        "available": {
+                        "installed": {
+                          "type": "boolean"
+                        },
+                        "connected": {
+                          "type": "boolean"
+                        },
+                        "signingIn": {
                           "type": "boolean"
                         },
                         "message": {
                           "type": "string"
+                        },
+                        "available": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
-                        "available",
-                        "message"
+                        "installed",
+                        "connected",
+                        "signingIn",
+                        "message",
+                        "available"
                       ],
                       "additionalProperties": false
                     }
@@ -1568,6 +1580,46 @@
                     "chatgpt"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connections/chatgpt/login": {
+      "post": {
+        "operationId": "connections_signInChatgpt",
+        "tags": [
+          "connections"
+        ],
+        "summary": "Abre o login oficial do Codex CLI (conta do ChatGPT) no computador local.",
+        "responses": {
+          "200": {
+            "description": "Sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "started": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "started"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Indisponível no momento.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
