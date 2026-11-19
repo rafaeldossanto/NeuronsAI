@@ -20,7 +20,7 @@ Google real, agentes de API reais e os fluxos completos no app instalado ainda e
 aceitação. Release pública, landing publicada, WhatsApp, AWS e assinatura de código
 continuam pendentes.
 
-Hoje o runtime de terminal executa **Claude Code**, em PTY ou stream-json. Codex, Gemini e
+Hoje o runtime de terminal executa **Claude Code** e **Codex CLI** (a conta do ChatGPT, pelo login oficial `codex login`), em PTY ou stream-json. O Codex segue a D5: o usuário loga o binário original, o NeuronsAI só o executa e nunca lê nem guarda o `auth.json`. Gemini e
 custom são possibilidades do contrato, com adaptadores ainda no backlog. Agentes de API
 usam OpenAI/Anthropic dentro do servidor, com testes simulados; `packages/providers` agora concentra adaptadores, registro e cálculo versionado de uso, validados sem chamadas pagas. Tokens são registrados; o custo de API em USD é estimado apenas para modelos do catálogo e permanece desconhecido fora dele; orçamento em USD não é um teto garantido nesses agentes nem no PTY.
 

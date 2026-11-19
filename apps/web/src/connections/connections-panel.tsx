@@ -6,18 +6,37 @@ import { Field, TextInput } from "@/shared/ui/fields";
 import { unwrap } from "@/shared/api";
 import { useWorkspace } from "@/workspace/resources";
 
-export function ClaudeConnection() {
+type Provider = "claude" | "chatgpt";
+
+export const ClaudeConnection = () => <SubscriptionConnection provider="claude" />;
+export const ChatgptConnection = () => <SubscriptionConnection provider="chatgpt" />;
+
+const CONNECTED: Record<Provider, string> = {
+  claude: "Claude Code conectado",
+  chatgpt: "ChatGPT conectado",
+};
+const CONNECT: Record<Provider, string> = {
+  claude: "Conectar Claude Code",
+  chatgpt: "Conectar ChatGPT",
+};
+
+/** Status and official login of a subscription that goes through the provider's own CLI. */
+function SubscriptionConnection({ provider }: { provider: Provider }) {
   const workspace = useWorkspace();
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState(false);
   if (!workspace) return null;
   const { connections, api } = workspace;
-  const claude = connections.data?.claude;
+  const claude = connections.data?.[provider];
   async function connect() {
     setPending(true);
     setNotice("");
     try {
-      await unwrap(api.POST("/connections/claude/login"));
+      await unwrap(
+        provider === "claude"
+          ? api.POST("/connections/claude/login")
+          : api.POST("/connections/chatgpt/login"),
+      );
       setNotice(
         "Conclua o login na página oficial que abrirá no navegador e clique em Verificar conexão.",
       );
@@ -47,11 +66,7 @@ export function ClaudeConnection() {
             connections.data?.profile !== "local"
           }
         >
-          {pending
-            ? "Abrindo login…"
-            : claude?.connected
-              ? "Claude Code conectado"
-              : "Conectar Claude Code"}
+          {pending ? "Abrindo login…" : claude?.connected ? CONNECTED[provider] : CONNECT[provider]}
         </Button>
         <Button
           size="sm"
@@ -114,16 +129,16 @@ export function ConnectionsPanel({ onClose }: { onClose: () => void }) {
           <ClaudeConnection />
         </section>
         <section className="resource-card">
-          <h3 className="mb-2 text-lg font-semibold">
-            ChatGPT <span className="ml-2 rounded bg-muted px-2 py-1 text-xs">Em breve</span>
+          <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold">
+            <SquareTerminal className="size-5" />
+            ChatGPT (Codex)
           </h3>
-          <p className="text-sm text-muted-foreground">
-            {workspace.connections.data?.chatgpt.message ??
-              "Integração oficial de assinatura ainda não disponível."}
+          <ChatgptConnection />
+          <p className="mt-3 text-xs text-muted-foreground">
+            Usa o Codex CLI oficial, instalado com <code>npm i -g @openai/codex</code>. O login é
+            feito por ele (<code>codex login</code>, Sign in with ChatGPT): o NeuronsAI não lê nem
+            guarda suas credenciais.
           </p>
-          <Button className="mt-3" variant="outline" disabled>
-            Conectar ChatGPT
-          </Button>
         </section>
         <section className="resource-card">
           <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold">

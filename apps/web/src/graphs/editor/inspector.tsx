@@ -45,6 +45,12 @@ type Dispatch = (action: EditorAction) => void;
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 const CLIS = ["claude", "codex", "gemini", "custom"] as const;
 
+/** What to type in the model field of a terminal agent, by CLI. */
+const cliModelHint = (cli: (typeof CLIS)[number]) =>
+  cli === "codex"
+    ? "Vazio: usa o modelo padrão do Codex para a sua conta. Use o nome que o comando /model do codex mostra; modelos menores gastam menos da cota."
+    : "Vazio: usa o modelo padrão da CLI.";
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-3">
@@ -262,7 +268,7 @@ function AgentFields({ doc, node, set }: { doc: GraphDoc; node: AgentNode; set: 
                 />
               </Field>
             )}
-            <Field label="Modelo" hint="Vazio: usa o modelo padrão da CLI.">
+            <Field label="Modelo" hint={cliModelHint(runtime.cli)}>
               <TextInput
                 value={runtime.model ?? ""}
                 placeholder="Padrão da CLI"

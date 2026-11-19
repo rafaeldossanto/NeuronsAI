@@ -1,6 +1,6 @@
 # @neurons/agent-runtimes
 
-O contrato entre o Hub e os runtimes de agente (T06) e os runtimes de terminal do Claude Code (T08).
+O contrato entre o Hub e os runtimes de agente (T06) e os runtimes de terminal do Claude Code (T08) e do Codex CLI (conta do ChatGPT).
 **Sem NestJS e sem banco**: só depende de `@neurons/graph-schema` e de `@neurons/mcp-neurons`, para que um
 runner separado (T24) possa hospedar os mesmos runtimes.
 
@@ -13,8 +13,8 @@ Dois pontos de entrada:
 
 ## Runtimes
 
-`TerminalRuntimeFactory` escolhe pelo `runtime` do agente: `kind: "terminal"` e `cli: "claude"`; `mode: "pty"` (padrão) ou
-`"stream-json"`. Outra `cli` (`codex`, `gemini`, `custom`) falha com mensagem clara; fica para depois.
+`TerminalRuntimeFactory` escolhe pelo `runtime` do agente: `kind: "terminal"` e `cli: "claude"` ou `"codex"`; `mode: "pty"` (padrão) ou
+`"stream-json"`. Outra `cli` (`gemini`, `custom`) falha com mensagem clara; fica para depois. A parte comum dos dois (estado, ponte local, arquivos temporários, desligamento sem processo órfão) mora em `cli/cli-runtime-base.ts`; `claude/` e `codex/` só sabem a própria CLI.
 
 - **`ClaudeTerminalRuntime` (PTY).** `node-pty` + `@xterm/headless` (a tela renderizada). O usuário vê e digita na CLI de verdade.
   - _Fim de turno:_ hook `Stop`. O rodapé (`? for shortcuts` livre / `esc to interrupt` ocupado) e o silêncio só confirmam, ou
@@ -40,6 +40,22 @@ PTY não (a tela não traz o uso). Quem aplica orçamento precisa saber disso pa
 chega no meio de um turno e o `result` só vem depois, `stop()` do stream-json espera o turno em andamento terminar por até
 `usageFlushMs` (padrão `DEFAULT_USAGE_FLUSH_MS`, 4 s) antes de matar a CLI, e só então derruba o processo. No Windows o `stop()` também
 solta o pipe e a thread que o node-pty deixa abertos (sem isso o processo do servidor não termina depois de parar um terminal).
+
+## Codex CLI (conta do ChatGPT)
+
+`cli: "codex"` roda o **Codex CLI oficial** da OpenAI, que o usuário instala (`npm i -g @openai/codex`) e loga com a própria conta (`codex login`, "Sign in with ChatGPT"). Mesma regra da decisão D5: o NeuronsAI só executa o binário original; **nunca lê, copia nem guarda** o `~/.codex/auth.json` ou tokens, e não passa requisições pela assinatura. O login é consultado pelo comando oficial `codex login status` (exit 0 = logado), nunca pelo arquivo. `CodexCli` acha o binário (`NEURONS_CODEX_BIN` → PATH → pasta do `npm -g`, `~/.local/bin`, Homebrew), informa o login e devolve o comando de login.
+
+> **Origem das informações.** Nenhuma rodada real do `codex` foi feita: as flags, os eventos do `exec --json`, o `login status` e a configuração do MCP vêm da documentação oficial (developers.openai.com/codex, `codex-rs/exec/src/exec_events.rs` no GitHub) e os testes usam uma CLI falsa (`test-fixtures/fake-codex.mjs`). O que só a documentação garante está marcado abaixo como _(docs)_; a aceitação real é do Rafael.
+
+- **`CodexExecRuntime` (`mode: "stream-json"`).** Um `codex exec --json` por mensagem; a seguinte retoma a sessão da primeira (`codex exec … resume <thread_id> -`, com o `thread_id` do evento `thread.started`). A mensagem entra pelo stdin (`-`), sem limite de tamanho nem aspas. O `turn.completed` é o fim do turno e traz os tokens (`input_tokens` inclui os `cached_input_tokens`: o runtime reporta os não-cacheados como entrada e os cacheados como `cacheReadTokens`); custo em USD não vem, então `reportsCost = false`. `turn.failed` (cota esgotada, erro do modelo) derruba o agente com a mensagem da CLI; o evento `error` avulso só é lembrado (a CLI o usa também para "Reconnecting…"). _(docs)_ O `exec --json` só entrega itens inteiros (`item.completed` com `agent_message`), **sem tokens do texto**: o `onOutputDelta` recebe cada mensagem quando o modelo termina de escrevê-la e o corpo de `send_message`/`reply`/`ask` assim que a chamada começa, não letra por letra. Chamadas de ferramenta da CLI (`command_execution`, `file_change`, `web_search`, MCP de terceiros) viram `ToolCalled` sem argumentos.
+- **Por que `exec --json` e não o `codex app-server`.** O `app-server` (JSON-RPC) tem `item/agentMessage/delta` e daria token por token, mas a própria documentação o marca em parte como experimental (métodos que exigem `experimentalApi`, WebSocket "unsupported") e traz pedidos de aprovação do servidor para o cliente; sem rodar a CLI real, escrever esse cliente seria chute. O `exec --json` é o contrato estável e documentado. Trocar depois é só trocar o leaf; a base e o resto não mudam.
+- **`CodexTerminalRuntime` (`mode: "pty"`).** O TUI do `codex` num pseudo-terminal, como o do Claude. Fim de turno: o programa do `notify` do Codex (_docs_: roda em `agent-turn-complete` com um JSON no último argumento) é um script Node numa pasta privada da sessão que avisa a rota `stop` da ponte local; a linha de status `esc to interrupt` na tela confirma que a mensagem foi aceita e, junto do silêncio e sem pedido de aprovação na tela, substitui o aviso se ele nunca chegar. O boot espera a tela quieta; **confiar na pasta nunca é respondido** (só com `trustWorkingDirectory`), a tela de login vira o erro "rode `codex login`". Os padrões de tela (`esc to interrupt`, "trust the contents", "Sign in with ChatGPT") vêm da documentação e da memória do TUI, não de uma rodada real.
+- **Servidor MCP `neurons` e instruções, sem tocar em `~/.codex`.** Entram por `-c` desta execução: `mcp_servers.neurons.command/args/env`, `required=true` (sem as ferramentas o agente não conversa: melhor falhar), `startup_timeout_sec`, `tool_timeout_sec` (= timeout do `ask` + 30 s), `default_tools_approval_mode="approve"` (_docs_: aprova só as ferramentas desse servidor) e `developer_instructions` (o briefing; limite de 16 000 caracteres pela linha de comando). **O endereço e o token da ponte nunca vão na linha de comando**: vão no ambiente da CLI e o MCP os recebe por `env_vars` (encaminha as variáveis pelo nome). Limite conhecido: o Codex não tem `--strict-mcp-config`, então servidores MCP que o usuário configurou no `~/.codex/config.toml` continuam carregando.
+- **Sandbox e aprovação: no máximo o que o agente Claude tem.** O Claude roda em `--permission-mode manual` com só as 7 ferramentas `neurons` pré-aprovadas (leitura livre; escrever e rodar comando precisam de uma pessoa, e no stream-json nada disso pode ser respondido, então é negado). O equivalente documentado do Codex: `--sandbox read-only`; no PTY `--ask-for-approval on-request` (a pessoa responde no terminal, como no Claude); no `exec`, que não tem a quem perguntar, `approval_policy="never"` (o que o sandbox não permite falha). Os `args` do agente só podem trocar para `--sandbox workspace-write` (par do `acceptEdits` do Claude), `--model` e flags inofensivas; são recusados `--yolo`, `--dangerously-bypass-approvals-and-sandbox`, `--full-auto`, `--approve-for-me`, `--sandbox danger-full-access`, `-c/--config`, `--profile`, `--cd`, `--add-dir`, `--ask-for-approval`, `--json`, `--search`, `--remote` e outros (`codex-args.ts`).
+- **Modelo e esforço.** `runtime.model` vira `--model` (vazio: o padrão da conta); o esforço vira `model_reasoning_effort` (`xhigh`/`max` ficam em `high`, que todo modelo tem).
+- **Acesso.** `subscription` é o caso principal (a CLI recusa começar se o login for por chave de API, para não gastar a cota errada). `api-key` só no `stream-json`: a chave vai no ambiente do processo filho como `CODEX_API_KEY` (_docs_: aceita no `codex exec`), sem gravar em disco; no PTY a CLI exigiria `codex login --with-api-key`, que grava o `auth.json`, então a fábrica recusa com mensagem clara.
+- **Windows.** O `npm i -g` deixa um atalho `codex.cmd`, que o Node não executa sem shell (e o shell estraga as aspas dos `-c`); o runtime troca o atalho por `node …/@openai/codex/bin/codex.js` (o `bin` do pacote), ou usa o `codex.exe` que `NEURONS_CODEX_BIN` apontar.
+- Ambiente: além do mínimo do Claude, o filho herda `CODEX_HOME` (onde o `codex login` guarda o login, se o usuário o mudou). `OPENAI_API_KEY` e outros segredos do hospedeiro continuam de fora.
 
 ## Como a CLI é configurada sem tocar na pasta do usuário
 
@@ -69,7 +85,7 @@ O protocolo (rotas e formatos) está em `@neurons/mcp-neurons` (`protocol.ts`), 
 A CLI **não herda o `process.env`** do servidor. Só passa o mínimo de sistema (`platform/child-env.ts`), mais `TERM`, `MCP_TOOL_TIMEOUT`:
 
 - Todos os sistemas: `PATH`, `TEMP`, `TMP`, `TMPDIR`, `LANG`, `LC_ALL`, `LC_CTYPE`, `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`,
-  `SSL_CERT_FILE`, `SSL_CERT_DIR`, `NODE_EXTRA_CA_CERTS`, `CLAUDE_CONFIG_DIR`.
+  `SSL_CERT_FILE`, `SSL_CERT_DIR`, `NODE_EXTRA_CA_CERTS`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`.
 - Windows: `SystemRoot`, `SystemDrive`, `windir`, `ComSpec`, `PATHEXT`, `USERPROFILE`, `HOMEDRIVE`, `HOMEPATH`, `APPDATA`, `LOCALAPPDATA`,
   `ProgramData`, `ProgramFiles`, `ProgramFiles(x86)`, `ProgramW6432`, `USERNAME`, `USERDOMAIN`, `OS`, `PROCESSOR_ARCHITECTURE`.
 - macOS/Linux: `HOME`, `USER`, `LOGNAME`, `SHELL`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `XDG_RUNTIME_DIR`.
@@ -83,6 +99,7 @@ Segredos e variáveis `CLAUDE_CODE_*`/`ANTHROPIC_*` do processo hospedeiro ficam
   embutida no app desktop (Windows: `…\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code\<versão>\<hash>\claude.exe`; macOS:
   `~/Library/Application Support/Claude/claude-code`), pasta de versão mais nova. No Windows entra também `%LOCALAPPDATA%Claude-Data<família do pacote>claude-code` (onde as versões novas do app guardam a CLI; achado na aceitação real de 11/11/2026), e vale a versão mais nova entre todas as pastas.
 - `claude-cli.ts` (em `claude/`): `claude auth status` antes de subir; sem login, falha pedindo `claude auth login`.
+- `codex-binary.ts` e `codex-cli.ts` (em `codex/`): `NEURONS_CODEX_BIN` → `codex` no `PATH` → `%APPDATA%\npm`, `~/.local/bin`, `~/.npm-global/bin`, `/usr/local/bin`, `/opt/homebrew/bin`; `codex login status` antes de subir; sem login, falha pedindo `codex login`.
 - `process-tree.ts`: Windows `taskkill /T /F`; macOS/Linux, grupo de processos (SIGTERM e, se preciso, SIGKILL).
 - `child-env.ts`, `private-directory.ts`.
 
@@ -90,7 +107,7 @@ Segredos e variáveis `CLAUDE_CODE_*`/`ANTHROPIC_*` do processo hospedeiro ficam
 
 **Parar um agente que ainda sobe** (o Claude Code parado no diálogo de "confiar na pasta", por exemplo) corta a espera na hora: `stop()` aborta o boot, que se desfaz sozinho (PTY, ponte e arquivos) e termina sem erro; antes o `stop` esperava o boot desistir, até 60 s, e o fechamento do servidor junto.
 
-`pnpm test` roda com uma **CLI falsa** (`test-fixtures/fake-claude.mjs`, um script Node que imprime o rodapé, chama os hooks por HTTP, lê a
+`pnpm test` roda com uma **CLI falsa** (`test-fixtures/fake-claude.mjs` e, para o Codex, `test-fixtures/fake-codex.mjs`, um script Node que imprime o rodapé, chama os hooks por HTTP, lê a
 entrada e chama o `mcp-neurons` de verdade) e não gasta nada. O teste com a CLI real é o `test:e2e:claude` do `@neurons/server`; o `test:e2e:permission-modes` abre uma CLI real em cada `--permission-mode` aceito (PTY e stream-json) **sem enviar prompt**, então não gasta cota.
 
 `node-pty` 1.1.0 traz binário pronto para Windows e macOS (no Linux ele compila no `postinstall`; por isso está em `allowBuilds`).

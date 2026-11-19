@@ -134,7 +134,7 @@ export function terminalAgent(
     mode?: "pty" | "stream-json";
     cwd?: string;
     args?: string[];
-    cli?: "claude" | "codex";
+    cli?: "claude" | "codex" | "gemini" | "custom";
   } = {},
 ): AgentNode {
   return {

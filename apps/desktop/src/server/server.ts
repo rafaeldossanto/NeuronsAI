@@ -36,6 +36,7 @@ export function serverConfigFor(desktop: DesktopConfig, env?: NodeJS.ProcessEnv)
       env: { ELECTRON_RUN_AS_NODE: "1" },
     },
     ...(desktop.claudeCommand && { claudeCommand: desktop.claudeCommand }),
+    ...(desktop.codexCommand && { codexCommand: desktop.codexCommand }),
   };
 }
 

@@ -41,6 +41,8 @@ export class EmbeddedRunner implements OnModuleInit, OnApplicationShutdown {
       logger: runtimeLogger,
       createFactory: terminalFactoryProvider({
         ...(this.config.claudeBin && { claudeBin: this.config.claudeBin }),
+        ...(this.config.codexBin && { codexBin: this.config.codexBin }),
+        ...(this.config.codexCommand && { codexCommand: this.config.codexCommand }),
         ...(this.config.claudeCommand && { claudeCommand: this.config.claudeCommand }),
         ...(this.config.mcpServer && { mcpServer: this.config.mcpServer }),
         logger: runtimeLogger,

@@ -684,6 +684,7 @@ describe("OpenAPI document", () => {
       "/auth/refresh",
       "/auth/session",
       "/connections",
+      "/connections/chatgpt/login",
       "/connections/claude/login",
       "/graphs",
       "/graphs/{id}",

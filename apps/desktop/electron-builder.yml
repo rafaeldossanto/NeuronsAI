@@ -61,3 +61,10 @@ linux:
   category: Development
   icon: build/icon.png
   maintainer: Rafael dos Santos <rafaeldossanto@users.noreply.github.com>
+# electron-builder names the arch per format (AppImage: x86_64, deb: amd64), but the release and the
+# site's download page look for `linux-x64`. Only Linux x64 is built, so the name is fixed here; an
+# arm64 Linux target will need its own name (and a pattern in apps/site/src/downloads.ts).
+appImage:
+  artifactName: NeuronsAI-${version}-linux-x64.${ext}
+deb:
+  artifactName: NeuronsAI-${version}-linux-x64.${ext}
