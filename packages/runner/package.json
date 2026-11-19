@@ -20,7 +20,7 @@
     "@neurons/agent-runtimes": "workspace:*",
     "@neurons/graph-schema": "workspace:*",
     "@neurons/runner-protocol": "workspace:*",
-    "ws": "8.22.1",
+    "ws": "8.22.2",
     "zod": "4.6.7"
   },
   "devDependencies": {
