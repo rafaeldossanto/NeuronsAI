@@ -53,7 +53,6 @@ function openWindow(
   origin: string,
   partition?: string,
 ): { window: BrowserWindow; loaded: Promise<void> } {
-  const nativeFrame = process.platform === "win32";
   const created = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -61,11 +60,11 @@ function openWindow(
     minHeight: 600,
     show: false,
     title: APP_NAME,
-    frame: nativeFrame,
-    transparent: !nativeFrame,
+    frame: false,
+    transparent: true,
     roundedCorners: true,
     hasShadow: true,
-    backgroundColor: nativeFrame ? "#f7f7f4" : "#00000000",
+    backgroundColor: "#00000000",
     ...(process.platform !== "darwin" && { icon: ICON }),
     webPreferences: {
       ...SECURE_WEB_PREFERENCES,
