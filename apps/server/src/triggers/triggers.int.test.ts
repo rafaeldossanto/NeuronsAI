@@ -518,6 +518,7 @@ describe("schedule", () => {
 describe("deleting the graph", () => {
   it("turns the webhook off for good: nothing fires, the history and the secret are gone", async () => {
     await start();
+    const preexisting = (await api("GET", "/secrets")).body.names as string[];
     const { graph, secret, url } = await readyWebhook();
     const body = "{}";
     const accepted = await post(url, body, signedHeaders(secret, body));
@@ -527,7 +528,7 @@ describe("deleting the graph", () => {
       expect((await api("GET", `/runs/${runId}`)).body.status).toBe("succeeded");
     });
     const secretsBefore = (await api("GET", "/secrets")).body.names as string[];
-    expect(secretsBefore.length).toBeGreaterThan(0);
+    expect(secretsBefore.length).toBeGreaterThan(preexisting.length);
 
     expect((await api("DELETE", `/graphs/${graph.id}`)).status).toBe(204);
 
@@ -535,7 +536,7 @@ describe("deleting the graph", () => {
     expect((await post(url, later, signedHeaders(secret, later))).status).toBe(401);
     expect((await api("GET", `/runs/${runId}`)).status).toBe(404);
     expect(await runsTotal(graph.id)).toBe(0);
-    expect((await api("GET", "/secrets")).body.names).toEqual([]);
+    expect((await api("GET", "/secrets")).body.names).toEqual(preexisting);
   });
 
   it("drops the schedule's timer, so the cron never fires into a deleted graph", async () => {
