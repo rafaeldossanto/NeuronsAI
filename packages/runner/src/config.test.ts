@@ -38,9 +38,19 @@ describe("loadRunnerConfig", () => {
       NEURONS_RUNNER_TOKEN: token,
       NEURONS_RUNNER_NAME: "meu-notebook",
       NEURONS_CLAUDE_BIN: "",
+      NEURONS_CODEX_BIN: "",
     });
 
     expect(config).toEqual({ url: "ws://localhost:3100/runner", token, name: "meu-notebook" });
+  });
+
+  it("reads the optional path of the Codex CLI", () => {
+    const config = loadRunnerConfig({
+      NEURONS_SERVER_URL: "http://localhost:3100",
+      NEURONS_RUNNER_TOKEN: token,
+      NEURONS_CODEX_BIN: "/opt/codex",
+    });
+    expect(config.codexBin).toBe("/opt/codex");
   });
 
   it("lists everything that is missing and never echoes the token", () => {

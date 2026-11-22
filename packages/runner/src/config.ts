@@ -12,6 +12,7 @@ export interface RunnerConfig {
   token: string;
   name: string;
   claudeBin?: string;
+  codexBin?: string;
 }
 
 export class RunnerConfigError extends Error {
@@ -29,6 +30,7 @@ const envSchema = z.object({
   NEURONS_RUNNER_TOKEN: empty(z.string().trim().min(1, "informe o token emitido pelo servidor")),
   NEURONS_RUNNER_NAME: empty(z.string().trim().min(1).max(100).optional()),
   NEURONS_CLAUDE_BIN: empty(z.string().trim().min(1).optional()),
+  NEURONS_CODEX_BIN: empty(z.string().trim().min(1).optional()),
   NEURONS_RUNNER_ALLOW_INSECURE: empty(
     z
       .enum(["true", "false"])
@@ -92,5 +94,6 @@ export function loadRunnerConfig(env: NodeJS.ProcessEnv = process.env): RunnerCo
     token: values.NEURONS_RUNNER_TOKEN,
     name: values.NEURONS_RUNNER_NAME ?? os.hostname(),
     ...(values.NEURONS_CLAUDE_BIN && { claudeBin: values.NEURONS_CLAUDE_BIN }),
+    ...(values.NEURONS_CODEX_BIN && { codexBin: values.NEURONS_CODEX_BIN }),
   };
 }
