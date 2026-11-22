@@ -67,6 +67,7 @@ describe("tela de configurações", () => {
     renderApp("/settings", {});
 
     expect(await screen.findByRole("heading", { name: "Gatilhos externos" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir menu da conta" }));
     expect(screen.getByRole("link", { name: "Configurações" })).toBeInTheDocument();
     expect(screen.getByLabelText("Receber chamadas externas (webhooks)")).not.toBeChecked();
     expect(screen.getByLabelText("Porta")).toHaveValue(3101);

@@ -10,6 +10,9 @@ export interface SessionContextValue {
   account: AccountSession | null;
   reload: () => Promise<void>;
   switchOrganization: (organizationId: string) => Promise<void>;
+  signOut?: () => Promise<void>;
+  signingOut?: boolean;
+  error?: string;
 }
 // App is also used directly by the local desktop shell and isolated editor tests.
 export const SessionContext = createContext<SessionContextValue>({
