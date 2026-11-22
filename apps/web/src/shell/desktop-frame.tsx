@@ -30,7 +30,7 @@ export function DesktopFrame({ children }: { children: ReactNode }) {
     return desktop.onMaximized(setMaximized);
   }, [desktop]);
   if (!desktop) return children;
-  return (
+  const frame = (
     <div className={`desktop-frame${maximized ? " is-maximized" : ""}`}>
       <div className="desktop-titlebar" onDoubleClick={() => void desktop.maximize()}>
         <div className="desktop-traffic-lights">
@@ -65,8 +65,12 @@ export function DesktopFrame({ children }: { children: ReactNode }) {
         <span>NeuronsAI</span>
       </div>
       {desktop.localResources !== false && <UpdateNotice updates={desktop} />}
-      {desktop.account && <DesktopAccount account={desktop.account} />}
       <div className="desktop-content">{children}</div>
     </div>
+  );
+  return desktop.account ? (
+    <DesktopAccount account={desktop.account}>{frame}</DesktopAccount>
+  ) : (
+    frame
   );
 }
