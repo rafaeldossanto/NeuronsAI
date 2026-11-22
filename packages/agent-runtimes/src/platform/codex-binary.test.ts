@@ -85,7 +85,10 @@ describe("findCodexBinary", () => {
       expect(() =>
         findCodexBinary(undefined, {
           ...lookup,
-          files: probe("/home/ana/.codex/.sandbox-bin/codex.exe", "/home/ana/.codex/.sandbox-bin/codex"),
+          files: probe(
+            "/home/ana/.codex/.sandbox-bin/codex.exe",
+            "/home/ana/.codex/.sandbox-bin/codex",
+          ),
         }),
       ).toThrow(CodexBinaryNotFoundError);
     });
