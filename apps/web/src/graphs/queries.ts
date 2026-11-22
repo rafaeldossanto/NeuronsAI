@@ -18,14 +18,17 @@ export function useCreateGraph() {
   });
 }
 
-/** Deletes a project. The server refuses (409 `graph_has_versions`) when it has a published version. */
+/** Deletes a project with its versions and run history; the server refuses (409) while a run is going. */
 export function useDeleteGraph() {
   const api = useApi();
   const client = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       expectNoContent(api.DELETE("/graphs/{id}", { params: { path: { id } } })),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"], exact: true }),
+    onSuccess: (_, id) => {
+      client.removeQueries({ queryKey: ["graphs", id] });
+      return client.invalidateQueries({ queryKey: ["graphs"], exact: true });
+    },
   });
 }
 

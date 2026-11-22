@@ -89,7 +89,8 @@ export class GraphsController {
   @Endpoint({
     method: "delete",
     path: ":id",
-    summary: "Apaga um grafo que ainda não tem versões publicadas.",
+    summary:
+      "Apaga o grafo com as versões publicadas, o histórico de execuções e os gatilhos. Recusa (409) se houver execução em andamento.",
     params: graphParams,
     status: 204,
     errors: [404, 409],

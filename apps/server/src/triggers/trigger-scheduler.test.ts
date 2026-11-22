@@ -230,6 +230,18 @@ describe("TriggerScheduler", () => {
       expect((await state())?.nextRunAt).toBeNull();
     });
 
+    it("drops the timer when every trigger of the graph is turned off before it is deleted", async () => {
+      await startScheduler();
+      await turnOn();
+      expect(scheduler.armedCount).toBe(1);
+
+      await rig.triggers.disableAllOf(rig.graph.id);
+
+      expect(scheduler.armedCount).toBe(0);
+      await elapse(5 * MINUTE);
+      expect(rig.runService.starts).toHaveLength(0);
+    });
+
     it("loads the triggers that were on when the app starts", async () => {
       await rig.triggers.setEnabled(rig.graph.id, SCHEDULE_TRIGGER, true);
       await startScheduler();

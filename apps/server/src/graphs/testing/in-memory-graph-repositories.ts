@@ -3,6 +3,7 @@ import type { GraphDefinition } from "@neurons/graph-schema";
 import type { GraphChanges, GraphRepository } from "../graph-repository.js";
 import type { GraphVersionRepository } from "../graph-version-repository.js";
 import type { GraphRecord, GraphVersionRecord } from "../graph.records.js";
+import { GraphHasActiveRunsError } from "../graphs.errors.js";
 
 export class InMemoryGraphRepository implements GraphRepository {
   private readonly records = new Map<string, GraphRecord>();
@@ -41,7 +42,15 @@ export class InMemoryGraphRepository implements GraphRepository {
     return Promise.resolve(updated);
   }
 
+  /** Tests set this to say that a run of the graph is still going. */
+  readonly activeRuns = new Set<string>();
+
+  hasActiveRuns(id: string): Promise<boolean> {
+    return Promise.resolve(this.activeRuns.has(id));
+  }
+
   delete(id: string): Promise<boolean> {
+    if (this.activeRuns.has(id)) return Promise.reject(new GraphHasActiveRunsError());
     return Promise.resolve(this.records.delete(id));
   }
 }

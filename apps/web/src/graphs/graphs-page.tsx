@@ -6,22 +6,12 @@ import { Card } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { formatDateTime } from "@/shared/format";
 import { Trash2 } from "lucide-react";
-import { ConfirmDialog } from "@/shared/confirm-dialog";
-import { ApiError } from "@/shared/api";
-import { useCreateGraph, useDeleteGraph, useGraphs } from "@/graphs/queries";
-
-/** The list does not say which projects are published, so the server's refusal is explained here. */
-function deleteErrorMessage(error: Error): string {
-  if (error instanceof ApiError && error.code === "graph_has_versions") {
-    return "Projetos com versão publicada não podem ser excluídos.";
-  }
-  return error.message;
-}
+import { DeleteProjectDialog } from "@/graphs/delete-project-dialog";
+import { useCreateGraph, useGraphs } from "@/graphs/queries";
 
 export function GraphsPage() {
   const graphs = useGraphs();
   const create = useCreateGraph();
-  const remove = useDeleteGraph();
   const [name, setName] = useState("");
   const [toDelete, setToDelete] = useState<{ id: string; name: string } | null>(null);
 
@@ -97,10 +87,7 @@ export function GraphsPage() {
                     title="Excluir projeto"
                     aria-label={`Excluir ${graph.name}`}
                     className="text-muted-foreground hover:border-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive focus-visible:text-destructive"
-                    onClick={() => {
-                      remove.reset();
-                      setToDelete(graph);
-                    }}
+                    onClick={() => setToDelete(graph)}
                   >
                     <Trash2 className="size-4" aria-hidden="true" />
                   </Button>
@@ -111,18 +98,7 @@ export function GraphsPage() {
         </ul>
       )}
 
-      {toDelete && (
-        <ConfirmDialog
-          title="Excluir projeto?"
-          description={`“${toDelete.name}” será excluído deste computador. Essa ação não pode ser desfeita.`}
-          confirmLabel="Excluir"
-          pendingLabel="Excluindo…"
-          pending={remove.isPending}
-          error={remove.isError ? deleteErrorMessage(remove.error) : null}
-          onCancel={() => setToDelete(null)}
-          onConfirm={() => remove.mutate(toDelete.id, { onSuccess: () => setToDelete(null) })}
-        />
-      )}
+      {toDelete && <DeleteProjectDialog project={toDelete} onClose={() => setToDelete(null)} />}
     </div>
   );
 }

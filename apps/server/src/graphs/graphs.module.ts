@@ -17,6 +17,6 @@ import { GraphsController } from "./graphs.controller.js";
     { provide: GRAPH_REPOSITORY, useClass: DrizzleGraphRepository },
     { provide: GRAPH_VERSION_REPOSITORY, useClass: DrizzleGraphVersionRepository },
   ],
-  exports: [GraphVersionService, GRAPH_REPOSITORY, GRAPH_VERSION_REPOSITORY],
+  exports: [GraphService, GraphVersionService, GRAPH_REPOSITORY, GRAPH_VERSION_REPOSITORY],
 })
 export class GraphsModule {}

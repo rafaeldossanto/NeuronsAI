@@ -87,6 +87,39 @@ describe("TriggersService", () => {
     });
   });
 
+  describe("disableAllOf", () => {
+    it("turns off the graph's triggers, clears the next run and tells the scheduler", async () => {
+      const rig = await createTriggerRig();
+      await rig.publish();
+      await rig.triggers.setEnabled(rig.graph.id, SCHEDULE_TRIGGER, true);
+      await rig.states.update(rig.graph.id, SCHEDULE_TRIGGER, { nextRunAt: new Date() });
+      const changes: string[] = [];
+      rig.triggers.onChange(({ graphId, triggerId }) => {
+        changes.push(`${graphId}/${triggerId}`);
+        return Promise.resolve();
+      });
+
+      await rig.triggers.disableAllOf(rig.graph.id);
+
+      expect(await rig.triggers.get(rig.graph.id, SCHEDULE_TRIGGER)).toMatchObject({
+        enabled: false,
+        nextRunAt: null,
+      });
+      expect(changes).toEqual([`${rig.graph.id}/${SCHEDULE_TRIGGER}`]);
+    });
+
+    it("leaves the triggers of other graphs alone", async () => {
+      const rig = await createTriggerRig();
+      const otherGraphId = randomUUID();
+      await rig.states.ensure(otherGraphId, "t", "hook-de-outro");
+      await rig.states.update(otherGraphId, "t", { enabled: true });
+
+      await rig.triggers.disableAllOf(rig.graph.id);
+
+      expect((await rig.states.find(otherGraphId, "t"))?.enabled).toBe(true);
+    });
+  });
+
   describe("turning on", () => {
     it("needs a published version", async () => {
       const rig = await createTriggerRig();

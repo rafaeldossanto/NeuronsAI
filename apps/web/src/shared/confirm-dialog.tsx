@@ -13,6 +13,7 @@ export function ConfirmDialog({
   pendingLabel,
   cancelLabel = "Cancelar",
   pending = false,
+  confirmDisabled = false,
   error,
   onConfirm,
   onCancel,
@@ -23,6 +24,8 @@ export function ConfirmDialog({
   pendingLabel: string;
   cancelLabel?: string;
   pending?: boolean;
+  /** Keeps Confirm off while something the text depends on is still loading. */
+  confirmDisabled?: boolean;
   error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
@@ -71,7 +74,7 @@ export function ConfirmDialog({
         <Button
           variant="outline"
           className="border-destructive bg-destructive text-white hover:bg-destructive/90"
-          disabled={pending}
+          disabled={pending || confirmDisabled}
           onClick={onConfirm}
         >
           {pending ? pendingLabel : confirmLabel}

@@ -21,15 +21,12 @@ export class GraphVersionNumberNotFoundError extends DomainError {
   }
 }
 
-/** Versions are immutable and the runs point at them, so a graph that has any cannot be deleted. */
-export class GraphHasVersionsError extends DomainError {
+/** A run that has not finished still reads the graph's versions, so the graph stays until it ends. */
+export class GraphHasActiveRunsError extends DomainError {
   readonly kind: DomainErrorKind = "conflict";
 
-  constructor(graphId: string) {
-    super(
-      "graph_has_versions",
-      `O grafo "${graphId}" já tem versões publicadas e não pode ser apagado.`,
-    );
+  constructor() {
+    super("graph_has_active_runs", "Pare as execuções em andamento antes de excluir o projeto.");
   }
 }
 

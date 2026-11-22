@@ -353,7 +353,7 @@ export interface paths {
         get: operations["graphs_get"];
         put?: never;
         post?: never;
-        /** Apaga um grafo que ainda não tem versões publicadas. */
+        /** Apaga o grafo com as versões publicadas, o histórico de execuções e os gatilhos. Recusa (409) se houver execução em andamento. */
         delete: operations["graphs_remove"];
         options?: never;
         head?: never;
