@@ -37,6 +37,13 @@
 }
 .desktop-window-controls .window-close:hover,
 .desktop-window-controls .window-close:focus-visible {
-  background: #e81123;
+  background: #c42b1c;
+  color: #fff;
+}
+.desktop-window-controls button:active {
+  background: rgb(0 0 0 / 0.14);
+}
+.desktop-window-controls .window-close:active {
+  background: #b12417;
   color: #fff;
 }
