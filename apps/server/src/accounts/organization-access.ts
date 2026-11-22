@@ -3,7 +3,8 @@ import type { Database, DatabaseTransaction } from "../database/database.service
 import { memberships, type OrganizationRole } from "../database/schema/accounts.js";
 import { OrganizationAccessError } from "./account.errors.js";
 
-export type OrganizationPermission = "read" | "write" | "manage_members" | "manage_credentials";
+export type OrganizationPermission =
+  "read" | "write" | "manage_members" | "manage_credentials" | "delete_graphs";
 export interface OrganizationScope {
   userId: string;
   organizationId: string;
@@ -11,8 +12,8 @@ export interface OrganizationScope {
 }
 
 const permissions: Record<OrganizationRole, readonly OrganizationPermission[]> = {
-  owner: ["read", "write", "manage_members", "manage_credentials"],
-  admin: ["read", "write", "manage_members", "manage_credentials"],
+  owner: ["read", "write", "manage_members", "manage_credentials", "delete_graphs"],
+  admin: ["read", "write", "manage_members", "manage_credentials", "delete_graphs"],
   member: ["read", "write"],
   viewer: ["read"],
 };

@@ -2,7 +2,8 @@ import { Inject, Injectable } from "@nestjs/common";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { resourceScope } from "../accounts/resource-scope.js";
 import { DatabaseService } from "../database/database.service.js";
-import { graphs, graphTriggers, secrets } from "../database/schema/index.js";
+import { graphs, graphTriggers, graphVersions, runs, secrets } from "../database/schema/index.js";
+import { GraphHasActiveRunsError } from "./graphs.errors.js";
 import { webhookSecretName } from "../triggers/webhook-secret-name.js";
 import type { GraphChanges, GraphRepository } from "./graph-repository.js";
 import type { GraphRecord } from "./graph.records.js";
@@ -55,9 +56,16 @@ export class DrizzleGraphRepository implements GraphRepository {
     return row;
   }
 
+  async hasActiveRuns(id: string): Promise<boolean> {
+    return this.activeRunsOf(this.database.db, id);
+  }
+
   /**
-   * Deleting a graph takes its triggers with it (cascade), and with them the reason for their
-   * webhook secrets to exist: those go in the same transaction, so none is left orphaned.
+   * Everything that hangs from the graph goes in one transaction, in an explicit order (the
+   * foreign keys from runs to versions and from versions to the graph are `restrict`, and are
+   * left as they are): runs of its versions (their messages and events follow by cascade), then
+   * the versions, then the webhook secrets, then the graph (its triggers follow by cascade).
+   * A run still going stops it, and nothing is deleted.
    */
   delete(id: string): Promise<boolean> {
     return this.database.db.transaction(async (tx) => {
@@ -66,6 +74,13 @@ export class DrizzleGraphRepository implements GraphRepository {
         .from(graphs)
         .where(and(eq(graphs.id, id), resourceScope.matches(graphs.organizationId)));
       if (!owned) return false;
+      if (await this.activeRunsOf(tx, id)) throw new GraphHasActiveRunsError();
+      const versionIds = tx
+        .select({ id: graphVersions.id })
+        .from(graphVersions)
+        .where(eq(graphVersions.graphId, id));
+      await tx.delete(runs).where(inArray(runs.graphVersionId, versionIds));
+      await tx.delete(graphVersions).where(eq(graphVersions.graphId, id));
       const hooks = await tx
         .select({ hookId: graphTriggers.hookId })
         .from(graphTriggers)
@@ -84,5 +99,15 @@ export class DrizzleGraphRepository implements GraphRepository {
       await tx.delete(graphs).where(eq(graphs.id, id));
       return true;
     });
+  }
+
+  private async activeRunsOf(db: Pick<DatabaseService["db"], "select">, id: string) {
+    const [active] = await db
+      .select({ id: runs.id })
+      .from(runs)
+      .innerJoin(graphVersions, eq(graphVersions.id, runs.graphVersionId))
+      .where(and(eq(graphVersions.graphId, id), inArray(runs.status, ["pending", "running"])))
+      .limit(1);
+    return active !== undefined;
   }
 }

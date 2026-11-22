@@ -331,7 +331,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Lista os grafos. */
+        /** Lista os grafos, com o pedido de exclusão pendente de cada um (se houver). */
         get: operations["graphs_list"];
         put?: never;
         /** Cria um grafo (com rascunho opcional). */
@@ -353,12 +353,64 @@ export interface paths {
         get: operations["graphs_get"];
         put?: never;
         post?: never;
-        /** Apaga um grafo que ainda não tem versões publicadas. */
+        /** Apaga o grafo com as versões publicadas, o histórico de execuções e os gatilhos. Recusa (409) se houver execução em andamento. */
         delete: operations["graphs_remove"];
         options?: never;
         head?: never;
         /** Renomeia o grafo e/ou salva o rascunho. */
         patch: operations["graphs_update"];
+        trace?: never;
+    };
+    "/graphs/{id}/deletion-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Um membro pede a exclusão do projeto; um proprietário ou administrador aprova ou recusa. Só um pedido pendente por projeto. */
+        post: operations["graphs_requestDeletion"];
+        /** Quem pediu a exclusão cancela o pedido pendente. */
+        delete: operations["graphs_cancelDeletionRequest"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphs/{id}/deletion-request/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Aprova o pedido: exclui o projeto como o DELETE. Com execução em andamento recusa (409) e o pedido continua pendente. */
+        post: operations["graphs_approveDeletionRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphs/{id}/deletion-request/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recusa o pedido de exclusão pendente; o projeto fica como está. */
+        post: operations["graphs_rejectDeletionRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/graphs/{id}/triggers/{triggerId}": {
@@ -665,6 +717,15 @@ export interface components {
             draft: unknown;
             latestVersion: number | null;
         };
+        GraphDeletionRequest: {
+            requestedBy: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            };
+            /** Format: date-time */
+            requestedAt: string;
+        };
         GraphSummary: {
             /** Format: uuid */
             id: string;
@@ -673,6 +734,7 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+            deletionRequest: components["schemas"]["GraphDeletionRequest"] | null;
         };
         GraphVersion: {
             /** Format: uuid */
@@ -2141,6 +2203,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description Não permitido. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description Não encontrado. */
             404: {
                 headers: {
@@ -2190,6 +2261,223 @@ export interface operations {
             };
             /** @description Requisição inválida. */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graphs_requestDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphDeletionRequest"];
+                };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não permitido. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflito com o estado atual. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graphs_cancelDeletionRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso, sem conteúdo. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não permitido. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflito com o estado atual. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graphs_approveDeletionRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso, sem conteúdo. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não permitido. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflito com o estado atual. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graphs_rejectDeletionRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso, sem conteúdo. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não permitido. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -50,8 +50,9 @@ export class RequestScopeInterceptor implements NestInterceptor {
     // `authenticate` just re-read the membership in this request; reuse that role, don't read again.
     const access = requirePermission(scope, permission);
     return new Observable((subscriber) =>
-      resourceScope.run({ organizationId: scope.organizationId, role: access.role }, () =>
-        next.handle().subscribe(subscriber),
+      resourceScope.run(
+        { organizationId: scope.organizationId, role: access.role, userId: scope.userId },
+        () => next.handle().subscribe(subscriber),
       ),
     );
   }

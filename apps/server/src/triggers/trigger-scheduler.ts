@@ -214,7 +214,11 @@ export class TriggerScheduler implements OnApplicationBootstrap, OnModuleDestroy
   private async fire(entry: Armed): Promise<void> {
     const { graphId, triggerId } = entry;
     const state = await this.states.find(graphId, triggerId);
-    if (!state?.enabled) return;
+    if (!state?.enabled) {
+      // Turned off, or its graph is gone: the timer was re-armed just before, so drop it.
+      this.disarm(graphId, triggerId);
+      return;
+    }
     const now = new Date(this.clock());
 
     if (state.lastRunId) {

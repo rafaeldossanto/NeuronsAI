@@ -1,16 +1,27 @@
 import { toIso } from "../api/common-schemas.js";
+import type { GraphDeletionRequestRecord } from "./graph-deletion-request-repository.js";
 import type { GraphWithLatest } from "./graph.service.js";
 import type { GraphRecord, GraphVersionRecord } from "./graph.records.js";
 
-export const presentGraphSummary = (graph: GraphRecord) => ({
+const presentGraphFields = (graph: GraphRecord) => ({
   id: graph.id,
   name: graph.name,
   createdAt: toIso(graph.createdAt),
   updatedAt: toIso(graph.updatedAt),
 });
 
+export const presentDeletionRequest = (request: GraphDeletionRequestRecord) => ({
+  requestedBy: { id: request.requestedBy, name: request.requesterName },
+  requestedAt: toIso(request.createdAt),
+});
+
+export const presentGraphSummary = (graph: GraphRecord, request?: GraphDeletionRequestRecord) => ({
+  ...presentGraphFields(graph),
+  deletionRequest: request ? presentDeletionRequest(request) : null,
+});
+
 export const presentGraph = ({ graph, latestVersion }: GraphWithLatest) => ({
-  ...presentGraphSummary(graph),
+  ...presentGraphFields(graph),
   draft: graph.draft,
   latestVersion,
 });

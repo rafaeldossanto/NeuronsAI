@@ -7,7 +7,7 @@ import {
 import { GraphVersionService } from "./graph-version.service.js";
 import type { GraphRecord, GraphVersionRecord } from "./graph.records.js";
 import {
-  GraphHasVersionsError,
+  GraphHasActiveRunsError,
   GraphNotFoundError,
   GraphVersionNumberNotFoundError,
   InvalidGraphError,
@@ -19,6 +19,9 @@ export interface GraphWithLatest {
   latestVersion: number | null;
 }
 
+/** Called before a graph is deleted, and waited for (the triggers are turned off here). */
+export type GraphRemovalListener = (graphId: string) => Promise<void>;
+
 /** What the API does with graphs: draft management (CRUD) and publishing versions. */
 @Injectable()
 export class GraphService {
@@ -27,6 +30,13 @@ export class GraphService {
     @Inject(GRAPH_VERSION_REPOSITORY) private readonly versions: GraphVersionRepository,
     @Inject(GraphVersionService) private readonly publisher: GraphVersionService,
   ) {}
+
+  private readonly beforeRemove: GraphRemovalListener[] = [];
+
+  /** Registers what must stop before a graph goes away (the scheduler and the webhooks). */
+  onBeforeRemove(listener: GraphRemovalListener): void {
+    this.beforeRemove.push(listener);
+  }
 
   create(input: { name: string; draft?: unknown }): Promise<GraphRecord> {
     return this.graphs.create(input);
@@ -51,10 +61,17 @@ export class GraphService {
     return { graph, latestVersion: latest?.version ?? null };
   }
 
-  /** @throws GraphNotFoundError, GraphHasVersionsError */
+  /**
+   * Deletes the project with its versions and run history. A run still going refuses it (the
+   * check comes first, so a refusal changes nothing); then the triggers are turned off, so no
+   * schedule, webhook or WhatsApp message starts a run from here on; then everything goes in one
+   * transaction, which looks at the active runs once more.
+   * @throws GraphNotFoundError, GraphHasActiveRunsError
+   */
   async remove(id: string): Promise<void> {
     await this.require(id);
-    if (await this.versions.findLatest(id)) throw new GraphHasVersionsError(id);
+    if (await this.graphs.hasActiveRuns(id)) throw new GraphHasActiveRunsError();
+    for (const listener of this.beforeRemove) await listener(id);
     await this.graphs.delete(id);
   }
 

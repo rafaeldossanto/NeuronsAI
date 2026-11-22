@@ -111,16 +111,72 @@ describe("graphs", () => {
     }
   });
 
-  it("deletes a graph without versions, and refuses one that has some", async () => {
+  it("deletes a graph without versions", async () => {
     const plain = await createGraph("Descartável");
     expect((await call("DELETE", `/graphs/${plain.id}`)).status).toBe(204);
     expect((await call("GET", `/graphs/${plain.id}`)).status).toBe(404);
+  });
 
+  it("deletes a published graph with its versions and its whole run history", async () => {
+    runtimes.setScript("Pesquisador", async (turn) => {
+      await turn.send("Revisor", "confere isto");
+    });
+    runtimes.setScript("Revisor", (turn) => turn.finish("conferido"));
     const published = await createGraph("Publicado");
     await publish(published.id);
+    const second = await publish(published.id);
+    const other = await createGraph("Outro");
+    const otherVersion = await publish(other.id);
+    const runIds: string[] = [];
+    for (const versionId of [second.id, second.id, otherVersion.id]) {
+      const started = await call("POST", "/runs", { graphVersionId: versionId, input: "oi" });
+      expect(started.status).toBe(201);
+      const runId = started.body.id as string;
+      await eventually(async () => {
+        expect((await call("GET", `/runs/${runId}`)).body.status).toBe("succeeded");
+      });
+      runIds.push(runId);
+    }
+
+    expect((await call("DELETE", `/graphs/${published.id}`)).status).toBe(204);
+
+    expect((await call("GET", `/graphs/${published.id}`)).status).toBe(404);
+    expect((await call("GET", `/graphs/${published.id}/versions`)).status).toBe(404);
+    for (const runId of runIds.slice(0, 2)) {
+      expect((await call("GET", `/runs/${runId}`)).status).toBe(404);
+      expect((await call("GET", `/runs/${runId}/events`)).status).toBe(404);
+      expect((await call("GET", `/runs/${runId}/messages`)).status).toBe(404);
+    }
+    // Nothing of the other graph went with it.
+    expect((await call("GET", `/graphs/${other.id}`)).body).toMatchObject({ latestVersion: 1 });
+    expect((await call("GET", `/runs/${runIds[2]!}`)).status).toBe(200);
+    expect((await call("GET", `/runs/${runIds[2]!}/events`)).body.items.length).toBeGreaterThan(0);
+  });
+
+  it("refuses to delete a graph that has a run in progress, and changes nothing", async () => {
+    runtimes.setScript("Pesquisador", () => hold.promise);
+    const published = await createGraph("Em andamento");
+    const version = await publish(published.id);
+    const started = await call("POST", "/runs", { graphVersionId: version.id, input: "oi" });
+    expect(started.status).toBe(201);
+
     const refused = await call("DELETE", `/graphs/${published.id}`);
+
     expect(refused.status).toBe(409);
-    expect(refused.body).toMatchObject({ code: "graph_has_versions" });
+    expect(refused.body).toEqual({ ...errorShape, code: "graph_has_active_runs" });
+    expect((await call("GET", `/graphs/${published.id}`)).body).toMatchObject({
+      latestVersion: 1,
+    });
+    expect((await call("GET", `/runs/${started.body.id as string}`)).status).toBe(200);
+
+    // Once the run is stopped the graph can go.
+    expect((await call("POST", `/runs/${started.body.id as string}/stop`)).status).toBe(200);
+    await eventually(async () => {
+      expect((await call("GET", `/runs/${started.body.id as string}`)).body.status).toBe(
+        "cancelled",
+      );
+    });
+    expect((await call("DELETE", `/graphs/${published.id}`)).status).toBe(204);
   });
 
   describe("versions", () => {
