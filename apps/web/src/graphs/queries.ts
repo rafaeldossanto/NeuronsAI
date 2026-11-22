@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { unwrap, useApi } from "@/shared/api";
+import { expectNoContent, unwrap, useApi } from "@/shared/api";
 
 export function useGraphs() {
   const api = useApi();
@@ -14,6 +14,17 @@ export function useCreateGraph() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (name: string) => unwrap(api.POST("/graphs", { body: { name } })),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"], exact: true }),
+  });
+}
+
+/** Deletes a project. The server refuses (409 `graph_has_versions`) when it has a published version. */
+export function useDeleteGraph() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      expectNoContent(api.DELETE("/graphs/{id}", { params: { path: { id } } })),
     onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"], exact: true }),
   });
 }
