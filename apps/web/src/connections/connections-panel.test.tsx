@@ -89,3 +89,61 @@ describe("conexões de IA: ChatGPT", () => {
     expect(await screen.findByRole("button", { name: "ChatGPT conectado" })).toBeDisabled();
   });
 });
+
+describe("conexões de IA: Verificar conexão", () => {
+  const ok = { installed: true, connected: true, message: "Codex conectado." };
+  const off = { installed: true, connected: false, message: "Conecte sua conta." };
+  const indicators = (card: string) =>
+    within(screen.getByRole("heading", { name: card }).closest("section")!).queryByTestId(
+      "connection-check",
+    );
+
+  it("não mostra indicador antes do primeiro clique", async () => {
+    renderPanel({ "GET /connections": connections(ok) });
+    await screen.findByRole("button", { name: "ChatGPT conectado" });
+    expect(screen.queryByTestId("connection-check")).not.toBeInTheDocument();
+  });
+
+  it("mostra o loader e desliga o botão enquanto verifica, depois o check verde", async () => {
+    renderPanel({ "GET /connections": connections(ok) });
+    await screen.findByRole("button", { name: "ChatGPT conectado" });
+    const [, button] = screen.getAllByRole("button", { name: "Verificar conexão" });
+    await userEvent.click(button!);
+    const indicator = indicators("ChatGPT (Codex)")!;
+    expect(indicator).toHaveAttribute("data-state", "checking");
+    expect(indicator).toHaveAccessibleName("Verificando conexão…");
+    expect(button).toBeDisabled();
+    await waitFor(() => expect(indicator).toHaveAttribute("data-state", "ok"));
+    expect(indicator).toHaveAccessibleName("Conexão confirmada");
+    expect(button).toBeEnabled();
+  });
+
+  it("mostra o X vermelho quando o provedor não está conectado e não mexe no outro card", async () => {
+    renderPanel({ "GET /connections": connections(off) });
+    await screen.findByRole("button", { name: "Conectar ChatGPT" });
+    const [, button] = screen.getAllByRole("button", { name: "Verificar conexão" });
+    await userEvent.click(button!);
+    await waitFor(() =>
+      expect(indicators("ChatGPT (Codex)")).toHaveAttribute("data-state", "fail"),
+    );
+    expect(indicators("ChatGPT (Codex)")).toHaveAccessibleName("Não conectado");
+    expect(indicators("Claude Code")).not.toBeInTheDocument();
+  });
+
+  it("mostra o X vermelho quando a consulta falha", async () => {
+    let calls = 0;
+    renderPanel({
+      "GET /connections": () => {
+        calls += 1;
+        return calls === 1
+          ? connections(ok)
+          : { status: 500, body: { code: "boom", message: "Falhou." } };
+      },
+    });
+    await screen.findByRole("button", { name: "ChatGPT conectado" });
+    const [first] = screen.getAllByRole("button", { name: "Verificar conexão" });
+    await userEvent.click(first!);
+    await waitFor(() => expect(indicators("Claude Code")).toHaveAttribute("data-state", "fail"));
+    expect(indicators("ChatGPT (Codex)")).not.toBeInTheDocument();
+  });
+});
