@@ -1,4 +1,42 @@
-.desktop-frame.desktop-frame-native {
-  border: 0;
-  border-radius: 0;
+.desktop-titlebar.desktop-titlebar-windows {
+  justify-content: flex-start;
+  padding-left: 12px;
+}
+.desktop-window-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.desktop-window-controls button {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 100%;
+  color: var(--foreground);
+  background: transparent;
+  cursor: default;
+}
+.desktop-window-controls button:hover,
+.desktop-window-controls button:focus-visible {
+  background: rgb(0 0 0 / 0.08);
+}
+.desktop-window-controls button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.desktop-window-controls svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}
+.desktop-window-controls .window-close:hover,
+.desktop-window-controls .window-close:focus-visible {
+  background: #e81123;
+  color: #fff;
 }
