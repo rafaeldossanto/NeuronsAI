@@ -1,4 +1,4 @@
-import { CircleCheck, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { issueField, type LocatedIssue } from "./issues";
 import type { GraphDoc } from "./model";
 
@@ -29,23 +29,15 @@ export function IssuesPanel({
   doc: GraphDoc;
   onSelect: (issue: LocatedIssue) => void;
 }) {
-  if (issues.length === 0) {
-    return (
-      <p
-        role="status"
-        className="flex items-center gap-2 text-sm font-semibold text-muted-foreground"
-      >
-        <CircleCheck aria-hidden className="size-4" /> Nenhum problema: o grafo está válido.
-      </p>
-    );
-  }
+  // A valid graph shows nothing: no strip, so no gap is left in the editor.
+  if (issues.length === 0) return null;
   return (
-    <section aria-label="Problemas do grafo" className="rounded-lg border bg-card p-4">
+    <section aria-label="Problemas do grafo" className="rounded-lg border bg-card px-3 py-2">
       <h2 className="flex items-center gap-2 text-sm font-extrabold">
         <TriangleAlert aria-hidden className="size-4 text-destructive" />
         {issues.length === 1 ? "1 problema" : `${issues.length} problemas`}
       </h2>
-      <ul className="mt-2 flex flex-col gap-1">
+      <ul className="mt-1 flex flex-col">
         {issues.map((issue, index) => {
           const where = subject(issue, doc);
           const field = issueField(issue);

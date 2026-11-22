@@ -2,12 +2,17 @@ import { useEffect, useState, type ReactNode } from "react";
 import { UpdateNotice, type DesktopUpdates } from "@/updates/update-notice";
 import { DesktopAccount, type DesktopAccountBridge } from "@/accounts/desktop-account";
 import type { DesktopSettingsBridge } from "@/settings/desktop-settings";
+import "./desktop-frame.css";
 
 declare global {
   interface Window {
     neuronsDesktop?: DesktopUpdates & {
       platform: string;
       localResources?: boolean;
+      avatar?: {
+        read(): Promise<string | null>;
+        write(image: string): Promise<void>;
+      };
       account?: DesktopAccountBridge;
       settings?: DesktopSettingsBridge;
       minimize(): Promise<void>;
@@ -30,40 +35,45 @@ export function DesktopFrame({ children }: { children: ReactNode }) {
     return desktop.onMaximized(setMaximized);
   }, [desktop]);
   if (!desktop) return children;
+  const nativeFrame = desktop.platform === "win32";
   const frame = (
-    <div className={`desktop-frame${maximized ? " is-maximized" : ""}`}>
-      <div className="desktop-titlebar" onDoubleClick={() => void desktop.maximize()}>
-        <div className="desktop-traffic-lights">
-          <button
-            className="window-close"
-            aria-label="Fechar janela"
-            title="Fechar"
-            onDoubleClick={(e) => e.stopPropagation()}
-            onClick={() => void desktop.close()}
-          >
-            ×
-          </button>
-          <button
-            className="window-minimize"
-            aria-label="Minimizar janela"
-            title="Minimizar"
-            onDoubleClick={(e) => e.stopPropagation()}
-            onClick={() => void desktop.minimize()}
-          >
-            −
-          </button>
-          <button
-            className="window-maximize"
-            aria-label="Maximizar ou restaurar janela"
-            title="Maximizar ou restaurar"
-            onDoubleClick={(e) => e.stopPropagation()}
-            onClick={() => void desktop.maximize()}
-          >
-            ↗
-          </button>
+    <div
+      className={`desktop-frame${nativeFrame ? " desktop-frame-native" : ""}${maximized ? " is-maximized" : ""}`}
+    >
+      {!nativeFrame && (
+        <div className="desktop-titlebar" onDoubleClick={() => void desktop.maximize()}>
+          <div className="desktop-traffic-lights">
+            <button
+              className="window-close"
+              aria-label="Fechar janela"
+              title="Fechar"
+              onDoubleClick={(e) => e.stopPropagation()}
+              onClick={() => void desktop.close()}
+            >
+              ×
+            </button>
+            <button
+              className="window-minimize"
+              aria-label="Minimizar janela"
+              title="Minimizar"
+              onDoubleClick={(e) => e.stopPropagation()}
+              onClick={() => void desktop.minimize()}
+            >
+              −
+            </button>
+            <button
+              className="window-maximize"
+              aria-label="Maximizar ou restaurar janela"
+              title="Maximizar ou restaurar"
+              onDoubleClick={(e) => e.stopPropagation()}
+              onClick={() => void desktop.maximize()}
+            >
+              ↗
+            </button>
+          </div>
+          <span>NeuronsAI</span>
         </div>
-        <span>NeuronsAI</span>
-      </div>
+      )}
       {desktop.localResources !== false && <UpdateNotice updates={desktop} />}
       <div className="desktop-content">{children}</div>
     </div>

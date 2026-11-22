@@ -201,12 +201,6 @@ export function NewProjectPage() {
                 )}
               </div>
             )}
-            {selected.requiresApiKey && (
-              <p className="rounded-lg border bg-accent/10 p-3 text-sm">
-                Crie os segredos {selected.requiredSecrets.join(" e ")} em Conexões de IA antes de
-                executar. O uso de API é cobrado na conta do provedor.
-              </p>
-            )}
             {error && (
               <p role="alert" className="text-sm text-destructive">
                 {error}

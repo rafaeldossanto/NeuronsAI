@@ -32,15 +32,19 @@ function writeRoutes(): string[] {
   );
 }
 
-it("declares who may call every writing route; only credential routes ask for more than write", () => {
+it("declares who may call every writing route; only credential and deletion routes ask for more than write", () => {
   expect(writeRoutes().sort()).toMatchInlineSnapshot(`
     [
-      "DELETE /graphs/:id → write",
+      "DELETE /graphs/:id → delete_graphs",
+      "DELETE /graphs/:id/deletion-request → write",
       "DELETE /runners/:name → manage_credentials",
       "PATCH /graphs/:id → write",
       "POST /connections/chatgpt/login → manage_credentials",
       "POST /connections/claude/login → manage_credentials",
       "POST /graphs/ → write",
+      "POST /graphs/:id/deletion-request → write",
+      "POST /graphs/:id/deletion-request/approve → delete_graphs",
+      "POST /graphs/:id/deletion-request/reject → delete_graphs",
       "POST /graphs/:id/triggers/:triggerId/secret → manage_credentials",
       "POST /graphs/:id/versions → write",
       "POST /memories/ → write",

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { unwrap, useApi } from "@/shared/api";
+import { expectNoContent, unwrap, useApi } from "@/shared/api";
 
 export function useGraphs() {
   const api = useApi();
@@ -15,6 +15,69 @@ export function useCreateGraph() {
   return useMutation({
     mutationFn: (name: string) => unwrap(api.POST("/graphs", { body: { name } })),
     onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"], exact: true }),
+  });
+}
+
+/** Deletes a project with its versions and run history; the server refuses (409) while a run is going. */
+export function useDeleteGraph() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      expectNoContent(api.DELETE("/graphs/{id}", { params: { path: { id } } })),
+    onSuccess: (_, id) => {
+      client.removeQueries({ queryKey: ["graphs", id] });
+      return client.invalidateQueries({ queryKey: ["graphs"], exact: true });
+    },
+  });
+}
+
+/** A member asks for the deletion; an owner or admin decides (approve deletes, reject keeps). */
+export function useRequestGraphDeletion() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.POST("/graphs/{id}/deletion-request", { params: { path: { id } } })),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"], exact: true }),
+  });
+}
+
+export function useCancelGraphDeletionRequest() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      expectNoContent(api.DELETE("/graphs/{id}/deletion-request", { params: { path: { id } } })),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"], exact: true }),
+  });
+}
+
+export function useRejectGraphDeletionRequest() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      expectNoContent(
+        api.POST("/graphs/{id}/deletion-request/reject", { params: { path: { id } } }),
+      ),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"], exact: true }),
+  });
+}
+
+/** Approving deletes the project like `useDeleteGraph`; a run in progress refuses it (409). */
+export function useApproveGraphDeletionRequest() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      expectNoContent(
+        api.POST("/graphs/{id}/deletion-request/approve", { params: { path: { id } } }),
+      ),
+    onSuccess: (_, id) => {
+      client.removeQueries({ queryKey: ["graphs", id] });
+      return client.invalidateQueries({ queryKey: ["graphs"], exact: true });
+    },
   });
 }
 

@@ -2,9 +2,8 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { EmptyState, ErrorState, LoadingRows } from "@/shared/states";
 import { Button } from "@/shared/ui/button";
-import { Card } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
-import { formatDateTime } from "@/shared/format";
+import { ProjectCard } from "@/graphs/project-card";
 import { useCreateGraph, useGraphs } from "@/graphs/queries";
 
 export function GraphsPage() {
@@ -60,24 +59,7 @@ export function GraphsPage() {
         <ul className="flex flex-col gap-3">
           {graphs.data.map((graph) => (
             <li key={graph.id}>
-              <Card className="flex items-center justify-between gap-4 p-4 transition-colors hover:border-accent">
-                <div className="min-w-0">
-                  <Link
-                    to={`/graphs/${graph.id}`}
-                    className="block truncate font-bold hover:underline"
-                  >
-                    {graph.name}
-                  </Link>
-                  <p className="text-xs text-muted-foreground">
-                    Atualizado em {formatDateTime(graph.updatedAt)}
-                  </p>
-                </div>
-                <Button asChild variant="outline" size="sm">
-                  <Link to={`/graphs/${graph.id}`} aria-label={`Abrir ${graph.name}`}>
-                    Abrir
-                  </Link>
-                </Button>
-              </Card>
+              <ProjectCard graph={graph} />
             </li>
           ))}
         </ul>

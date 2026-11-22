@@ -11,6 +11,7 @@ import { startTestDatabase, type TestDatabase } from "../database/testing/test-d
 import { eventually } from "../hub/testing/async-helpers.js";
 import type { HooksConfig } from "../shared/config/app-config.js";
 import { HooksServer } from "./hooks-server.js";
+import { TriggerScheduler } from "./trigger-scheduler.js";
 
 /**
  * The external triggers over the whole app: a real HTTP request to the separate hooks port starts
@@ -82,7 +83,7 @@ async function start(hooks: HooksConfig | null = HOOKS) {
 }
 
 async function api<T = Record<string, any>>(
-  method: "GET" | "POST" | "PUT",
+  method: "GET" | "POST" | "PUT" | "DELETE",
   url: string,
   payload?: unknown,
 ) {
@@ -511,5 +512,49 @@ describe("schedule", () => {
 
     // Leave nothing armed for the next test.
     await api("PUT", `/graphs/${graph.id}/triggers/${SCHEDULE}/enabled`, { enabled: false });
+  });
+});
+
+describe("deleting the graph", () => {
+  it("turns the webhook off for good: nothing fires, the history and the secret are gone", async () => {
+    await start();
+    const preexisting = (await api("GET", "/secrets")).body.names as string[];
+    const { graph, secret, url } = await readyWebhook();
+    const body = "{}";
+    const accepted = await post(url, body, signedHeaders(secret, body));
+    expect(accepted.status).toBe(202);
+    const runId = accepted.json.runId as string;
+    await eventually(async () => {
+      expect((await api("GET", `/runs/${runId}`)).body.status).toBe("succeeded");
+    });
+    const secretsBefore = (await api("GET", "/secrets")).body.names as string[];
+    expect(secretsBefore.length).toBeGreaterThan(preexisting.length);
+
+    expect((await api("DELETE", `/graphs/${graph.id}`)).status).toBe(204);
+
+    const later = JSON.stringify({ depois: true });
+    expect((await post(url, later, signedHeaders(secret, later))).status).toBe(401);
+    expect((await api("GET", `/runs/${runId}`)).status).toBe(404);
+    expect(await runsTotal(graph.id)).toBe(0);
+    expect((await api("GET", "/secrets")).body.names).toEqual(preexisting);
+  });
+
+  it("drops the schedule's timer, so the cron never fires into a deleted graph", async () => {
+    await start();
+    const graph = await publishedGraph("* * * * *");
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+      now: new Date("2026-11-04T12:00:30.000Z"),
+    });
+    await api("PUT", `/graphs/${graph.id}/triggers/${SCHEDULE}/enabled`, { enabled: true });
+    const scheduler = app!.get(TriggerScheduler);
+    expect(scheduler.armedCount).toBe(1);
+
+    expect((await api("DELETE", `/graphs/${graph.id}`)).status).toBe(204);
+    expect(scheduler.armedCount).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(180_000);
+    vi.useRealTimers();
+    expect(await runsTotal(graph.id)).toBe(0);
   });
 });

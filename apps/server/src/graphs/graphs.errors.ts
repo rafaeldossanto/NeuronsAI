@@ -21,15 +21,61 @@ export class GraphVersionNumberNotFoundError extends DomainError {
   }
 }
 
-/** Versions are immutable and the runs point at them, so a graph that has any cannot be deleted. */
-export class GraphHasVersionsError extends DomainError {
+/** A run that has not finished still reads the graph's versions, so the graph stays until it ends. */
+export class GraphHasActiveRunsError extends DomainError {
   readonly kind: DomainErrorKind = "conflict";
 
-  constructor(graphId: string) {
+  constructor() {
+    super("graph_has_active_runs", "Pare as execuções em andamento antes de excluir o projeto.");
+  }
+}
+
+/** Pedidos de exclusão são entre pessoas de uma organização: sem contas, ninguém pede a ninguém. */
+export class DeletionRequestsUnavailableError extends DomainError {
+  readonly kind: DomainErrorKind = "conflict";
+
+  constructor() {
     super(
-      "graph_has_versions",
-      `O grafo "${graphId}" já tem versões publicadas e não pode ser apagado.`,
+      "deletion_requests_unavailable",
+      "Pedidos de exclusão só existem com contas; aqui você exclui o projeto direto.",
     );
+  }
+}
+
+/** Owners and admins already may delete: they do it, they do not ask. */
+export class DeletionRequestNotNeededError extends DomainError {
+  readonly kind: DomainErrorKind = "conflict";
+
+  constructor() {
+    super(
+      "deletion_request_not_needed",
+      "Você pode excluir este projeto direto, sem pedir aprovação.",
+    );
+  }
+}
+
+export class DeletionRequestAlreadyPendingError extends DomainError {
+  readonly kind: DomainErrorKind = "conflict";
+
+  constructor() {
+    super("deletion_request_pending", "Este projeto já tem um pedido de exclusão pendente.");
+  }
+}
+
+export class DeletionRequestNotFoundError extends DomainError {
+  readonly kind: DomainErrorKind = "not_found";
+
+  constructor() {
+    super("deletion_request_not_found", "Este projeto não tem pedido de exclusão pendente.");
+  }
+}
+
+/** Only who asked may withdraw the request; anyone else with the power to delete rejects it. */
+export class DeletionRequestNotYoursError extends DomainError {
+  readonly kind: DomainErrorKind = "forbidden";
+
+  constructor() {
+    super("deletion_request_not_yours", "Só quem pediu a exclusão pode cancelar o pedido.");
   }
 }
 

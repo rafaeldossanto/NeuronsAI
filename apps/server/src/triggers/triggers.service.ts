@@ -107,6 +107,20 @@ export class TriggersService {
     return this.get(graphId, triggerId);
   }
 
+  /**
+   * Turns off every trigger of the graph (schedule, webhook and WhatsApp), and waits for the
+   * scheduler to drop its timers: used before the graph is deleted, so nothing fires from here on.
+   */
+  async disableAllOf(graphId: string): Promise<void> {
+    for (const state of await this.states.listEnabled()) {
+      if (state.graphId !== graphId) continue;
+      await this.states.update(graphId, state.triggerId, { enabled: false, nextRunAt: null });
+      await Promise.all(
+        this.listeners.map((listener) => listener({ graphId, triggerId: state.triggerId })),
+      );
+    }
+  }
+
   private async assertCanEnable(
     graphId: string,
     triggerId: string,

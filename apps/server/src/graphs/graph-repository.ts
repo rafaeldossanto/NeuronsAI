@@ -12,7 +12,14 @@ export interface GraphRepository {
   list(): Promise<GraphRecord[]>;
   /** Changes what is given (`updatedAt` moves). Returns undefined when the graph does not exist. */
   update(id: string, changes: GraphChanges): Promise<GraphRecord | undefined>;
-  /** Returns whether the graph existed. Fails while versions of it exist (they are immutable). */
+  /** Whether a run of any version of the graph is still pending or running. */
+  hasActiveRuns(id: string): Promise<boolean>;
+  /**
+   * Deletes the graph with everything that hangs from it, in one transaction: its runs (and their
+   * messages and events), its versions, its triggers and the webhook secrets of those triggers.
+   * Returns whether the graph existed.
+   * @throws GraphHasActiveRunsError when a run is still pending or running (nothing is deleted)
+   */
   delete(id: string): Promise<boolean>;
 }
 

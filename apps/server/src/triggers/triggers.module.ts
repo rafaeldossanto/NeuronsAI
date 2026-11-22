@@ -8,6 +8,7 @@ import type { AppConfig } from "../shared/config/app-config.js";
 import { APP_CONFIG } from "../shared/config/tokens.js";
 import { DrizzleTriggerStateRepository } from "./drizzle-trigger-state.repository.js";
 import { OrphanWebhookSecrets } from "./orphan-webhook-secrets.js";
+import { GraphRemovalGuard } from "./graph-removal-guard.js";
 import { HooksServer } from "./hooks-server.js";
 import { TRIGGER_STATE_REPOSITORY } from "./trigger-state.js";
 import { TriggerLauncher } from "./trigger-launcher.js";
@@ -48,6 +49,7 @@ import { DEFAULT_HOOKS_RATE_PER_MIN } from "../shared/config/hooks-config.js";
     HooksServer,
     TriggerScheduler,
     OrphanWebhookSecrets,
+    GraphRemovalGuard,
   ],
 })
 export class TriggersModule {}
