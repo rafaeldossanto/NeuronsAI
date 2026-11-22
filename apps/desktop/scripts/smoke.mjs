@@ -156,13 +156,24 @@ async function main() {
         async () => {
           const result = await call("Runtime.evaluate", {
             expression:
-              "Boolean(window.neuronsDesktop && document.querySelector('.desktop-titlebar'))",
+              "Boolean(window.neuronsDesktop && document.querySelector('.desktop-frame'))",
             returnByValue: true,
           });
           return result.result.value;
         },
         15_000,
       );
+      const frame = await call("Runtime.evaluate", {
+        expression: `({
+          nativeFrame: Boolean(document.querySelector('.desktop-frame-native')),
+          customTitlebar: Boolean(document.querySelector('.desktop-titlebar')),
+          windows: window.neuronsDesktop.platform === 'win32'
+        })`,
+        returnByValue: true,
+      });
+      const { nativeFrame, customTitlebar, windows } = frame.result.value;
+      if (nativeFrame !== windows || customTitlebar === windows)
+        throw new Error("A moldura não corresponde ao sistema operacional.");
       const state = await call("Runtime.evaluate", {
         expression: "window.neuronsDesktop.isMaximized()",
         awaitPromise: true,
@@ -170,8 +181,64 @@ async function main() {
       });
       if (typeof state.result.value !== "boolean")
         throw new Error("A ponte dos controles de janela não respondeu.");
+      await until(
+        "o menu da conta",
+        async () => {
+          const result = await call("Runtime.evaluate", {
+            expression: `Boolean(document.querySelector('button[aria-label="Abrir menu da conta"]'))`,
+            returnByValue: true,
+          });
+          return result.result.value;
+        },
+        15_000,
+      );
+      await call("Runtime.evaluate", {
+        expression: `document.querySelector('button[aria-label="Abrir menu da conta"]').click()`,
+      });
+      await until(
+        "a edição da imagem do perfil",
+        async () => {
+          const result = await call("Runtime.evaluate", {
+            expression: `Boolean(document.querySelector('button[aria-label="Alterar imagem do perfil"]:not(:disabled)'))`,
+            returnByValue: true,
+          });
+          return result.result.value;
+        },
+        15_000,
+      );
+      await call("Runtime.evaluate", {
+        expression: `(() => {
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = 32;
+          const context = canvas.getContext('2d');
+          context.fillStyle = '#e9a15c';
+          context.fillRect(0, 0, 32, 32);
+          const bytes = Uint8Array.from(atob(canvas.toDataURL('image/png').split(',')[1]), c => c.charCodeAt(0));
+          const transfer = new DataTransfer();
+          transfer.items.add(new File([bytes], 'avatar.png', { type: 'image/png' }));
+          const input = document.querySelector('input[aria-label="Selecionar imagem do perfil"]');
+          input.files = transfer.files;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        })()`,
+      });
+      await until(
+        "o avatar ser salvo e aparecer na conta",
+        async () => {
+          const result = await call("Runtime.evaluate", {
+            expression: `(async () => {
+              const saved = await window.neuronsDesktop.avatar.read();
+              const images = [...document.querySelectorAll('img[alt="Imagem do perfil"]')];
+              return saved?.startsWith('data:image/png;base64,') && images.length === 2 && images.every(image => image.src === saved && image.naturalWidth === 256);
+            })()`,
+            awaitPromise: true,
+            returnByValue: true,
+          });
+          return result.result.value;
+        },
+        15_000,
+      );
     });
-    log("moldura desktop e IPC isolado verificados");
+    log("moldura desktop, avatar persistido e IPC isolado verificados");
 
     const outside = await fetch(`${origin.replace("127.0.0.1", "localhost")}/api/health`).catch(
       () => undefined,

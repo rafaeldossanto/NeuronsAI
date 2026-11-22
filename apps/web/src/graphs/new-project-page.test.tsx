@@ -69,9 +69,7 @@ describe("novo projeto e templates", () => {
       );
       expect(preview.querySelectorAll(".react-flow__node.draggable")).toHaveLength(0);
       expect(preview.querySelectorAll(".react-flow__node").length).toBeGreaterThan(0);
-      expect(within(card).queryByText("Precisa de chave de API") !== null).toBe(
-        template.requiresApiKey,
-      );
+      expect(within(card).queryByText("Precisa de chave de API")).not.toBeInTheDocument();
     }
     expect(await screen.findAllByRole("region", { name: "Canvas da execução" })).toHaveLength(3);
     expect(mocked.calls.filter((call) => call.method === "POST")).toHaveLength(0);

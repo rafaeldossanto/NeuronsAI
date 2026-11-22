@@ -31,6 +31,10 @@ async function settingsCommand(action: string, value?: unknown): Promise<unknown
 contextBridge.exposeInMainWorld("neuronsDesktop", {
   platform: process.platform,
   localResources: !process.argv.includes("--neurons-desktop-remote"),
+  avatar: {
+    read: () => ipcRenderer.invoke("neurons:avatar", "read"),
+    write: (image: string) => ipcRenderer.invoke("neurons:avatar", "write", image),
+  },
   account: {
     getState: () => accountCommand("state"),
     connect: (serverOrigin: string) => accountCommand("connect", serverOrigin),

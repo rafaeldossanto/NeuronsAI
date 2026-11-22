@@ -7,8 +7,14 @@ import { createApi } from "@/shared/api";
 import { mockFetch } from "@/test/helpers";
 import { SessionGate } from "@/accounts/auth/session-gate";
 import { DesktopAccount, type DesktopAccountBridge } from "@/accounts/desktop-account";
+import { readAvatarImage } from "@/accounts/avatar-image";
 
-afterEach(() => vi.unstubAllGlobals());
+vi.mock("@/accounts/avatar-image", () => ({ readAvatarImage: vi.fn() }));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  localStorage.clear();
+});
 
 function setup(authenticated = false, logoutStatus = 204) {
   const mock = mockFetch({
@@ -61,6 +67,22 @@ function setup(authenticated = false, logoutStatus = 204) {
 }
 
 describe("menu compacto da conta", () => {
+  it("permite trocar a imagem pelo lápis e atualiza o botão da conta", async () => {
+    const image = "data:image/png;base64,iVBORw0KGgo=";
+    vi.mocked(readAvatarImage).mockResolvedValue(image);
+    const { user } = setup();
+    await user.click(await screen.findByRole("button", { name: "Abrir menu da conta" }));
+    const edit = screen.getByRole("button", { name: "Alterar imagem do perfil" });
+    await waitFor(() => expect(edit).toBeEnabled());
+    expect(edit.querySelector(".account-avatar-pencil")).toBeInTheDocument();
+    await user.upload(
+      screen.getByLabelText("Selecionar imagem do perfil"),
+      new File(["image"], "foto.png", { type: "image/png" }),
+    );
+    await waitFor(() => expect(screen.getAllByAltText("Imagem do perfil")).toHaveLength(2));
+    expect(localStorage.getItem("neurons:avatar:local")).toBe(image);
+    expect(screen.getByRole("dialog", { name: "Conta e conexões" })).toBeInTheDocument();
+  });
   it("reúne servidor e chaves sem uma faixa extra e abre o painel existente", async () => {
     const { user } = setup();
     const trigger = await screen.findByRole("button", { name: "Abrir menu da conta" });

@@ -5,6 +5,8 @@ import { createHash } from "node:crypto";
 import { DesktopAccountManager } from "./accounts/account-manager.js";
 import { DesktopAccountStore } from "./accounts/account-store.js";
 import { installAccountControls } from "./accounts/account-controls.js";
+import { AvatarStore } from "./accounts/avatar-store.js";
+import { installAvatarControls } from "./accounts/avatar-controls.js";
 import { cookiePrefix } from "./accounts/remote-origin.js";
 import { DesktopConfigError, loadDesktopConfig } from "./config.js";
 import { installMenu } from "./shell/menu.js";
@@ -51,6 +53,7 @@ function openWindow(
   origin: string,
   partition?: string,
 ): { window: BrowserWindow; loaded: Promise<void> } {
+  const nativeFrame = process.platform === "win32";
   const created = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -58,11 +61,11 @@ function openWindow(
     minHeight: 600,
     show: false,
     title: APP_NAME,
-    frame: false,
-    transparent: true,
+    frame: nativeFrame,
+    transparent: !nativeFrame,
     roundedCorners: true,
     hasShadow: true,
-    backgroundColor: "#00000000",
+    backgroundColor: nativeFrame ? "#f7f7f4" : "#00000000",
     ...(process.platform !== "darwin" && { icon: ICON }),
     webPreferences: {
       ...SECURE_WEB_PREFERENCES,
@@ -161,6 +164,7 @@ async function boot(): Promise<void> {
     }
   };
   installWindowControls(() => currentOrigin, origin);
+  installAvatarControls(new AvatarStore(config.dataDir), origin);
   installSettingsControls({
     store: settings,
     applied: () => applied,
