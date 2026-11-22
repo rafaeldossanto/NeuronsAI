@@ -1,5 +1,5 @@
 import { ConfirmDialog } from "@/shared/confirm-dialog";
-import { useDeleteGraph, useGraph } from "@/graphs/queries";
+import { useApproveGraphDeletionRequest, useDeleteGraph, useGraph } from "@/graphs/queries";
 
 /** What goes with the project, from the number of its latest version (versions count from 1). */
 function consequences(versions: number | null | undefined, known: boolean): string {
@@ -17,12 +17,17 @@ function consequences(versions: number | null | undefined, known: boolean): stri
 export function DeleteProjectDialog({
   project,
   onClose,
+  approving = false,
 }: {
   project: { id: string; name: string };
   onClose: () => void;
+  /** Deleting because a member asked: the same text, but the request is what gets answered. */
+  approving?: boolean;
 }) {
   const details = useGraph(project.id);
-  const remove = useDeleteGraph();
+  const directly = useDeleteGraph();
+  const approval = useApproveGraphDeletionRequest();
+  const remove = approving ? approval : directly;
   const known = details.isSuccess || details.isError;
   const effects = consequences(details.data?.latestVersion, details.isSuccess);
   return (

@@ -14,6 +14,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancelar",
   pending = false,
   confirmDisabled = false,
+  tone = "destructive",
   error,
   onConfirm,
   onCancel,
@@ -26,6 +27,8 @@ export function ConfirmDialog({
   pending?: boolean;
   /** Keeps Confirm off while something the text depends on is still loading. */
   confirmDisabled?: boolean;
+  /** Destructive paints Confirm red; use default for a request that deletes nothing yet. */
+  tone?: "destructive" | "default";
   error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
@@ -72,8 +75,12 @@ export function ConfirmDialog({
           {cancelLabel}
         </Button>
         <Button
-          variant="outline"
-          className="border-destructive bg-destructive text-white hover:bg-destructive/90"
+          variant={tone === "destructive" ? "outline" : "default"}
+          className={
+            tone === "destructive"
+              ? "border-destructive bg-destructive text-white hover:bg-destructive/90"
+              : undefined
+          }
           disabled={pending || confirmDisabled}
           onClick={onConfirm}
         >

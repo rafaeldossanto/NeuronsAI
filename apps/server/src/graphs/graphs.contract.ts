@@ -9,7 +9,17 @@ const graphFields = {
   updatedAt: timestampSchema,
 };
 
-export const graphSummarySchema = z.object(graphFields).meta({ id: "GraphSummary" });
+/** A member's pending request to delete the project, waiting for an owner or admin. */
+export const graphDeletionRequestSchema = z
+  .object({
+    requestedBy: z.object({ id: z.uuid(), name: z.string() }),
+    requestedAt: timestampSchema,
+  })
+  .meta({ id: "GraphDeletionRequest" });
+
+export const graphSummarySchema = z
+  .object({ ...graphFields, deletionRequest: graphDeletionRequestSchema.nullable() })
+  .meta({ id: "GraphSummary" });
 
 export const graphSchema = z
   .object({

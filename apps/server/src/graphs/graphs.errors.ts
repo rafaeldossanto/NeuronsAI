@@ -30,6 +30,55 @@ export class GraphHasActiveRunsError extends DomainError {
   }
 }
 
+/** Pedidos de exclusão são entre pessoas de uma organização: sem contas, ninguém pede a ninguém. */
+export class DeletionRequestsUnavailableError extends DomainError {
+  readonly kind: DomainErrorKind = "conflict";
+
+  constructor() {
+    super(
+      "deletion_requests_unavailable",
+      "Pedidos de exclusão só existem com contas; aqui você exclui o projeto direto.",
+    );
+  }
+}
+
+/** Owners and admins already may delete: they do it, they do not ask. */
+export class DeletionRequestNotNeededError extends DomainError {
+  readonly kind: DomainErrorKind = "conflict";
+
+  constructor() {
+    super(
+      "deletion_request_not_needed",
+      "Você pode excluir este projeto direto, sem pedir aprovação.",
+    );
+  }
+}
+
+export class DeletionRequestAlreadyPendingError extends DomainError {
+  readonly kind: DomainErrorKind = "conflict";
+
+  constructor() {
+    super("deletion_request_pending", "Este projeto já tem um pedido de exclusão pendente.");
+  }
+}
+
+export class DeletionRequestNotFoundError extends DomainError {
+  readonly kind: DomainErrorKind = "not_found";
+
+  constructor() {
+    super("deletion_request_not_found", "Este projeto não tem pedido de exclusão pendente.");
+  }
+}
+
+/** Only who asked may withdraw the request; anyone else with the power to delete rejects it. */
+export class DeletionRequestNotYoursError extends DomainError {
+  readonly kind: DomainErrorKind = "forbidden";
+
+  constructor() {
+    super("deletion_request_not_yours", "Só quem pediu a exclusão pode cancelar o pedido.");
+  }
+}
+
 /**
  * `{{secret:NAME}}` makes the server send a stored value to wherever the tool points, so on a
  * shared server only owners and admins may publish a version that uses one.

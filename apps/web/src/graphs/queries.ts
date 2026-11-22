@@ -32,6 +32,55 @@ export function useDeleteGraph() {
   });
 }
 
+/** A member asks for the deletion; an owner or admin decides (approve deletes, reject keeps). */
+export function useRequestGraphDeletion() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.POST("/graphs/{id}/deletion-request", { params: { path: { id } } })),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"], exact: true }),
+  });
+}
+
+export function useCancelGraphDeletionRequest() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      expectNoContent(api.DELETE("/graphs/{id}/deletion-request", { params: { path: { id } } })),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"], exact: true }),
+  });
+}
+
+export function useRejectGraphDeletionRequest() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      expectNoContent(
+        api.POST("/graphs/{id}/deletion-request/reject", { params: { path: { id } } }),
+      ),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["graphs"], exact: true }),
+  });
+}
+
+/** Approving deletes the project like `useDeleteGraph`; a run in progress refuses it (409). */
+export function useApproveGraphDeletionRequest() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      expectNoContent(
+        api.POST("/graphs/{id}/deletion-request/approve", { params: { path: { id } } }),
+      ),
+    onSuccess: (_, id) => {
+      client.removeQueries({ queryKey: ["graphs", id] });
+      return client.invalidateQueries({ queryKey: ["graphs"], exact: true });
+    },
+  });
+}
+
 export function useGraph(id: string) {
   const api = useApi();
   return useQuery({

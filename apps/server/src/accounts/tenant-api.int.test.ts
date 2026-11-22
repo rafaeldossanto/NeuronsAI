@@ -777,3 +777,159 @@ it("requires credential management to rotate a webhook secret, independently of 
   expect((await api(member, "POST", url)).statusCode).toBe(403);
   expect((await api(alice, "POST", url)).statusCode).toBe(404);
 });
+
+describe("exclusão de projeto: só proprietário e administrador, os demais pedem", () => {
+  const asRole = async (who: Actor, role: "member" | "viewer" | "admin") => {
+    await accounts.setMember(alice.userId, alice.organizationId, who.userId, role);
+    return asActor(
+      await sessions.issue(who.userId, alice.organizationId),
+      who.userId,
+      alice.organizationId,
+    );
+  };
+  const pendingOf = async (who: Actor, id: string) =>
+    (await api(who, "GET", "/graphs"))
+      .json<{ items: { id: string; deletionRequest: { requestedBy: { id: string } } | null }[] }>()
+      .items.find((item) => item.id === id)?.deletionRequest;
+
+  it("membro e leitor recebem 403 ao excluir direto, e o projeto fica; o proprietário exclui", async () => {
+    const id = await graph(alice);
+    await publish(alice, id);
+    const member = await asRole(bob, "member");
+    expect((await api(member, "DELETE", `/graphs/${id}`)).statusCode).toBe(403);
+    const viewer = await asRole(bob, "viewer");
+    expect((await api(viewer, "DELETE", `/graphs/${id}`)).statusCode).toBe(403);
+    expect((await api(alice, "GET", `/graphs/${id}`)).statusCode).toBe(200);
+
+    expect((await api(alice, "DELETE", `/graphs/${id}`)).statusCode).toBe(204);
+    expect((await api(alice, "GET", `/graphs/${id}`)).statusCode).toBe(404);
+  });
+
+  it("membro pede, o pedido aparece na lista com quem pediu e um segundo pedido é recusado", async () => {
+    const id = await graph(alice);
+    const member = await asRole(bob, "member");
+
+    const created = await api(member, "POST", `/graphs/${id}/deletion-request`);
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ requestedBy: { id: bob.userId } });
+    expect(await pendingOf(alice, id)).toMatchObject({ requestedBy: { id: bob.userId } });
+
+    const again = await api(member, "POST", `/graphs/${id}/deletion-request`);
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toMatchObject({ code: "deletion_request_pending" });
+  });
+
+  it("proprietário não pede (exclui direto) e leitor não pede", async () => {
+    const id = await graph(alice);
+    const owner = await api(alice, "POST", `/graphs/${id}/deletion-request`);
+    expect(owner.statusCode).toBe(409);
+    expect(owner.json()).toMatchObject({ code: "deletion_request_not_needed" });
+    const viewer = await asRole(bob, "viewer");
+    expect((await api(viewer, "POST", `/graphs/${id}/deletion-request`)).statusCode).toBe(403);
+  });
+
+  it("só quem pediu cancela; depois de cancelar não há pedido", async () => {
+    const id = await graph(alice);
+    const member = await asRole(bob, "member");
+    await api(member, "POST", `/graphs/${id}/deletion-request`);
+    const url = `/graphs/${id}/deletion-request`;
+
+    const notYours = await api(alice, "DELETE", url);
+    expect(notYours.statusCode).toBe(403);
+    expect(notYours.json()).toMatchObject({ code: "deletion_request_not_yours" });
+    expect(await pendingOf(alice, id)).toBeTruthy();
+
+    expect((await api(member, "DELETE", url)).statusCode).toBe(204);
+    expect(await pendingOf(alice, id)).toBeNull();
+    expect((await api(member, "DELETE", url)).statusCode).toBe(404);
+  });
+
+  it("recusar mantém o projeto; membro não recusa nem aprova", async () => {
+    const id = await graph(alice);
+    await publish(alice, id);
+    const member = await asRole(bob, "member");
+    await api(member, "POST", `/graphs/${id}/deletion-request`);
+
+    expect((await api(member, "POST", `/graphs/${id}/deletion-request/reject`)).statusCode).toBe(
+      403,
+    );
+    expect((await api(member, "POST", `/graphs/${id}/deletion-request/approve`)).statusCode).toBe(
+      403,
+    );
+    expect((await api(alice, "POST", `/graphs/${id}/deletion-request/reject`)).statusCode).toBe(
+      204,
+    );
+    expect(await pendingOf(alice, id)).toBeNull();
+    expect((await api(alice, "GET", `/graphs/${id}`)).statusCode).toBe(200);
+    expect((await api(alice, "POST", `/graphs/${id}/deletion-request/reject`)).statusCode).toBe(
+      404,
+    );
+  });
+
+  it("aprovar exclui o projeto publicado como o DELETE; administrador também aprova", async () => {
+    const id = await graph(alice);
+    await publish(alice, id);
+    const member = await asRole(bob, "member");
+    await api(member, "POST", `/graphs/${id}/deletion-request`);
+    const carol = await actor(`carol-${++sequence}`);
+    const admin = await (async () => {
+      await accounts.setMember(alice.userId, alice.organizationId, carol.userId, "admin");
+      return asActor(
+        await sessions.issue(carol.userId, alice.organizationId),
+        carol.userId,
+        alice.organizationId,
+      );
+    })();
+
+    expect((await api(admin, "POST", `/graphs/${id}/deletion-request/approve`)).statusCode).toBe(
+      204,
+    );
+
+    expect((await api(alice, "GET", `/graphs/${id}`)).statusCode).toBe(404);
+    expect((await api(alice, "GET", `/graphs/${id}/versions`)).statusCode).toBe(404);
+  });
+
+  it("aprovar com execução em andamento dá 409 e o pedido continua pendente", async () => {
+    const id = await graph(alice);
+    const version = await publish(alice, id);
+    const runId = await run(alice, version);
+    const member = await asRole(bob, "member");
+    await api(member, "POST", `/graphs/${id}/deletion-request`);
+
+    const refused = await api(alice, "POST", `/graphs/${id}/deletion-request/approve`);
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toMatchObject({ code: "graph_has_active_runs" });
+    expect(await pendingOf(alice, id)).toBeTruthy();
+    expect((await api(alice, "GET", `/graphs/${id}`)).statusCode).toBe(200);
+
+    expect((await api(alice, "POST", `/runs/${runId}/stop`)).statusCode).toBe(200);
+    expect((await api(alice, "POST", `/graphs/${id}/deletion-request/approve`)).statusCode).toBe(
+      204,
+    );
+    expect((await api(alice, "GET", `/graphs/${id}`)).statusCode).toBe(404);
+  });
+
+  it("nada vale para o grafo de outra organização, mesmo sabendo o id", async () => {
+    const id = await graph(alice);
+    const member = await asRole(bob, "member");
+    await api(member, "POST", `/graphs/${id}/deletion-request`);
+    // Bob é proprietário da própria organização; Carol é membro dela.
+    const carol = await actor(`carol-${++sequence}`);
+    await accounts.setMember(bob.userId, bob.organizationId, carol.userId, "member");
+    const foreignMember = asActor(
+      await sessions.issue(carol.userId, bob.organizationId),
+      carol.userId,
+      bob.organizationId,
+    );
+
+    expect((await api(bob, "POST", `/graphs/${id}/deletion-request/approve`)).statusCode).toBe(404);
+    expect((await api(bob, "POST", `/graphs/${id}/deletion-request/reject`)).statusCode).toBe(404);
+    expect((await api(bob, "DELETE", `/graphs/${id}/deletion-request`)).statusCode).toBe(404);
+    expect((await api(foreignMember, "POST", `/graphs/${id}/deletion-request`)).statusCode).toBe(
+      404,
+    );
+    expect((await api(bob, "GET", "/graphs")).json<{ items: unknown[] }>().items).toEqual([]);
+    expect(await pendingOf(alice, id)).toBeTruthy();
+    expect((await api(alice, "GET", `/graphs/${id}`)).statusCode).toBe(200);
+  });
+});

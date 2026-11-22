@@ -8,6 +8,8 @@ export interface ResourceScope {
   organizationId: string | null;
   /** The caller's role in `organizationId`, set only for requests of a signed-in session. */
   role?: OrganizationRole;
+  /** Who is calling, set with `role` for a signed-in session; absent in the account-free workspace. */
+  userId?: string;
 }
 const context = new AsyncLocalStorage<Readonly<ResourceScope>>();
 const localScope: Readonly<ResourceScope> = Object.freeze({ organizationId: null });
@@ -23,6 +25,7 @@ export const resourceScope = {
       Object.freeze({
         organizationId: scope.organizationId,
         ...(scope.role && { role: scope.role }),
+        ...(scope.userId && { userId: scope.userId }),
       }),
       action,
     );
