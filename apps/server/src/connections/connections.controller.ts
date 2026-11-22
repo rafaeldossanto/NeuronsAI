@@ -124,7 +124,7 @@ export class ConnectionsService implements OnApplicationShutdown {
             ? "Codex conectado à sua conta do ChatGPT neste computador."
             : chatgpt.installed
               ? "Conecte sua conta pelo login oficial do Codex (Sign in with ChatGPT)."
-              : "Instale o Codex CLI (npm i -g @openai/codex) neste computador para conectar sua conta do ChatGPT.",
+              : "Instale o app do Codex ou o Codex CLI (npm i -g @openai/codex) neste computador para conectar sua conta do ChatGPT.",
       },
     };
   }
@@ -151,7 +151,7 @@ export class ConnectionsService implements OnApplicationShutdown {
         : new MemoryError(
             "unavailable",
             "codex_not_installed",
-            "Instale o Codex CLI (npm i -g @openai/codex) antes de conectar sua conta do ChatGPT.",
+            "Instale o app do Codex ou o Codex CLI (npm i -g @openai/codex) antes de conectar sua conta do ChatGPT.",
           );
     }
     const child = spawn(command.command, [...command.args, ...cli.loginArgs], {
