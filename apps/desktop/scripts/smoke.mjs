@@ -165,15 +165,15 @@ async function main() {
       );
       const frame = await call("Runtime.evaluate", {
         expression: `({
-          nativeFrame: Boolean(document.querySelector('.desktop-frame-native')),
           customTitlebar: Boolean(document.querySelector('.desktop-titlebar')),
-          windows: window.neuronsDesktop.platform === 'win32'
+          windows: window.neuronsDesktop.platform === 'win32',
+          windowsControls: Boolean(document.querySelector('.desktop-window-controls'))
         })`,
         returnByValue: true,
       });
-      const { nativeFrame, customTitlebar, windows } = frame.result.value;
-      if (nativeFrame !== windows || customTitlebar === windows)
-        throw new Error("A moldura não corresponde ao sistema operacional.");
+      const { customTitlebar, windows, windowsControls } = frame.result.value;
+      if (!customTitlebar || windowsControls !== windows)
+        throw new Error("A barra de título não corresponde ao sistema operacional.");
       const state = await call("Runtime.evaluate", {
         expression: "window.neuronsDesktop.isMaximized()",
         awaitPromise: true,
