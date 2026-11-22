@@ -303,6 +303,8 @@ html.desktop-root,
 }
 .modeler-workspace {
   min-height: 400px;
+  /* The side panels scroll inside it, so they must not push the page's minimum height up. */
+  contain: size;
 }
 .element-library {
   width: 200px;
@@ -338,7 +340,7 @@ html.desktop-root,
 }
 .project-versions summary {
   cursor: pointer;
-  padding: 8px 0;
+  padding: 2px 0;
   color: var(--muted-foreground);
 }
 @media (max-width: 1050px) {
