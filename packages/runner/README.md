@@ -23,7 +23,7 @@ Há duas maneiras de ter um runner, e a execução é a mesma nas duas:
    | `NEURONS_RUNNER_TOKEN`          | —               | Token emitido pelo servidor. É segredo: não vai para log, evento nem frame.                                                   |
    | `NEURONS_RUNNER_NAME`           | nome da máquina | Como o runner aparece nos logs do servidor.                                                                                   |
    | `NEURONS_CLAUDE_BIN`            | procura sozinho | Caminho do executável do Claude Code.                                                                                         |
-   | `NEURONS_CODEX_BIN`             | procura sozinho | Caminho do executável do Codex CLI (`npm i -g @openai/codex`); o login é o do `codex login` desse computador.                 |
+   | `NEURONS_CODEX_BIN`             | procura sozinho | Caminho do executável do Codex (`npm i -g @openai/codex`); vazio, procura também a cópia do app do Codex no Windows (`.codex/.sandbox-bin`, interna do app, por último); o login é o do Codex desse computador.                 |
    | `NEURONS_RUNNER_ALLOW_INSECURE` | `false`         | O token só segue por `wss://` quando o servidor não é local. `true` aceita `ws://` para outra máquina, por sua conta e risco. |
 
 3. Inicie:

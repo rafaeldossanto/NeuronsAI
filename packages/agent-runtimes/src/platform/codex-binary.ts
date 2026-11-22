@@ -15,11 +15,15 @@ export interface CodexCommand {
 }
 
 const INSTALL_HINT =
-  "O Codex CLI não foi encontrado. Instale-o com `npm i -g @openai/codex` ou informe o caminho em NEURONS_CODEX_BIN.";
+  "O Codex não foi encontrado. Instale o app do Codex ou o Codex CLI (`npm i -g @openai/codex`), ou informe o caminho em NEURONS_CODEX_BIN.";
 
 /**
- * Finds the Codex CLI. In order: the configured path (`NEURONS_CODEX_BIN`), `codex` on the PATH and
- * the places `npm i -g`, Homebrew and the standalone installer use on this OS.
+ * Finds the Codex CLI. In order: the configured path (`NEURONS_CODEX_BIN`), `codex` on the PATH,
+ * the places `npm i -g`, Homebrew and the standalone installer use on this OS and, last and only on
+ * Windows, the copy the Codex desktop app leaves in `<CODEX_HOME>\.sandbox-bin\codex.exe`
+ * (`CODEX_HOME` or `~\.codex`). The `codex.exe` inside the app package (`WindowsApps`) is not used:
+ * Windows denies running it from another program. That `.sandbox-bin` folder is internal to the
+ * app, so it comes last: the copy may be an alpha build or lag behind the npm CLI.
  *
  * @throws CodexBinaryNotFoundError, with a message for the user, when nothing is found.
  */
@@ -64,6 +68,13 @@ export function findCodexBinary(configured: string | undefined, lookup: BinaryLo
       const candidate = paths.join(directory, name);
       if (files.exists(candidate)) return candidate;
     }
+  }
+
+  if (windows) {
+    // Only the exact `codex.exe`: the folder also holds `codex-command-runner-<version>.exe`.
+    const home = variable("CODEX_HOME") || paths.join(lookup.homeDir, ".codex");
+    const desktopCopy = paths.join(home, ".sandbox-bin", "codex.exe");
+    if (files.exists(desktopCopy)) return desktopCopy;
   }
   throw new CodexBinaryNotFoundError(INSTALL_HINT);
 }

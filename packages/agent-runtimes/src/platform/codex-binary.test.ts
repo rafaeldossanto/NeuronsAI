@@ -54,6 +54,50 @@ describe("findCodexBinary", () => {
     );
   });
 
+  describe("copy left by the Codex desktop app (Windows only, last option)", () => {
+    const copy = "C:\\Users\\ana\\.codex\\.sandbox-bin\\codex.exe";
+
+    it("finds it when nothing else is there", () => {
+      expect(findCodexBinary(undefined, { ...windowsHost, files: probe(copy) })).toBe(copy);
+    });
+
+    it("respects CODEX_HOME, in any letter case", () => {
+      const custom = "D:\\codex-home\\.sandbox-bin\\codex.exe";
+      const host = { ...windowsHost, host: { ...windowsHost.host, codex_home: "D:\\codex-home" } };
+      expect(findCodexBinary(undefined, { ...host, files: probe(copy, custom) })).toBe(custom);
+    });
+
+    it("loses to the PATH and to npm", () => {
+      expect(
+        findCodexBinary(undefined, { ...windowsHost, files: probe(copy, "C:\\bin\\codex.exe") }),
+      ).toBe("C:\\bin\\codex.exe");
+      expect(
+        findCodexBinary(undefined, { ...windowsHost, files: probe(copy, `${npm}\\codex.cmd`) }),
+      ).toBe(`${npm}\\codex.cmd`);
+    });
+
+    it("is not looked up outside Windows", () => {
+      const lookup = {
+        platform: "linux" as const,
+        host: { PATH: "/usr/bin" },
+        homeDir: "/home/ana",
+      };
+      expect(() =>
+        findCodexBinary(undefined, {
+          ...lookup,
+          files: probe("/home/ana/.codex/.sandbox-bin/codex.exe", "/home/ana/.codex/.sandbox-bin/codex"),
+        }),
+      ).toThrow(CodexBinaryNotFoundError);
+    });
+
+    it("does not mistake codex-command-runner for the CLI", () => {
+      const runner = "C:\\Users\\ana\\.codex\\.sandbox-bin\\codex-command-runner-0.169.0.exe";
+      expect(() => findCodexBinary(undefined, { ...windowsHost, files: probe(runner) })).toThrow(
+        CodexBinaryNotFoundError,
+      );
+    });
+  });
+
   it("tells how to install it when it is nowhere", () => {
     const attempt = () => findCodexBinary(undefined, { ...windowsHost, files: probe() });
     expect(attempt).toThrow(CodexBinaryNotFoundError);

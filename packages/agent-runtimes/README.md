@@ -99,7 +99,7 @@ Segredos e variáveis `CLAUDE_CODE_*`/`ANTHROPIC_*` do processo hospedeiro ficam
   embutida no app desktop (Windows: `…\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code\<versão>\<hash>\claude.exe`; macOS:
   `~/Library/Application Support/Claude/claude-code`), pasta de versão mais nova. No Windows entra também `%LOCALAPPDATA%Claude-Data<família do pacote>claude-code` (onde as versões novas do app guardam a CLI; achado na aceitação real de 11/11/2026), e vale a versão mais nova entre todas as pastas.
 - `claude-cli.ts` (em `claude/`): `claude auth status` antes de subir; sem login, falha pedindo `claude auth login`.
-- `codex-binary.ts` e `codex-cli.ts` (em `codex/`): `NEURONS_CODEX_BIN` → `codex` no `PATH` → `%APPDATA%\npm`, `~/.local/bin`, `~/.npm-global/bin`, `/usr/local/bin`, `/opt/homebrew/bin`; `codex login status` antes de subir; sem login, falha pedindo `codex login`.
+- `codex-binary.ts` e `codex-cli.ts` (em `codex/`): `NEURONS_CODEX_BIN` → `codex` no `PATH` → `%APPDATA%\npm`, `~/.local/bin`, `~/.npm-global/bin`, `/usr/local/bin`, `/opt/homebrew/bin` → (só no Windows, por último) a cópia do app do Codex em `<CODEX_HOME>\.sandbox-bin\codex.exe` (`CODEX_HOME` ou `~\.codex`; só o nome exato `codex.exe`, nunca o `codex-command-runner-*.exe` nem a pasta `WindowsApps`, de onde o Windows nega a execução). Essa pasta é interna do app: a versão pode ser alfa ou ficar para trás, e `NEURONS_CODEX_BIN` ou o CLI do npm têm prioridade; `codex login status` antes de subir; sem login, falha pedindo `codex login`.
 - `process-tree.ts`: Windows `taskkill /T /F`; macOS/Linux, grupo de processos (SIGTERM e, se preciso, SIGKILL).
 - `child-env.ts`, `private-directory.ts`.
 
