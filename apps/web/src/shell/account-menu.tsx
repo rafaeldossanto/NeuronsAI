@@ -4,6 +4,7 @@ import {
   ChevronDown,
   KeyRound,
   LogOut,
+  Pencil,
   Plug,
   Server,
   Settings,
@@ -12,25 +13,29 @@ import {
 } from "lucide-react";
 import { useDesktopConnection } from "@/accounts/desktop-account";
 import { useSession } from "@/accounts/auth/session-context";
+import { useAvatar } from "@/accounts/use-avatar";
 import { desktopSettings } from "@/settings/desktop-settings";
 import { useWorkspace } from "@/workspace/resources";
+import "./account-avatar.css";
 
 export function AccountMenu({ organizationName }: { organizationName?: string }) {
   const session = useSession();
   const desktop = useDesktopConnection();
   const workspace = useWorkspace();
+  const avatar = useAvatar(session.account?.userId);
   const [open, setOpen] = useState(false);
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
+  const avatarInput = useRef<HTMLInputElement>(null);
   const label = session.account ? "Minha conta" : "Conta local";
   const error = session.error || desktop?.error;
   const close = () => setOpen(false);
 
   useEffect(() => {
     if (!open) return;
-    panel.current?.querySelector<HTMLElement>("button, a")?.focus();
+    panel.current?.querySelector<HTMLElement>("nav button, nav a")?.focus();
     const outside = (event: PointerEvent) => {
       if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false);
     };
@@ -70,7 +75,11 @@ export function AccountMenu({ organizationName }: { organizationName?: string })
         onClick={() => setOpen(!open)}
       >
         <span className="account-avatar">
-          <UserRound aria-hidden className="size-4" />
+          {avatar.image ? (
+            <img src={avatar.image} alt="Imagem do perfil" />
+          ) : (
+            <UserRound aria-hidden className="size-4" />
+          )}
         </span>
         <ChevronDown aria-hidden className="account-chevron size-4" />
         {error && <span className="account-error-dot" aria-label="A conta precisa de atenção" />}
@@ -84,9 +93,36 @@ export function AccountMenu({ organizationName }: { organizationName?: string })
           className="account-panel"
         >
           <div className="account-identity">
-            <span className="account-avatar">
-              <UserRound aria-hidden className="size-4" />
-            </span>
+            <button
+              type="button"
+              className="account-avatar account-avatar-edit"
+              aria-label="Alterar imagem do perfil"
+              title="Alterar imagem do perfil"
+              disabled={avatar.busy}
+              aria-busy={avatar.busy}
+              onClick={() => avatarInput.current?.click()}
+            >
+              {avatar.image ? (
+                <img src={avatar.image} alt="Imagem do perfil" />
+              ) : (
+                <UserRound aria-hidden className="size-4" />
+              )}
+              <span className="account-avatar-pencil" aria-hidden>
+                <Pencil className="size-4" />
+              </span>
+            </button>
+            <input
+              ref={avatarInput}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              aria-label="Selecionar imagem do perfil"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = "";
+                if (file) void avatar.change(file);
+              }}
+            />
             <div className="min-w-0">
               <p className="title-4">{label}</p>
               <p className="caption-4 break-words text-muted-foreground">
@@ -95,6 +131,11 @@ export function AccountMenu({ organizationName }: { organizationName?: string })
               </p>
             </div>
           </div>
+          {avatar.error && (
+            <p role="alert" className="caption-4 px-2 pb-3 text-destructive">
+              {avatar.error}
+            </p>
+          )}
           <nav aria-label="Conta">
             <button
               type="button"
