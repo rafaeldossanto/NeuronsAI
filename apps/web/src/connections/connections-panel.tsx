@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { KeyRound, Monitor, RefreshCw, SquareTerminal } from "lucide-react";
+import { Check, KeyRound, Loader2, Monitor, RefreshCw, SquareTerminal, X } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Modal } from "@/shared/modal";
 import { Field, TextInput } from "@/shared/ui/fields";
@@ -20,11 +20,51 @@ const CONNECT: Record<Provider, string> = {
   chatgpt: "Conectar ChatGPT",
 };
 
+/** Shortest time the check spinner stays up, so an instant answer is still noticed. */
+const MIN_CHECK_MS = 400;
+type CheckState = "idle" | "checking" | "ok" | "fail";
+
+const CHECK_LABEL: Record<Exclude<CheckState, "idle">, string> = {
+  checking: "Verificando conexão…",
+  ok: "Conexão confirmada",
+  fail: "Não conectado",
+};
+
+/** Spinner while checking, then a green check or a red cross. */
+function CheckIndicator({ state }: { state: CheckState }) {
+  if (state === "idle") return null;
+  return (
+    <span
+      data-testid="connection-check"
+      data-state={state}
+      role="img"
+      aria-label={CHECK_LABEL[state]}
+      title={CHECK_LABEL[state]}
+      className="inline-flex items-center"
+    >
+      {state === "checking" && (
+        <Loader2 className="size-5 animate-spin text-muted-foreground" aria-hidden />
+      )}
+      {state === "ok" && (
+        <span className="inline-flex size-5 items-center justify-center rounded-full bg-emerald-600 text-white dark:bg-emerald-500 dark:text-emerald-950">
+          <Check className="size-3.5" strokeWidth={3} aria-hidden />
+        </span>
+      )}
+      {state === "fail" && (
+        <span className="inline-flex size-5 items-center justify-center rounded-full bg-destructive text-white">
+          <X className="size-3.5" strokeWidth={3} aria-hidden />
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** Status and official login of a subscription that goes through the provider's own CLI. */
 function SubscriptionConnection({ provider }: { provider: Provider }) {
   const workspace = useWorkspace();
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState(false);
+  const [check, setCheck] = useState<CheckState>("idle");
   if (!workspace) return null;
   const { connections, api } = workspace;
   const claude = connections.data?.[provider];
@@ -47,6 +87,14 @@ function SubscriptionConnection({ provider }: { provider: Provider }) {
       setPending(false);
     }
   }
+  async function verify() {
+    setCheck("checking");
+    const [result] = await Promise.all([
+      connections.refetch(),
+      new Promise((resolve) => setTimeout(resolve, MIN_CHECK_MS)),
+    ]);
+    setCheck(!result.isError && result.data?.[provider]?.connected === true ? "ok" : "fail");
+  }
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
@@ -55,7 +103,7 @@ function SubscriptionConnection({ provider }: { provider: Provider }) {
           ? "Verificando conexão…"
           : (claude?.message ?? "Não foi possível consultar a conexão.")}
       </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
           onClick={() => void connect()}
@@ -71,11 +119,12 @@ function SubscriptionConnection({ provider }: { provider: Provider }) {
         <Button
           size="sm"
           variant="outline"
-          onClick={() => void connections.refetch()}
-          disabled={connections.isFetching}
+          onClick={() => void verify()}
+          disabled={check === "checking" || connections.isFetching}
         >
           <RefreshCw className="size-4" /> Verificar conexão
         </Button>
+        <CheckIndicator state={check} />
       </div>
       {notice && (
         <p role="status" className="text-sm text-muted-foreground">
