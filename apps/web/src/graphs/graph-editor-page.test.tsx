@@ -41,7 +41,7 @@ describe("editor: carregar", () => {
     expect(screen.getByTestId("block-ferramenta-obsidian")).toHaveTextContent("Notas");
     expect(screen.getByTestId("block-gatilho-1")).toHaveTextContent("Gatilho");
     expect(await screen.findByText("v2")).toBeInTheDocument();
-    expect(screen.getByText(/Nenhum problema/)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Problemas do grafo" })).not.toBeInTheDocument();
   });
 
   it("sem rascunho, abre um canvas vazio e já aponta o que falta", async () => {
@@ -83,7 +83,6 @@ describe("editor: validação ao vivo", () => {
 
     await userEvent.type(within(inspector).getByLabelText("Modelo"), "claude-opus-5-5");
     expect(screen.queryByRole("region", { name: "Problemas do grafo" })).not.toBeInTheDocument();
-    expect(screen.getByText(/Nenhum problema/)).toBeInTheDocument();
   });
 
   it("marca o bloco com problema", async () => {
@@ -246,7 +245,7 @@ describe("editor: desfazer e refazer", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Desfazer" }));
     expect(screen.getByTestId("block-ferramenta-obsidian")).toBeInTheDocument();
-    expect(screen.getByText(/Nenhum problema/)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Problemas do grafo" })).not.toBeInTheDocument();
   });
 });
 
@@ -322,7 +321,7 @@ describe("editor: camada livre", () => {
     expect(screen.getByText("Tudo salvo")).toBeInTheDocument();
     await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
     expect(kinds()).toEqual(ALL.filter((kind) => kind !== "rect"));
-    expect(screen.getByText(/Nenhum problema/)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Problemas do grafo" })).not.toBeInTheDocument();
   });
 
   it("as anotações ficam abaixo dos blocos e não impedem selecionar nem ligar blocos", async () => {
@@ -353,7 +352,7 @@ describe("editor: camada livre", () => {
     expect(
       within(screen.getByRole("complementary", { name: "Inspetor" })).getByLabelText("Nome"),
     ).toHaveValue("Principal");
-    expect(screen.getByText(/Nenhum problema/)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Problemas do grafo" })).not.toBeInTheDocument();
   });
 
   it("atalhos de teclado trocam a ferramenta e Esc volta a selecionar", async () => {
