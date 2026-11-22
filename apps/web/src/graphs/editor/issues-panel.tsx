@@ -40,12 +40,12 @@ export function IssuesPanel({
     );
   }
   return (
-    <section aria-label="Problemas do grafo" className="rounded-lg border bg-card p-4">
+    <section aria-label="Problemas do grafo" className="rounded-lg border bg-card px-3 py-2">
       <h2 className="flex items-center gap-2 text-sm font-extrabold">
         <TriangleAlert aria-hidden className="size-4 text-destructive" />
         {issues.length === 1 ? "1 problema" : `${issues.length} problemas`}
       </h2>
-      <ul className="mt-2 flex flex-col gap-1">
+      <ul className="mt-1 flex flex-col">
         {issues.map((issue, index) => {
           const where = subject(issue, doc);
           const field = issueField(issue);
