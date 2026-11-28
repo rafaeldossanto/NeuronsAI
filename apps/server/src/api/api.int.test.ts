@@ -755,6 +755,8 @@ describe("OpenAPI document", () => {
       "/memories",
       "/memories/{id}",
       "/runners",
+      "/runners/personal",
+      "/runners/personal/{id}",
       "/runners/{name}",
       "/runs",
       "/runs/{id}",

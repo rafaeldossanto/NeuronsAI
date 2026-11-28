@@ -30,7 +30,10 @@ function rig(options: { mode?: RunnerMode; saved?: StoredRunner[]; hostname?: st
     issue: vi.fn((_origin: string, mode: RunnerTokenMode, name: string) =>
       Promise.resolve({ id: `id-${mode}`, name, token: `${FAKE_TOKEN}-${mode}` }),
     ),
-    revoke: vi.fn((_runner: StoredRunner) => Promise.resolve()),
+    revoke: vi.fn((runner: StoredRunner) => {
+      void runner;
+      return Promise.resolve();
+    }),
   };
   const started: { options: StartRunnerOptions; stop: ReturnType<typeof vi.fn> }[] = [];
   const start = vi.fn((startOptions: StartRunnerOptions) => {
@@ -38,7 +41,10 @@ function rig(options: { mode?: RunnerMode; saved?: StoredRunner[]; hostname?: st
     started.push({ options: startOptions, stop });
     return { stop } as unknown as RunningRunner;
   });
-  const saveMode = vi.fn((_mode: RunnerMode) => Promise.resolve());
+  const saveMode = vi.fn((mode: RunnerMode) => {
+    void mode;
+    return Promise.resolve();
+  });
   const manager = new DesktopRunnerManager({
     mode: options.mode ?? "personal",
     saveMode,

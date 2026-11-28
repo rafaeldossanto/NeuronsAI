@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createMemoryChannelPair, PROTOCOL_VERSION } from "@neurons/runner-protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { resourceScope } from "../accounts/resource-scope.js";
 import { testConfig } from "../shared/config/testing/test-config.js";
 import type { RemoteAgentRuntime } from "./remote-agent-runtime.js";
@@ -49,6 +49,13 @@ function connect({ organizationId, ownerUserId, id = randomUUID() }: Connection 
   return id;
 }
 
+/** Connects and waits until the registry has attached the runner (the `register` frame is delivered asynchronously). */
+async function up(connection: Connection = {}): Promise<string> {
+  const id = connect(connection);
+  await vi.waitFor(() => expect(registry.find(id)?.connected).toBe(true));
+  return id;
+}
+
 /** Makes the runner look busy: each bound agent counts as one of its load. */
 function occupy(runnerId: string, agents: number): void {
   for (let index = 0; index < agents; index += 1) {
@@ -64,8 +71,8 @@ const acquire = (starter?: string, runnerId?: string, organizationId: string | n
 
 describe("roteamento de runners pessoais e da organização", () => {
   it("manda a execução para o runner pessoal de quem a iniciou, mesmo com o da organização livre", async () => {
-    const organization = connect({ organizationId: org });
-    const mine = connect({ organizationId: org, ownerUserId: ana });
+    const organization = await up({ organizationId: org });
+    const mine = await up({ organizationId: org, ownerUserId: ana });
     occupy(mine, 3);
 
     expect(await acquire(ana)).toBe(registry.find(mine));
@@ -73,25 +80,25 @@ describe("roteamento de runners pessoais e da organização", () => {
   });
 
   it("entre os runners pessoais de quem iniciou, usa o menos ocupado", async () => {
-    const busy = connect({ organizationId: org, ownerUserId: ana });
-    const idle = connect({ organizationId: org, ownerUserId: ana });
+    const busy = await up({ organizationId: org, ownerUserId: ana });
+    const idle = await up({ organizationId: org, ownerUserId: ana });
     occupy(busy, 2);
 
     expect(await acquire(ana)).toBe(registry.find(idle));
   });
 
   it("usa o runner da organização, o menos ocupado, quando nenhum pessoal de quem iniciou está conectado", async () => {
-    const busy = connect({ organizationId: org });
-    const idle = connect({ organizationId: org });
-    connect({ organizationId: org, ownerUserId: bia });
+    const busy = await up({ organizationId: org });
+    const idle = await up({ organizationId: org });
+    await up({ organizationId: org, ownerUserId: bia });
     occupy(busy, 2);
 
     expect(await acquire(ana)).toBe(registry.find(idle));
   });
 
   it("a execução de um colega nunca cai no meu runner pessoal", async () => {
-    const mine = connect({ organizationId: org, ownerUserId: ana });
-    const organization = connect({ organizationId: org });
+    const mine = await up({ organizationId: org, ownerUserId: ana });
+    const organization = await up({ organizationId: org });
     occupy(organization, 5);
 
     // Even though mine is idle and the organization's is busy.
@@ -100,18 +107,18 @@ describe("roteamento de runners pessoais e da organização", () => {
   });
 
   it("a execução de um colega espera e falha quando só há runners pessoais de outras pessoas", async () => {
-    connect({ organizationId: org, ownerUserId: ana });
+    await up({ organizationId: org, ownerUserId: ana });
 
     await expect(acquire(bia)).rejects.toBeInstanceOf(NoRunnerAvailableError);
   });
 
   it("gatilhos (sem quem iniciou) usam só runners da organização", async () => {
-    connect({ organizationId: org, ownerUserId: ana });
+    await up({ organizationId: org, ownerUserId: ana });
     expect(await acquire(undefined).catch((error: unknown) => error)).toBeInstanceOf(
       NoRunnerAvailableError,
     );
 
-    const organization = connect({ organizationId: org });
+    const organization = await up({ organizationId: org });
     expect(await acquire(undefined)).toBe(registry.find(organization));
   });
 
@@ -128,13 +135,13 @@ describe("roteamento de runners pessoais e da organização", () => {
   });
 
   it("não usa o runner pessoal da mesma pessoa em outra organização", async () => {
-    connect({ organizationId: otherOrg, ownerUserId: ana });
+    await up({ organizationId: otherOrg, ownerUserId: ana });
 
     await expect(acquire(ana)).rejects.toBeInstanceOf(NoRunnerAvailableError);
   });
 
   it("o runner embutido do perfil local (sem organização nem dono) continua servindo", async () => {
-    const embedded = connect({ id: "embedded" });
+    const embedded = await up({ id: "embedded" });
 
     expect(await acquire(undefined, undefined, null)).toBe(registry.find(embedded));
     expect(await acquire(undefined, "embedded", null)).toBe(registry.find(embedded));
@@ -142,15 +149,15 @@ describe("roteamento de runners pessoais e da organização", () => {
 
   describe("com runner escolhido no agente", () => {
     it("aceita um runner da organização", async () => {
-      const organization = connect({ organizationId: org });
-      connect({ organizationId: org, ownerUserId: ana });
+      const organization = await up({ organizationId: org });
+      await up({ organizationId: org, ownerUserId: ana });
 
       expect(await acquire(ana, organization)).toBe(registry.find(organization));
       expect(await acquire(undefined, organization)).toBe(registry.find(organization));
     });
 
     it("aceita o runner pessoal de quem iniciou", async () => {
-      const mine = connect({ organizationId: org, ownerUserId: ana });
+      const mine = await up({ organizationId: org, ownerUserId: ana });
 
       expect(await acquire(ana, mine)).toBe(registry.find(mine));
     });
@@ -170,6 +177,7 @@ describe("roteamento de runners pessoais e da organização", () => {
         capabilities: { terminal: true, streamJson: true },
         agents: [],
       });
+      await vi.waitFor(() => expect(slow.find(hers)?.connected).toBe(true));
 
       const failure = await resourceScope
         .run({ organizationId: org, userId: bia }, () => slow.acquire(hers))

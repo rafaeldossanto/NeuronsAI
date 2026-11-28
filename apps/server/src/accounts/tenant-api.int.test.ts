@@ -487,7 +487,8 @@ describe("T25 — API entre organizações", () => {
     const mine = await api(alice, "POST", "/runners/personal", { name: "  Notebook  " });
     expect(mine.statusCode).toBe(201);
     const issued = mine.json<{ id: string; name: string; token: string }>();
-    expect(issued).toEqual({ id: expect.any(String), name: "Notebook", token: expect.any(String) });
+    expect(issued.name).toBe("Notebook");
+    expect(issued.token).toMatch(/^nrn_/);
     const tokens = app.get(RunnerTokens);
     expect(await tokens.authenticate(issued.token)).toMatchObject({
       id: issued.id,

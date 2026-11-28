@@ -55,7 +55,7 @@ describe("buildMenuTemplate", () => {
       ]);
       const status = entries.at(-1);
       expect([status?.label, status?.enabled]).toEqual(["Conectado como meu-pc", false]);
-      radios[2]!.click?.({} as never, undefined, {} as never);
+      radios[2]!.click?.({} as never, undefined, {});
       expect(choose).toHaveBeenCalledWith("off");
     });
 

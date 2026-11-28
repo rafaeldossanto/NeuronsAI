@@ -27,7 +27,12 @@ it("T25a acrescenta as contas a uma base T17 sem mudar projetos, versões, execu
         sql`insert into graph_versions (graph_id, version, definition) values (${graph!.id},1,${JSON.stringify(definition)}::jsonb) returning id`,
       ),
     );
-    const [run] = await db.insert(runs).values({ graphVersionId: version!.id }).returning();
+    // Raw SQL: the current `runs` schema has columns this old database does not have yet.
+    const [run] = rowsOf<{ id: string }>(
+      await db.execute(
+        sql`insert into runs (graph_version_id) values (${version!.id}) returning id`,
+      ),
+    );
     await db.insert(runEvents).values({ runId: run!.id, seq: 1, type: "RunStarted", payload: {} });
     await db.execute(
       sql`insert into secrets (name, ciphertext, iv, auth_tag) values ('teste', decode('abcd', 'hex'), decode('abcd', 'hex'), decode('abcd', 'hex'))`,
@@ -47,6 +52,16 @@ it("T25a acrescenta as contas a uma base T17 sem mudar projetos, versões, execu
       createdAt: secrets.createdAt,
       updatedAt: secrets.updatedAt,
     };
+    const oldRuns = {
+      id: runs.id,
+      graphVersionId: runs.graphVersionId,
+      status: runs.status,
+      budgetUsd: runs.budgetUsd,
+      spentUsd: runs.spentUsd,
+      startedAt: runs.startedAt,
+      finishedAt: runs.finishedAt,
+      lastSeq: runs.lastSeq,
+    };
     const oldVersions = {
       id: graphVersions.id,
       graphId: graphVersions.graphId,
@@ -57,7 +72,7 @@ it("T25a acrescenta as contas a uma base T17 sem mudar projetos, versões, execu
     const before = {
       graphs: await db.select(oldGraphs).from(graphs),
       versions: await db.select(oldVersions).from(graphVersions),
-      runs: await db.select().from(runs),
+      runs: await db.select(oldRuns).from(runs),
       events: await db.select().from(runEvents),
       secrets: await db.select(oldSecrets).from(secrets),
     };
@@ -67,7 +82,7 @@ it("T25a acrescenta as contas a uma base T17 sem mudar projetos, versões, execu
     expect({
       graphs: await db.select(oldGraphs).from(graphs),
       versions: await db.select(oldVersions).from(graphVersions),
-      runs: await db.select().from(runs),
+      runs: await db.select(oldRuns).from(runs),
       events: await db.select().from(runEvents),
       secrets: await db.select(oldSecrets).from(secrets),
     }).toEqual(before);
