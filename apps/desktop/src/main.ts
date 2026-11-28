@@ -2,6 +2,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BrowserWindow, app, dialog, session, shell, type Session } from "electron";
 import { createHash } from "node:crypto";
+import os from "node:os";
+import { runnerEndpoint, startRunner } from "@neurons/runner";
 import { DesktopAccountManager } from "./accounts/account-manager.js";
 import { DesktopAccountStore } from "./accounts/account-store.js";
 import { installAccountControls } from "./accounts/account-controls.js";
@@ -10,6 +12,9 @@ import { installAvatarControls } from "./accounts/avatar-controls.js";
 import { cookiePrefix } from "./accounts/remote-origin.js";
 import { DesktopConfigError, loadDesktopConfig } from "./config.js";
 import { installMenu } from "./shell/menu.js";
+import { RunnerApi } from "./runner/runner-api.js";
+import { DesktopRunnerManager } from "./runner/runner-manager.js";
+import { DesktopRunnerStore } from "./runner/runner-store.js";
 import { installWindowControls } from "./shell/window-controls.js";
 import { desktopMasterKey } from "./security/master-key.js";
 import { SECURE_WEB_PREFERENCES, lockDownSession, lockDownWindow } from "./security/security.js";
@@ -40,6 +45,7 @@ app.setName(APP_NAME);
 let server: RunningServer | undefined;
 let window: BrowserWindow | undefined;
 let accounts: DesktopAccountManager | undefined;
+let runners: DesktopRunnerManager | undefined;
 let stopping = false;
 
 function fail(title: string, error: unknown): never {
@@ -104,7 +110,10 @@ async function boot(): Promise<void> {
   });
 
   await app.whenReady();
-  installMenu();
+  const menu = installMenu({
+    view: () => runners?.view() ?? { remote: false, mode: "personal", status: "Desligado" },
+    choose: (mode) => void runners?.setMode(mode),
+  });
   // The triggers choice (webhook port) is the person's, saved in the app's profile; the server only
   // reads it when it starts. `NEURONS_HOOKS_PORT` in the environment, if set, decides instead.
   const settings = new DesktopSettingsStore(config.dataDir);
@@ -175,6 +184,23 @@ async function boot(): Promise<void> {
     },
   });
   lockDownSession(session.defaultSession, origin);
+  // This computer's runner for a remote server: the same CLIs the embedded server uses.
+  runners = new DesktopRunnerManager({
+    mode: await settings.loadRunnerMode(),
+    saveMode: (mode) => settings.saveRunnerMode(mode),
+    store: new DesktopRunnerStore(config.dataDir),
+    api: new RunnerApi({ cookies: (target) => remoteSession(target).cookies }),
+    start: startRunner,
+    endpoint: runnerEndpoint,
+    runtime: {
+      ...(config.claudeBin && { claudeBin: config.claudeBin }),
+      ...(config.codexBin && { codexBin: config.codexBin }),
+      ...(desktop.claudeCommand && { claudeCommand: desktop.claudeCommand }),
+      ...(desktop.codexCommand && { codexCommand: desktop.codexCommand }),
+    },
+    hostname: () => os.hostname(),
+    onChange: () => menu.refresh(),
+  });
   accounts = new DesktopAccountManager({
     dataDir: config.dataDir,
     localOrigin: origin,
@@ -182,6 +208,7 @@ async function boot(): Promise<void> {
     cookies: (target) => remoteSession(target).cookies,
     show,
     openBrowser: (url) => shell.openExternal(url),
+    onRemoteChange: (target) => runners?.remoteChanged(target),
   });
   installAccountControls(
     accounts,
@@ -216,6 +243,7 @@ app.on("window-all-closed", () => {
 // time limit (the packaged smoke test gives the whole quit 20 s) and the process leaves whatever
 // happened, so a hung close can not keep the app alive after the person asked to quit.
 const ACCOUNTS_CLOSE_MS = 3_000;
+const RUNNER_CLOSE_MS = 5_000;
 const SERVER_CLOSE_MS = 12_000;
 /** If `app.exit` itself does not end the process (something native holding it), this does. */
 const HARD_EXIT_MS = 4_000;
@@ -237,6 +265,7 @@ app.on("before-quit", (event) => {
   server = undefined;
   void createShutdown({
     steps: [
+      { name: "runner", run: () => runners?.close(), timeoutMs: RUNNER_CLOSE_MS },
       { name: "contas", run: () => accounts?.close(), timeoutMs: ACCOUNTS_CLOSE_MS },
       { name: "servidor embutido", run: () => running.close(), timeoutMs: SERVER_CLOSE_MS },
     ],
