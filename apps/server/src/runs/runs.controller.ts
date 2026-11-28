@@ -1,5 +1,6 @@
 import { Controller, Inject } from "@nestjs/common";
 import { RequirePermission } from "../accounts/require-permission.js";
+import { resourceScope } from "../accounts/resource-scope.js";
 import { Endpoint, ValidBody, ValidParams, ValidQuery } from "../api/endpoint.js";
 import { HUMAN } from "../hub/addresses.js";
 import { Hub } from "../hub/hub.js";
@@ -50,7 +51,10 @@ export class RunsController {
     errors: [404, 429],
   })
   async start(@ValidBody() body: StartRunBody) {
+    // Only a signed-in session has a user; the local workspace and triggers leave the run unowned.
+    const { userId } = resourceScope.current();
     const run = await this.runs.start(body.graphVersionId, body.input, {
+      ...(userId && { startedByUserId: userId }),
       ...(body.triggerId !== undefined && { triggerId: body.triggerId }),
       ...(body.budgetUsd !== undefined && { budgetUsd: body.budgetUsd }),
     });

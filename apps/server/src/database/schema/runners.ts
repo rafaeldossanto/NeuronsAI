@@ -1,6 +1,6 @@
 import { pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { createdAtColumn, idColumn } from "./columns.js";
-import { organizations } from "./accounts.js";
+import { organizations, users } from "./accounts.js";
 
 /**
  * The runners allowed to connect (T24). The token itself is never stored, only its SHA-256: it is a
@@ -13,6 +13,8 @@ export const runners = pgTable(
     organizationId: uuid("organization_id").references(() => organizations.id, {
       onDelete: "restrict",
     }),
+    /** Null is a runner of the organization; set is the personal runner of that user. */
+    ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     tokenHash: text("token_hash").notNull().unique(),
     createdAt: createdAtColumn(),
@@ -21,8 +23,8 @@ export const runners = pgTable(
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
   },
   (table) => [
-    unique("runners_organization_name_unique")
-      .on(table.organizationId, table.name)
+    unique("runners_organization_owner_name_unique")
+      .on(table.organizationId, table.ownerUserId, table.name)
       .nullsNotDistinct(),
   ],
 );

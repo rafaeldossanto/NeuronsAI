@@ -233,6 +233,7 @@ describe("runners da organização", () => {
       "GET /runners": { body: { items: [{ ...runner, connected: true, activeAgents: 2 }] } },
       "POST /runners": { status: 201, body: { id: runnerId, name: "Notebook novo", token } },
     });
+    await user.click(await screen.findByRole("tab", { name: "Organização" }));
     expect(await screen.findByText("Conectado")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Cadastrar runner" }));
@@ -257,7 +258,9 @@ describe("runners da organização", () => {
   it.each(["member", "viewer"] as const)(
     "%s pode consultar sem cadastrar ou revogar",
     async (role) => {
+      const user = userEvent.setup();
       accountApp("/runners", role);
+      await user.click(await screen.findByRole("tab", { name: "Organização" }));
       expect(await screen.findByText("Desconectado")).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Cadastrar runner" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Revogar Notebook/ })).not.toBeInTheDocument();
@@ -275,6 +278,7 @@ describe("runners da organização", () => {
         return { status: 204 };
       },
     });
+    await user.click(await screen.findByRole("tab", { name: "Organização" }));
     await user.click(await screen.findByRole("button", { name: "Revogar Notebook" }));
     expect(calls.some((call) => call.method === "DELETE")).toBe(false);
     await user.click(screen.getByRole("button", { name: "Confirmar revogação" }));
@@ -290,6 +294,7 @@ describe("runners da organização", () => {
           ? { status: 503, body: { code: "unavailable", message: "Consulta indisponível." } }
           : { body: { items: [] } },
     });
+    await user.click(await screen.findByRole("tab", { name: "Organização" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Consulta indisponível");
     failed = false;
     await user.click(screen.getByRole("button", { name: "Tentar de novo" }));

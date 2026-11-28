@@ -140,7 +140,34 @@ pnpm --filter @neurons/server runner:token revoke meu-notebook   # recusa o runn
 
 O token vai no cabeçalho `Authorization: Bearer` do upgrade do WebSocket (nunca no endereço) e não aparece em log, evento nem frame; o runner é configurado como em [`@neurons/runner`](../../packages/runner/README.md). Com o banco embutido, o comando precisa que o servidor não esteja rodando (só um processo por pasta de dados): num servidor de verdade use Postgres. O servidor continua escutando só em `127.0.0.1`; para um runner de outra máquina alcançá-lo é preciso `NEURONS_HOST` + `NEURONS_ALLOW_REMOTE=true` (ou um proxy com TLS na frente).
 
-**Escolha do runner.** Um agente novo vai ao runner conectado com menos agentes; se não há nenhum, espera até `NEURONS_RUNNER_WAIT_SEC` e falha com `no_runner_available`.
+**Runners pessoais e da organização.** Nos perfis com contas (`hybrid`/`hosted`) há dois tipos de runner, ambos de uma organização:
+
+| Tipo        | Quem emite                                              | O que roda                                                                                          |
+| ----------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Pessoal     | Qualquer membro com `write` (o app desktop faz sozinho) | Só as execuções que o dono iniciou, com a assinatura logada no computador dele                      |
+| Organização | `owner`/`admin` (`manage_credentials`)                  | Execuções de qualquer membro e as agendadas, por webhook ou por WhatsApp (que não têm quem iniciou) |
+
+No banco, `runners.owner_user_id` vazio é da organização e preenchido é pessoal; o nome é único por organização **e dono** (dois membros podem ter um "Notebook"). `runs.started_by_user_id` guarda quem iniciou a execução por `POST /runs` e fica vazio nos gatilhos e no perfil `local`.
+
+**Escolha do runner.** Sempre dentro da organização da execução; um agente novo vai ao runner conectado com menos agentes, assim:
+
+- **Com `runtime.runnerId` no agente:** vale só se o runner for da organização ou o pessoal de quem iniciou. O pessoal de outra pessoa é recusado na hora (`403 runner_not_allowed`, sem esperar), esteja conectado ou não.
+- **Sem `runnerId`, com quem iniciou:** os runners pessoais dessa pessoa vêm primeiro (o menos ocupado); sem nenhum conectado, os da organização. Se não há nenhum dos dois, espera até `NEURONS_RUNNER_WAIT_SEC` pelo primeiro que se conectar entre os dois tipos.
+- **Sem quem iniciou (gatilhos):** só runners da organização, nunca um pessoal.
+- O runner embutido do perfil `local` não tem organização nem dono e continua servindo como antes.
+
+Se não há nenhum runner que sirva, o agente falha com `no_runner_available`. A execução de um colega nunca cai no runner pessoal de outro membro.
+
+**Endpoints.** O app desktop usa os `personal` (`${origem}/api/runners/personal`; o WebSocket segue em `/runner`):
+
+| Rota                                          | Quem                                   | Resposta                                                                                                                                                                                                      |
+| --------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /runners/personal`                      | membro com `write` (leitor recebe 403) | `201 { id, name, token }`; corpo `{ name }` (1 a 100 caracteres, aparado). Com o mesmo nome (mesmo revogado), troca o token no mesmo registro (mesmo `id`, ativo de novo) e derruba a conexão do token antigo |
+| `GET /runners/personal`                       | quem chama                             | `{ items: [...] }` só dos seus, no formato do `GET /runners` (`id`, `name`, `createdAt`, `lastSeenAt`, `revokedAt`, `connected`, `activeAgents`)                                                              |
+| `DELETE /runners/personal/{id}`               | só o dono                              | `204` e derruba a conexão; para qualquer outra pessoa, `404`                                                                                                                                                  |
+| `GET/POST /runners`, `DELETE /runners/{name}` | `manage_credentials`                   | Mesmo contrato de antes, mas só os runners da organização (os pessoais não aparecem nem são alcançados pelo nome)                                                                                             |
+
+O token é mostrado uma única vez, na criação; só o hash fica guardado e ele nunca aparece em log, evento ou outra resposta. Quando um membro sai ou é removido da organização, seus runners pessoais nela são revogados e as conexões caem na próxima checagem (`NEURONS_RUNNER_HEARTBEAT_SEC`).
 
 **Conexão que cai.** Os agentes do runner continuam rodando. O servidor espera `NEURONS_RUNNER_GRACE_SEC` pelo runner: ao voltar, ele manda o estado dos agentes que ainda tem, o servidor reenvia o que ele não respondeu (iniciar, entregar, parar) e o runner reenvia as chamadas ao Hub sem resposta. Cada reenvio é idempotente (por id), então nenhuma mensagem se perde nem chega duas vezes. Se o prazo passa, ou se o runner volta sem o agente (reiniciou), o agente vira `AgentFailed` no log com o motivo, como qualquer outra falha. A saída do terminal é efêmera: o que passou durante a queda não é reenviado.
 

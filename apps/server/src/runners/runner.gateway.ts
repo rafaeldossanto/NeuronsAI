@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import { Inject, Logger } from "@nestjs/common";
 import { type OnGatewayConnection, WebSocketGateway } from "@nestjs/websockets";
-import { createServerWireChannel } from "@neurons/runner-protocol";
+import { CLOSE_TRY_AGAIN, createServerWireChannel } from "@neurons/runner-protocol";
 import { WebSocket } from "ws";
 import type { AppConfig } from "../shared/config/app-config.js";
 import { APP_CONFIG } from "../shared/config/tokens.js";
@@ -71,7 +71,9 @@ export class RunnerGateway implements OnGatewayConnection {
         this.logger.error(
           `Não foi possível conferir o token de um runner: ${error instanceof Error ? error.message : String(error)}`,
         );
-        rejectChannel(channel, "unauthorized", "Não foi possível conferir o token agora.");
+        // Not a `reject`: that is final for the runner, and this says nothing about the token. A
+        // plain close with a non-final code makes it try again with its growing delay.
+        channel.close(CLOSE_TRY_AGAIN, "Não foi possível conferir o token agora.");
       },
     );
   }

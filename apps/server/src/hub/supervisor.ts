@@ -144,7 +144,12 @@ export class Supervisor {
           if (ended) this.recorder.publish(ended.events);
           return;
         }
-        this.registry.register(run.id, graph, run.budgetUsd ?? undefined);
+        this.registry.register(
+          run.id,
+          graph,
+          run.budgetUsd ?? undefined,
+          run.startedByUserId ?? undefined,
+        );
         const recipients = new Set((await this.hub.unacked(run.id)).map((message) => message.to));
         for (const name of recipients) {
           const slot = this.ensureSlot(run.id, name);
@@ -263,8 +268,13 @@ export class Supervisor {
         this.tools,
       );
       const owner = this.registry.requireOpen(slot.runId);
-      const runtime = resourceScope.run({ organizationId: owner.organizationId }, () =>
-        this.factory.create(slot.agent, communication),
+      // The runner that hosts the agent is chosen in this scope: who started the run matters to it.
+      const runtime = resourceScope.run(
+        {
+          organizationId: owner.organizationId,
+          ...(owner.startedByUserId && { userId: owner.startedByUserId }),
+        },
+        () => this.factory.create(slot.agent, communication),
       );
       slot.runtime = runtime;
       slot.unsubscribe = runtime.onStateChange((state) => this.onStateChange(slot, state));

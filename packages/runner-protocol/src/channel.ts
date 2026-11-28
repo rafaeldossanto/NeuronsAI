@@ -122,6 +122,8 @@ export const CLOSE_NOT_ACCEPTED = 4403;
 export const CLOSE_PROTOCOL = 4400;
 export const CLOSE_REPLACED = 4409;
 export const CLOSE_HEARTBEAT = 4408;
+/** The server could not decide right now (a busy database): standard "try again later", not final. */
+export const CLOSE_TRY_AGAIN = 1013;
 
 /**
  * Two channels wired to each other in the same process, for the runner embedded in the server

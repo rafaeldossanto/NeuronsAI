@@ -36,7 +36,9 @@ export class RemoteRuntimeFactory implements AgentRuntimeFactory {
         resolveSecret: resourceScope.bind((name: string) => this.options.resolveSecret!(name)),
       }),
     };
-    const pool: RunnerPool = { acquire: resourceScope.bind(() => this.pool.acquire()) };
+    const pool: RunnerPool = {
+      acquire: resourceScope.bind((runnerId?: string) => this.pool.acquire(runnerId)),
+    };
     return runtime.mode === "pty"
       ? new RemoteTerminalRuntime(agent, communication, pool, options)
       : new RemoteAgentRuntime(agent, communication, pool, options);

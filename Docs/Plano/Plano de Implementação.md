@@ -742,6 +742,17 @@ A tela `/new` oferece projeto em branco e os três templates, com prévia por `G
 
 **Melhorias da revisão (10/11/2026).** Rota de escrita sem `@RequirePermission` passa a ser recusada (negação por padrão; as de membro declaram `write`); `local-data-adoption.json` corrompido responde 409 em pt-BR sem liberar a adoção; modos de `--permission-mode` conferidos com a CLI 2.1.321 (sai o `default`; `manual` existe); `EPIPE` do PTY tratado no runtime do terminal; teste da migration `0013_credential_approval` sobre dados antigos (Postgres e PGlite); servidor da revisão 5 testado com runners das revisões 4 e 6; `openai-compatible` sem `NEURONS_OPENAI_COMPATIBLE_BASE_URL` diz qual variável falta; limite de saída dos modelos em `NEURONS_MODEL_MAX_OUTPUT_TOKENS` (padrão 8192); o cliente compatível devolve só os campos do contrato de Chat Completions; `.gitattributes` marca os binários (o repositório já estava em LF); orçamento de tempo dos testes do PGlite na config do vitest.
 
+### Runners pessoais e da organização
+
+Decidido pelo Rafael: dois tipos de runner, separados por abas na tela. Antes todo runner era da organização e a execução de um colega podia cair no computador de outra pessoa, com a assinatura e os arquivos dela.
+
+- **Banco (migration `0017_personal_runners`).** `runners.owner_user_id` (nulo é da organização; preenchido é pessoal; `on delete cascade`), unicidade `(organization_id, owner_user_id, name)` com `nullsNotDistinct` no lugar da antiga, e `runs.started_by_user_id` (nulo para gatilhos e para o perfil `local`; `on delete set null`).
+- **Quem iniciou.** `POST /runs` grava o usuário autenticado; o Hub o guarda no registro da execução e o Supervisor o coloca no escopo em que o runtime remoto pede o runner. Gatilhos (agenda, webhook, WhatsApp) não têm quem iniciou. Junto, a fábrica de runtimes passou a repassar o `runnerId` do agente ao registro (antes ele se perdia no caminho e a escolha era sempre automática).
+- **Roteamento (`RunnerRegistry`).** Dentro da organização da execução: com `runnerId`, só runner da organização ou o pessoal de quem iniciou (o de outra pessoa falha na hora, `403 runner_not_allowed`); sem `runnerId`, os pessoais de quem iniciou primeiro (menos ocupado), depois os da organização, esperando o primeiro que conectar entre os dois; gatilhos usam só os da organização. O runner embutido do `local` não muda. Testes em `runners/runner-routing.test.ts`.
+- **API.** `POST/GET /runners/personal` e `DELETE /runners/personal/{id}` (contrato no README do servidor); `GET/POST /runners` e `DELETE /runners/{name}` passam a tratar só os da organização. Trocar o token de um pessoal e revogá-lo derrubam a conexão na hora. Sair ou ser removido de uma organização revoga os pessoais ali.
+- **Tela.** Abas **Pessoal** (lista, Desconectar com confirmação, "Gerar token" avançado) e **Organização** (o que já havia, com o aviso de que roda execuções de qualquer membro).
+- **Falta.** O app desktop conectar o runner pessoal sozinho (outra sessão, usa esses endpoints); o controle de acesso por fluxo (o dono libera ou bloqueia pessoas), que usará `started_by_user_id`; a conexão de quem saiu da organização só cai na próxima checagem de revogação; e rodar `test:integration`, `typecheck` e `build` desta entrega, que ainda não foram rodados.
+
 ### T26 — Infra na AWS (tem custo)
 
 - Infraestrutura como código com AWS CDK em TypeScript: servidor em contêiner (ECS Fargate), Postgres gerenciado (RDS), segredos no Secrets Manager, domínio e TLS.

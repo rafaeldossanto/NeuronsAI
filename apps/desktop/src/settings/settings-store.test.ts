@@ -65,4 +65,23 @@ describe("DesktopSettingsStore", () => {
     await expect(store.saveTriggers({ enabled: true, port: 80 })).rejects.toThrow();
     expect(await readdir(dir)).toEqual([]);
   });
+
+  it("starts the runner mode as personal and keeps the saved one beside the triggers", async () => {
+    expect(await store.loadRunnerMode()).toBe("personal");
+    await store.saveTriggers({ enabled: true, port: 4100 });
+    await store.saveRunnerMode("organization");
+    expect(await store.loadRunnerMode()).toBe("organization");
+    expect((await store.load()).triggers).toEqual({ enabled: true, port: 4100 });
+    await store.saveRunnerMode("off");
+    expect(await new DesktopSettingsStore(dir).loadRunnerMode()).toBe("off");
+  });
+
+  it("reads an unreadable runner mode as personal, even a near miss of the enum", async () => {
+    for (const bad of ["Off", "organisation", 1, null, ["off"], {}]) {
+      await writeFile(file(), JSON.stringify({ runnerMode: bad }));
+      expect(await store.loadRunnerMode()).toBe("personal");
+    }
+    await writeFile(file(), "{ not json");
+    expect(await store.loadRunnerMode()).toBe("personal");
+  });
 });
