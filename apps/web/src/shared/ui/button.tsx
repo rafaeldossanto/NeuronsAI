@@ -13,7 +13,7 @@ const buttonVariants = cva(
         outline: "border border-input bg-card hover:bg-muted",
         ghost: "hover:bg-muted",
       },
-      size: { default: "h-10 px-4", sm: "h-8 px-3 text-xs" },
+      size: { default: "h-10 px-4", sm: "h-8 px-3 text-xs", icon: "size-9 shrink-0" },
     },
     defaultVariants: { variant: "default", size: "default" },
   },

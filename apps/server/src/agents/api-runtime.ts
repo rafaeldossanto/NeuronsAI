@@ -23,6 +23,7 @@ import {
 import type { AgentNode } from "@neurons/graph-schema";
 import { z } from "zod";
 import { resourceScope } from "../accounts/resource-scope.js";
+import { formatChatBody } from "../hub/message.js";
 
 const communicationTools = [
   {
@@ -80,8 +81,8 @@ export class ApiRuntimeFactory implements AgentRuntimeFactory {
 
 /**
  * An agent that calls a model API. The reply is requested as a stream: what the model writes goes
- * to whoever watches (`onOutputDelta`, live only), while the free text stays out of the
- * communication between agents, as before.
+ * to whoever watches (`onOutputDelta`, live only). A direct chat answer also becomes a
+ * durable reply to the human message. Free text stays out of communication between agents.
  */
 export class ApiRuntime implements StreamingAgentRuntime {
   private readonly calculator = new UsageCalculator();
@@ -144,10 +145,12 @@ export class ApiRuntime implements StreamingAgentRuntime {
     if (this.current !== "idle" || !this.client)
       return Promise.reject(new Error("O agente de API não está disponível."));
     this.setState("busy");
-    this.client.addMessage(
-      `[${message.kind}] De ${message.from}; id ${message.id}\n${message.body}`,
-    );
-    this.work = this.turn().catch(() => {
+    const body = formatChatBody(message.body, message.chat?.history);
+    const text = `[${message.kind}] De ${message.from}; id ${message.id}\n${body}`;
+    const image = message.chat?.image;
+    if (image) this.client.addMessage(text, image);
+    else this.client.addMessage(text);
+    this.work = this.turn(message.chat ? message.id : undefined).catch(() => {
       if (!this.lifetime.signal.aborted) {
         this.failureReason =
           "O provedor recusou ou não concluiu a solicitação. Confira a chave, o modelo e os limites da conta.";
@@ -156,7 +159,8 @@ export class ApiRuntime implements StreamingAgentRuntime {
     });
     return Promise.resolve();
   }
-  private async turn() {
+  private async turn(chatMessageId?: string) {
+    let repliedInChat = false;
     const tools = communicationTools.map(({ name, description, schema }) => ({
       name,
       description,
@@ -177,7 +181,11 @@ export class ApiRuntime implements StreamingAgentRuntime {
         ...result.usage,
         ...(cost !== undefined && { costUsd: cost }),
       });
+      if (this.lifetime.signal.aborted) return;
       if (!result.calls.length) {
+        const answer = result.text?.trim();
+        if (chatMessageId && answer && !repliedInChat)
+          await this.communication.reply(chatMessageId, answer);
         this.setState("idle");
         return;
       }
@@ -188,6 +196,8 @@ export class ApiRuntime implements StreamingAgentRuntime {
           if (!schema) throw new Error("Ferramenta não autorizada.");
           const input = schema.parse(JSON.parse(call.input)) as Record<string, unknown>;
           response = await this.invoke(call.name, input);
+          if (chatMessageId && call.name === "reply" && input.messageId === chatMessageId)
+            repliedInChat = true;
         } catch (error) {
           response = { error: error instanceof Error ? error.message : "Falha na ferramenta." };
         }

@@ -1,8 +1,10 @@
-import { NavLink, Outlet, useMatch } from "react-router";
+import { NavLink, Outlet, useMatch, useSearchParams } from "react-router";
 import { cn } from "@/shared/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useSession } from "@/accounts/auth/session-context";
 import { unwrap, useApi } from "@/shared/api";
+import { ProjectNavigation } from "@/graphs/project-navigation";
+import { useGraph } from "@/graphs/queries";
 import { AccountMenu } from "./account-menu";
 import "./shell.css";
 
@@ -23,7 +25,10 @@ export function Layout() {
     (item) => item.id === account?.organizationId,
   );
   // The editor needs room for the canvas and the inspector.
-  const wide = useMatch("/graphs/:id") !== null;
+  const projectId = useMatch("/graphs/:id")?.params.id;
+  const [params] = useSearchParams();
+  const wide = projectId !== undefined;
+  const chats = wide && params.get("view") === "chats";
   return (
     <div className={cn("min-h-screen", wide && "modeler-layout")}>
       <a
@@ -41,22 +46,26 @@ export function Layout() {
             <img src="/neurons-icon.png" alt="" className="size-8 object-contain" />
             <span className="app-brand-name">NeuronsAI</span>
           </NavLink>
-          <nav aria-label="Principal" className="flex items-center gap-1">
-            {links.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                className={({ isActive }) =>
-                  cn(
-                    "rounded-md px-3 py-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground",
-                    isActive && "bg-muted text-foreground",
-                  )
-                }
-              >
-                {link.label}
-              </NavLink>
-            ))}
-          </nav>
+          {chats && projectId ? (
+            <ChatNavigation graphId={projectId} agentId={params.get("agent") ?? undefined} />
+          ) : (
+            <nav aria-label="Principal" className="flex items-center gap-1">
+              {links.map((link) => (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  className={({ isActive }) =>
+                    cn(
+                      "rounded-md px-3 py-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground",
+                      isActive && "bg-muted text-foreground",
+                    )
+                  }
+                >
+                  {link.label}
+                </NavLink>
+              ))}
+            </nav>
+          )}
           <AccountMenu organizationName={organization?.name} />
         </div>
       </header>
@@ -67,10 +76,23 @@ export function Layout() {
           "outline-none",
           "mx-auto max-w-5xl px-6 py-10",
           wide && "modeler-main max-w-none",
+          chats && "project-chat-main",
         )}
       >
         <Outlet />
       </main>
+    </div>
+  );
+}
+
+function ChatNavigation({ graphId, agentId }: { graphId: string; agentId?: string | undefined }) {
+  const graph = useGraph(graphId);
+  return (
+    <div className="project-chat-navbar">
+      <h1 className="project-chat-project-name text-base font-semibold" title={graph.data?.name}>
+        {graph.data?.name}
+      </h1>
+      <ProjectNavigation graphId={graphId} chats agentId={agentId} />
     </div>
   );
 }

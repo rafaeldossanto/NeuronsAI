@@ -1,5 +1,13 @@
 import { DomainError, type DomainErrorKind } from "../shared/errors/domain-error.js";
 
+export class AgentChatDispatchError extends DomainError {
+  readonly kind = "internal";
+
+  constructor() {
+    super("agent_chat_dispatch_failed", "Não foi possível encaminhar a mensagem ao agente.");
+  }
+}
+
 export class GraphVersionNotFoundError extends DomainError {
   readonly kind: DomainErrorKind = "not_found";
 

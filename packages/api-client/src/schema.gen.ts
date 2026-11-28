@@ -361,6 +361,24 @@ export interface paths {
         patch: operations["graphs_update"];
         trace?: never;
     };
+    "/graphs/{id}/agent-chats/{agentId}/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lista os turnos do chat de um agente, dos mais recentes aos mais antigos. */
+        get: operations["graphs_listAgentChatTurns"];
+        put?: never;
+        /** Envia uma mensagem diretamente ao agente usando a versão publicada do fluxo. */
+        post: operations["graphs_sendAgentChatTurn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/graphs/{id}/deletion-request": {
         parameters: {
             query?: never;
@@ -729,6 +747,22 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AgentChatTurn: {
+            /** Format: uuid */
+            runId: string;
+            /** Format: uuid */
+            graphVersionId: string;
+            /** @enum {string} */
+            status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+            input: string;
+            imageName: string | null;
+            replies: {
+                /** Format: uuid */
+                id: string;
+                text: string;
+            }[];
+            error: string | null;
+        };
         ErrorBody: {
             code: string;
             message: string;
@@ -2305,6 +2339,145 @@ export interface operations {
             };
             /** @description Não encontrado. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graphs_listAgentChatTurns: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AgentChatTurn"][];
+                        hasMore: boolean;
+                    };
+                };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graphs_sendAgentChatTurn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    body: string;
+                    image?: {
+                        name: string;
+                        /** @enum {string} */
+                        mediaType: "image/png" | "image/jpeg";
+                        base64: string;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Sucesso. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        runId: string;
+                    };
+                };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não permitido. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflito com o estado atual. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Erro. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Erro. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

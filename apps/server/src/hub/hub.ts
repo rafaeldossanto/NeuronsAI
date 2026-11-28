@@ -1,11 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { AgentUsage, ToolCallReport } from "@neurons/agent-runtimes";
+import type { AgentUsage, ChatMessageContext, ToolCallReport } from "@neurons/agent-runtimes";
 import { peersOf, type AgentPeers, type GraphDefinition } from "@neurons/graph-schema";
 import type { MessageKind } from "../database/schema/index.js";
 import { RunEventRecorder } from "../run-log/run-event-recorder.js";
 import { Signal } from "../shared/signal.js";
 import type { GuardTrip } from "../guards/guard-trip.js";
-import { isExternalAddress } from "./addresses.js";
+import { HUMAN, isExternalAddress } from "./addresses.js";
 import { findAgent } from "./agent-lookup.js";
 import { HubEvents } from "./hub-events.js";
 import {
@@ -54,6 +54,7 @@ interface SendRequest {
   kind: MessageKind;
   body: string;
   replyTo?: string;
+  chat?: ChatMessageContext;
 }
 
 interface PendingAsk {
@@ -113,9 +114,10 @@ export class Hub {
     to: string,
     kind: MessageKind,
     body: string,
-    replyTo?: string,
+    details?: string | { chat: ChatMessageContext },
   ): Promise<MessageRecord> {
-    return this.dispatch({ runId, from, to, kind, body, ...(replyTo && { replyTo }) });
+    const metadata = typeof details === "string" ? { replyTo: details || undefined } : details;
+    return this.dispatch({ runId, from, to, kind, body, ...metadata });
   }
 
   /** Sends a question and resolves with the text of the matching reply. */
@@ -294,6 +296,7 @@ export class Hub {
           kind: request.kind,
           replyTo: request.replyTo ?? null,
           body: request.body,
+          ...(request.chat && { chat: request.chat }),
           deliveredOnArrival: external,
         },
         HubEvents.messageSent,
@@ -388,7 +391,10 @@ const unknownAgent = (code: string, name: string) =>
   new InvalidMessageError(code, `"${name}" não é um agente deste grafo.`);
 
 function assertWellFormed(request: SendRequest, graph: GraphDefinition): void {
-  const { from, to, kind, replyTo } = request;
+  const { from, to, kind, replyTo, chat } = request;
+  if (chat && (from !== HUMAN || kind !== "message")) {
+    throw new InvalidMessageError("invalid_chat_sender", "O chat só aceita mensagens do usuário.");
+  }
   if (kind === "reply" && !replyTo) {
     throw new InvalidMessageError(
       "reply_without_target",
@@ -404,6 +410,12 @@ function assertWellFormed(request: SendRequest, graph: GraphDefinition): void {
   if (!isExternalAddress(from) && !findAgent(graph, from))
     throw unknownAgent("unknown_sender", from);
   // Only an answer may go to `@human`/`@trigger`: nobody starts a conversation with them.
-  const knownRecipient = findAgent(graph, to) ?? (kind === "reply" && isExternalAddress(to));
-  if (!knownRecipient) throw unknownAgent("unknown_recipient", to);
+  const recipient = findAgent(graph, to);
+  if (!recipient && !(kind === "reply" && isExternalAddress(to)))
+    throw unknownAgent("unknown_recipient", to);
+  if (
+    chat?.image &&
+    (recipient?.runtime.kind !== "api" || recipient.runtime.access === "subscription")
+  )
+    throw new InvalidMessageError("chat_image_unsupported", "Este agente não recebe imagens.");
 }
