@@ -1,14 +1,20 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { canManage, useSession, type AccountSession } from "@/accounts/auth/session-context";
-import { AccountRequired, CopyButton } from "@/accounts/account-ui";
+import { AccountRequired } from "@/accounts/account-ui";
 import { Modal } from "@/shared/modal";
 import { EmptyState, ErrorState, LoadingRows } from "@/shared/states";
 import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
-import { apiBaseUrl } from "@/config";
 import { expectNoContent, unwrap, useApi } from "@/shared/api";
 import { formatDateTime } from "@/shared/format";
+import { CreateRunner } from "./create-runner";
+import { PersonalRunners } from "./personal-runners";
+
+const TABS = [
+  { id: "personal", label: "Pessoal" },
+  { id: "organization", label: "Organização" },
+] as const;
+type TabId = (typeof TABS)[number]["id"];
 
 export function RunnersPage() {
   const { account } = useSession();
@@ -16,6 +22,81 @@ export function RunnersPage() {
 }
 
 function Runners({ account }: { account: AccountSession }) {
+  const [tab, setTab] = useState<TabId>("personal");
+  const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({
+    personal: null,
+    organization: null,
+  });
+  // Arrow keys, Home and End move between tabs (the selected one is the only one in the tab order).
+  function onKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const last = TABS.length - 1;
+    const next =
+      event.key === "ArrowRight"
+        ? index === last
+          ? 0
+          : index + 1
+        : event.key === "ArrowLeft"
+          ? index === 0
+            ? last
+            : index - 1
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? last
+              : undefined;
+    if (next === undefined) return;
+    event.preventDefault();
+    const target = TABS[next]!.id;
+    setTab(target);
+    tabRefs.current[target]?.focus();
+  }
+  return (
+    <div className="flex flex-col gap-8">
+      <header className="flex flex-col gap-2">
+        <h1 className="heading-4">Runners</h1>
+        <p className="body-6 text-muted-foreground">
+          Conecte computadores para executar agentes: o seu, que roda só o que você iniciar, ou os
+          da organização.
+        </p>
+      </header>
+      <div role="tablist" aria-label="Tipo de runner" className="flex gap-2 border-b">
+        {TABS.map((item, index) => (
+          <button
+            key={item.id}
+            ref={(element) => {
+              tabRefs.current[item.id] = element;
+            }}
+            type="button"
+            role="tab"
+            id={`runners-tab-${item.id}`}
+            aria-selected={tab === item.id}
+            aria-controls={`runners-panel-${item.id}`}
+            tabIndex={tab === item.id ? 0 : -1}
+            className={`title-4 -mb-px border-b-2 px-4 py-3 ${tab === item.id ? "border-foreground" : "border-transparent text-muted-foreground"}`}
+            onClick={() => setTab(item.id)}
+            onKeyDown={(event) => onKeyDown(event, index)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div
+        role="tabpanel"
+        id={`runners-panel-${tab}`}
+        aria-labelledby={`runners-tab-${tab}`}
+        tabIndex={0}
+      >
+        {tab === "personal" ? (
+          <PersonalRunners account={account} />
+        ) : (
+          <OrganizationRunners account={account} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OrganizationRunners({ account }: { account: AccountSession }) {
   const api = useApi();
   const client = useQueryClient();
   const runners = useQuery({
@@ -44,20 +125,18 @@ function Runners({ account }: { account: AccountSession }) {
     }
   }
   return (
-    <div className="flex flex-col gap-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-col gap-2">
-          <h1 className="heading-4">Runners</h1>
-          <p className="body-6 text-muted-foreground">
-            Conecte seus computadores para executar agentes nesta organização.
-          </p>
-        </div>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <p className="body-6 max-w-prose text-muted-foreground">
+          Um computador da organização roda execuções de qualquer membro e as agendadas ou por
+          webhook, com a assinatura logada nele.
+        </p>
         {canManage(account.role) && (
           <Button variant="accent" onClick={() => setCreating(true)}>
             Cadastrar runner
           </Button>
         )}
-      </header>
+      </div>
       {!canManage(account.role) && (
         <p className="body-6 text-muted-foreground">
           Seu papel permite consultar os runners. Proprietários e administradores podem cadastrar e
@@ -129,6 +208,7 @@ function Runners({ account }: { account: AccountSession }) {
       </p>
       {creating && (
         <CreateRunner
+          kind="organization"
           onClose={() => setCreating(false)}
           onCreated={() => {
             void client.invalidateQueries({ queryKey: ["runners"] });
@@ -159,105 +239,5 @@ function Runners({ account }: { account: AccountSession }) {
         </Modal>
       )}
     </div>
-  );
-}
-
-function CreateRunner({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const api = useApi();
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  // Keep the one-time credential out of query caches, URLs and browser storage.
-  const [issued, setIssued] = useState<{ name: string; token: string } | null>(null);
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!name.trim()) return;
-    setBusy(true);
-    setError("");
-    try {
-      const result = await unwrap(api.POST("/runners", { body: { name: name.trim() } }));
-      setIssued({ name: result.name, token: result.token });
-      onCreated();
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Não foi possível cadastrar o runner.");
-    } finally {
-      setBusy(false);
-    }
-  }
-  const serverUrl = new URL(apiBaseUrl).origin;
-  return (
-    <Modal
-      title={issued ? "Conectar computador" : "Cadastrar runner"}
-      onClose={() => {
-        if (!busy) onClose();
-      }}
-    >
-      {issued ? (
-        <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            <h3 className="title-3 break-words">{issued.name}</h3>
-            <p className="body-6">Guarde este token agora. Ele não será exibido novamente.</p>
-          </div>
-          <label className="title-4 flex flex-col gap-2">
-            Token do runner
-            <Input value={issued.token} readOnly autoComplete="off" spellCheck={false} />
-          </label>
-          <CopyButton value={issued.token} label="Copiar token" />
-          <section
-            className="flex flex-col gap-4 rounded-lg bg-muted p-4"
-            aria-label="Como conectar"
-          >
-            <h3 className="title-3">No computador que executará os agentes</h3>
-            <p className="body-6">
-              Instale e autentique o Claude Code. No ambiente do runner, configure:
-            </p>
-            <dl className="body-6 flex flex-col gap-3">
-              <div>
-                <dt className="title-4 break-all">NEURONS_SERVER_URL</dt>
-                <dd className="break-all select-all">{serverUrl}</dd>
-              </div>
-              <div>
-                <dt className="title-4 break-all">NEURONS_RUNNER_TOKEN</dt>
-                <dd>O token mostrado acima.</dd>
-              </div>
-            </dl>
-            <p className="body-6">Com o projeto NeuronsAI instalado, execute:</p>
-            <code className="caption-4 break-all">
-              pnpm --filter @neurons/runner build
-              <br />
-              pnpm --filter @neurons/runner start
-            </code>
-            <p className="body-6">
-              Mantenha o runner aberto. O computador aparecerá como Conectado nesta lista.
-            </p>
-          </section>
-          <Button onClick={onClose}>Concluir</Button>
-        </div>
-      ) : (
-        <form className="flex flex-col gap-6" onSubmit={(event) => void submit(event)}>
-          <p className="body-6 text-muted-foreground">
-            Dê um nome ao computador. Você receberá um token para conectá-lo a este espaço.
-          </p>
-          <label className="title-4 flex flex-col gap-2">
-            Nome do runner
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              maxLength={100}
-              required
-              disabled={busy}
-            />
-          </label>
-          {error && (
-            <p role="alert" className="body-6 text-destructive">
-              {error}
-            </p>
-          )}
-          <Button disabled={busy || !name.trim()}>
-            {busy ? "Cadastrando…" : "Gerar token de conexão"}
-          </Button>
-        </form>
-      )}
-    </Modal>
   );
 }
