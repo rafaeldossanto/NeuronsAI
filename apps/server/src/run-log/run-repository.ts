@@ -11,6 +11,8 @@ export interface RunRecord {
   budgetUsd: number | null;
   startedAt: Date | null;
   finishedAt: Date | null;
+  /** The signed-in user who started it through the API; null for triggers and the local workspace. */
+  startedByUserId?: string | null;
 }
 
 /** A run as the listings show it: with the graph its version belongs to. */
@@ -32,7 +34,19 @@ export interface RunListItem extends RunSummaryRecord {
 export const RUN_SORTS = ["startedAt", "costUsd", "durationMs"] as const;
 export type RunSort = (typeof RUN_SORTS)[number];
 
+/**
+ * Which projects' runs a person reads: every run of the `full` ones, and only the runs they
+ * started (`userId`) in the `own` ones. Without it all runs of the organization are listed.
+ */
+export interface RunListVisibility {
+  userId: string;
+  full: readonly string[];
+  own: readonly string[];
+}
+
 export interface RunListFilter {
+  /** Runs the caller may see; the account-free workspace and the organization's admins leave it out. */
+  visibility?: RunListVisibility;
   status?: RunStatus;
   graphId?: string;
   graphVersionId?: string;
@@ -79,7 +93,12 @@ export interface RunRepository {
   createRunning(
     graphVersionId: string,
     eventsFor: (run: RunRecord) => RunEventDraft[],
-    options?: { budgetUsd?: number; quotas?: RunQuotas },
+    options?: {
+      budgetUsd?: number;
+      quotas?: RunQuotas;
+      startedByUserId?: string;
+      chatAgentId?: string;
+    },
   ): Promise<Recorded<RunRecord>>;
 
   /**

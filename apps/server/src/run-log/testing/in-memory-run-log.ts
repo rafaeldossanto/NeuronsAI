@@ -75,7 +75,7 @@ export class InMemoryRunLog implements RunEventLog, RunRepository, RunEventHisto
   createRunning(
     graphVersionId: string,
     eventsFor: (run: RunRecord) => RunEventDraft[],
-    options: { budgetUsd?: number; quotas?: RunQuotas } = {},
+    options: { budgetUsd?: number; quotas?: RunQuotas; startedByUserId?: string } = {},
   ): Promise<Recorded<RunRecord>> {
     if (options.quotas && resourceScope.current().organizationId !== null) {
       // Synchronous from the check to the insert, so parallel starts line up as they do on the database.
@@ -102,6 +102,7 @@ export class InMemoryRunLog implements RunEventLog, RunRepository, RunEventHisto
       budgetUsd: options.budgetUsd ?? null,
       startedAt: new Date(),
       finishedAt: null,
+      startedByUserId: options.startedByUserId ?? null,
     };
     this.runs.set(record.id, record);
     return this.append(record.id, eventsFor(record)).then((events) => ({ record, events }));

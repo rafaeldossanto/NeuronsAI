@@ -25,6 +25,7 @@ export class InMemoryMessageStore implements MessageStore {
       kind: message.kind,
       replyTo: message.replyTo,
       body: message.body,
+      ...(message.chat && { chat: message.chat }),
       createdAt: new Date(),
       deliveredAt: arrival,
       ackedAt: arrival,

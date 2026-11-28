@@ -1,11 +1,13 @@
 import { Inject, Injectable, Optional } from "@nestjs/common";
-import { and, asc, count, eq, gt } from "drizzle-orm";
+import { and, asc, count, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { AppConfig } from "../shared/config/app-config.js";
 import { DEFAULT_QUOTAS } from "../shared/config/quota-config.js";
 import { APP_CONFIG } from "../shared/config/tokens.js";
 import { QuotaExceededError } from "../shared/errors/quota-exceeded.error.js";
 import { DatabaseService, type DatabaseTransaction } from "../database/database.service.js";
+import { graphAccess } from "../database/schema/graph-access.js";
+import { runners } from "../database/schema/runners.js";
 import {
   identities,
   memberships,
@@ -203,6 +205,19 @@ export class AccountsService {
       if (role === null) {
         // The composite session FK cascades: rejoining later cannot revive an old session.
         await tx.delete(memberships).where(key);
+        // What the owners of the projects decided about this person (releases, blocks, requests)
+        // goes with the membership: coming back later starts from the mode of each project.
+        await tx
+          .delete(graphAccess)
+          .where(
+            and(eq(graphAccess.organizationId, organizationId), eq(graphAccess.userId, userId)),
+          );
+        // Their computers stop serving this organization; the connected ones are dropped at the next
+        // revocation check of the runner gateway.
+        await tx
+          .update(runners)
+          .set({ revokedAt: sql`coalesce(${runners.revokedAt}, now())` })
+          .where(and(eq(runners.organizationId, organizationId), eq(runners.ownerUserId, userId)));
       } else {
         const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
         if (!user) throw new AccountNotFoundError();

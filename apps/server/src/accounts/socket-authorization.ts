@@ -1,7 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import { Inject, Injectable } from "@nestjs/common";
-import { DatabaseService } from "../database/database.service.js";
-import { requireOwnedRun } from "./resource-ownership.js";
+import { GraphAccessService } from "./graph-access.service.js";
 import { resourceScope } from "./resource-scope.js";
 import { AccountAuth } from "./account-auth.service.js";
 import { requirePermission } from "./organization-access.js";
@@ -16,7 +15,7 @@ export class SocketAuthorization {
   }
   constructor(
     @Inject(AccountAuth) private readonly auth: AccountAuth,
-    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(GraphAccessService) private readonly graphAccess: GraphAccessService,
   ) {}
 
   async run<T>(
@@ -34,8 +33,11 @@ export class SocketAuthorization {
       throw new InvalidSessionError();
     const scope = await this.auth.browser.authenticate(request);
     requirePermission(scope, write ? "write" : "read");
-    return resourceScope.run({ organizationId: scope.organizationId }, async () => {
-      await requireOwnedRun(this.database.db, runId);
+    const user = { organizationId: scope.organizationId, role: scope.role, userId: scope.userId };
+    return resourceScope.run(user, async () => {
+      // The run must be in the organization and the person must be allowed to see it (or, to type
+      // in it, to act on it): someone who only uses a project sees just the runs they started.
+      await this.graphAccess.requireRun(runId, write ? "write" : "read", user);
       return action();
     });
   }

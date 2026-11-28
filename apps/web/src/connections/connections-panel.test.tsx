@@ -71,10 +71,10 @@ describe("conexões de IA: ChatGPT", () => {
       "GET /connections": connections({
         installed: false,
         connected: false,
-        message: "Instale o Codex CLI (npm i -g @openai/codex) neste computador.",
+        message: "Instale o app do Codex ou o Codex CLI (npm i -g @openai/codex) neste computador.",
       }),
     });
-    expect(await screen.findByText(/Instale o Codex CLI/)).toBeInTheDocument();
+    expect(await screen.findByText(/Instale o app do Codex/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Conectar ChatGPT" })).toBeDisabled();
   });
 

@@ -84,6 +84,10 @@
   }
 }
 
+.agent-live-working {
+  animation: pulse-amber 1.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
 @keyframes pulse-amber {
   0%,
   100% {
@@ -353,6 +357,10 @@ html.desktop-root,
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .agent-live-working {
+    animation: none;
+  }
+
   *,
   *::before,
   *::after {

@@ -12,6 +12,18 @@ export type AgentRuntimeState = (typeof AGENT_RUNTIME_STATES)[number];
 
 export type InboundMessageKind = "message" | "ask" | "reply";
 
+export interface ChatImage {
+  name: string;
+  mediaType: "image/png" | "image/jpeg";
+  base64: string;
+}
+
+export interface ChatMessageContext {
+  /** Recent textual turns, bounded by the chat service. */
+  history?: string;
+  image?: ChatImage;
+}
+
 /** What a runtime receives when the Hub hands it a message from its inbox. */
 export interface InboundMessage {
   id: string;
@@ -19,6 +31,8 @@ export interface InboundMessage {
   from: string;
   kind: InboundMessageKind;
   body: string;
+  /** Present on the first message of a direct conversation turn. */
+  chat?: ChatMessageContext;
   /** Id of the message this one answers (only for `reply`). */
   replyTo: string | null;
 }

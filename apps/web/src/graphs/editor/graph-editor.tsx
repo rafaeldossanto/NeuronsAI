@@ -111,15 +111,22 @@ interface EditorGraph {
   draft: unknown;
 }
 
-export function GraphEditor({ graph }: { graph: EditorGraph }) {
+interface GraphEditorProps {
+  graph: EditorGraph;
+  active?: boolean;
+  focusNodeId?: string | undefined;
+  agentChatHref?: (agentId: string) => string;
+}
+
+export function GraphEditor(props: GraphEditorProps) {
   return (
     <ReactFlowProvider>
-      <Editor graph={graph} />
+      <Editor {...props} />
     </ReactFlowProvider>
   );
 }
 
-function Editor({ graph }: { graph: EditorGraph }) {
+function Editor({ graph, active = true, focusNodeId, agentChatHref }: GraphEditorProps) {
   const api = useApi();
   const navigate = useNavigate();
   const [runOpen, setRunOpen] = useState(false);
@@ -134,10 +141,15 @@ function Editor({ graph }: { graph: EditorGraph }) {
     doc: state.present,
     json: serialize(state.present),
   }));
-  const [selected, setSelected] = useState<{ nodes: string[]; links: string[] }>({
-    nodes: [],
+  const [selected, setSelected] = useState<{ nodes: string[]; links: string[] }>(() => ({
+    nodes: focusNodeId ? [focusNodeId] : [],
     links: [],
-  });
+  }));
+  const [previousFocus, setPreviousFocus] = useState(focusNodeId);
+  if (focusNodeId !== previousFocus) {
+    setPreviousFocus(focusNodeId);
+    if (focusNodeId) setSelected({ nodes: [focusNodeId], links: [] });
+  }
   const [measured, setMeasured] = useState<Record<string, { width: number; height: number }>>({});
   const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [tool, setTool] = useState<Tool>("select");
@@ -238,6 +250,7 @@ function Editor({ graph }: { graph: EditorGraph }) {
 
   // ---------- history shortcuts ----------
   useEffect(() => {
+    if (!active) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
       const key = event.key.toLowerCase();
@@ -248,10 +261,11 @@ function Editor({ graph }: { graph: EditorGraph }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [active]);
 
   // ---------- tool shortcuts (V, R, O, A, T, N, G; Esc goes back to selecting) ----------
   useEffect(() => {
+    if (!active) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey || isTyping(event.target)) return;
       if (event.key === "Escape") return setTool("select");
@@ -260,7 +274,7 @@ function Editor({ graph }: { graph: EditorGraph }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [active]);
 
   // ---------- canvas events ----------
   const annotationIds = useMemo(
@@ -469,7 +483,10 @@ function Editor({ graph }: { graph: EditorGraph }) {
     annotationIds: selected.nodes.filter((id) => annotationIds.has(id)),
   };
   const hasSelection = selected.nodes.length + selected.links.length > 0;
+  const focusedNode = focusNodeId && doc.nodes.find((node) => node.id === focusNodeId);
 
+  // Keep this editor's draft and undo stack while only mounting its canvas in the Flow tab.
+  if (!active) return null;
   return (
     <div className="modeler-editor flex min-h-0 flex-1 flex-col gap-3">
       <div
@@ -657,7 +674,11 @@ function Editor({ graph }: { graph: EditorGraph }) {
             selectionOnDrag
             panOnDrag={[1, 2]}
             fitView
-            fitViewOptions={{ padding: 0.3, maxZoom: 1 }}
+            fitViewOptions={{
+              padding: 0.3,
+              maxZoom: 1,
+              ...(focusedNode && { nodes: [{ id: focusedNode.id }] }),
+            }}
             minZoom={0.2}
             maxZoom={2}
           >
@@ -678,7 +699,13 @@ function Editor({ graph }: { graph: EditorGraph }) {
           )}
           {tool !== "select" && <DrawOverlay tool={tool} onFinish={finishDrawing} />}
         </div>
-        <Inspector doc={doc} selection={inspectorSelection} issues={issues} dispatch={dispatch} />
+        <Inspector
+          doc={doc}
+          selection={inspectorSelection}
+          issues={issues}
+          dispatch={dispatch}
+          agentChatHref={agentChatHref}
+        />
       </div>
 
       <IssuesPanel issues={issues} doc={doc} onSelect={focusIssue} />

@@ -40,6 +40,11 @@ interface Options {
   show: (origin: string) => Promise<void>;
   openBrowser: (url: string) => Promise<void>;
   transport?: typeof fetch;
+  /**
+   * The remote server now shown (its origin), or `null` for the local space, a forgotten server
+   * or a signed-out account. The runner of this computer follows it. Never throws.
+   */
+  onRemoteChange?: (origin: string | null) => Promise<void> | void;
 }
 
 /** All account credentials stay in the main process, HttpOnly cookies or the OS-backed store. */
@@ -57,6 +62,9 @@ export class DesktopAccountManager {
     this.transport = options.transport ?? fetch;
     this.login = new NativeLogin(options.openBrowser, this.transport);
     this.preferenceFile = path.join(options.dataDir, "desktop-connection.json");
+  }
+  private remoteChanged(origin: string | null): Promise<void> {
+    return Promise.resolve(this.options.onRemoteChange?.(origin)).catch(() => undefined);
   }
   state(): DesktopAccountState {
     return {
@@ -148,6 +156,7 @@ export class DesktopAccountManager {
         "Não foi possível abrir a interface do servidor. Você pode continuar no espaço local.";
       await this.options.show(this.options.localOrigin);
     }
+    void this.remoteChanged(this.mode === "remote" ? origin : null);
   }
   async signIn(): Promise<void> {
     if (this.mode !== "remote" || !this.preferred)
@@ -160,6 +169,7 @@ export class DesktopAccountManager {
     const cookies = credentialCookies(origin, credentials);
     await this.applyCookies(origin, cookies);
     await this.options.show(origin);
+    void this.remoteChanged(origin);
   }
   cancelLogin(): void {
     this.login.cancel();
@@ -169,10 +179,13 @@ export class DesktopAccountManager {
     this.mode = "local";
     this.error = undefined;
     await this.options.show(this.options.localOrigin);
+    void this.remoteChanged(null);
   }
   async forget(): Promise<void> {
     this.login.cancel();
     const origin = this.preferred;
+    // The runner's token is taken back with the session still valid, before the logout below.
+    if (origin) await this.remoteChanged(null);
     if (origin) {
       const cookies = await this.options.cookies(origin).get({ url: origin });
       const prefix = cookiePrefix(origin);
@@ -252,7 +265,10 @@ export class DesktopAccountManager {
             refreshToken: candidates[0]!.value,
             expiresAt: new Date(candidates[0]!.expirationDate * 1000).toISOString(),
           });
-        } else if (!cookies.length) await this.options.store.clear(origin);
+        } else if (!cookies.length) {
+          await this.options.store.clear(origin);
+          void this.remoteChanged(null); // signed out: the runner goes with the session
+        }
       })
       .catch(() => {
         this.error =

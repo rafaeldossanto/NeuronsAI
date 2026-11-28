@@ -1,11 +1,16 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import { Trash2 } from "lucide-react";
+import { Lock, Trash2 } from "lucide-react";
 import { canManage, useSession } from "@/accounts/auth/session-context";
 import { ConfirmDialog } from "@/shared/confirm-dialog";
 import { formatDateTime } from "@/shared/format";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
+import {
+  AccessRequestControls,
+  GraphAccessButton,
+  managesAccess,
+} from "@/graphs/access/access-controls";
 import { DeleteProjectDialog } from "@/graphs/delete-project-dialog";
 import {
   useCancelGraphDeletionRequest,
@@ -23,12 +28,14 @@ const dangerHover =
 /**
  * One project in the list. What may be done with it depends on the role: an owner or admin deletes
  * (and answers a member's request), a member asks, a viewer only opens it. Without accounts (the
- * local workspace) the single user deletes directly. The server decides all of this again.
+ * local workspace) the single user deletes directly. A project the person has no access to shows
+ * with a lock, and they can ask the owner to get in. The server decides all of this again.
  */
 export function ProjectCard({ graph }: { graph: Project }) {
   const { account } = useSession();
-  const manager = account === null || canManage(account.role);
-  const member = account?.role === "member";
+  const locked = graph.access.level === "none";
+  const manager = !locked && (account === null || canManage(account.role));
+  const member = !locked && account?.role === "member";
   const request = graph.deletionRequest ?? null;
   const mine = request !== null && account !== null && request.requestedBy.id === account.userId;
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -41,11 +48,20 @@ export function ProjectCard({ graph }: { graph: Project }) {
     <Card className="flex flex-col gap-2 p-4 transition-colors hover:border-accent">
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
-          <Link to={`/graphs/${graph.id}`} className="block truncate font-bold hover:underline">
-            {graph.name}
-          </Link>
+          {locked ? (
+            <p className="flex items-center gap-2 truncate font-bold">
+              <Lock className="size-4 shrink-0" aria-hidden="true" />
+              <span className="truncate">{graph.name}</span>
+              <span className="sr-only">(sem acesso)</span>
+            </p>
+          ) : (
+            <Link to={`/graphs/${graph.id}`} className="block truncate font-bold hover:underline">
+              {graph.name}
+            </Link>
+          )}
           <p className="text-xs text-muted-foreground">
             Atualizado em {formatDateTime(graph.updatedAt)}
+            {locked && graph.owner ? ` · dono: ${graph.owner.name}` : ""}
           </p>
           {request && (manager || member) && (
             <p className="mt-1 text-xs font-semibold text-destructive">
@@ -56,11 +72,16 @@ export function ProjectCard({ graph }: { graph: Project }) {
           )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link to={`/graphs/${graph.id}`} aria-label={`Abrir ${graph.name}`}>
-              Abrir
-            </Link>
-          </Button>
+          {locked ? (
+            <AccessRequestControls project={graph} />
+          ) : (
+            <Button asChild variant="outline" size="sm">
+              <Link to={`/graphs/${graph.id}`} aria-label={`Abrir ${graph.name}`}>
+                Abrir
+              </Link>
+            </Button>
+          )}
+          {managesAccess(graph) && account !== null && <GraphAccessButton project={graph} />}
           {manager && request && (
             <>
               <Button

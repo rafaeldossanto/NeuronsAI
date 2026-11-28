@@ -1,6 +1,6 @@
 {
   "name": "@neurons/desktop",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "type": "module",
   "description": "NeuronsAI — orquestrador visual de agentes de IA",
@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@neurons/mcp-neurons": "workspace:*",
+    "@neurons/runner": "workspace:*",
     "@neurons/server": "workspace:*",
     "electron-updater": "6.8.11",
     "zod": "4.6.7",

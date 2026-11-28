@@ -40,8 +40,13 @@ export interface RespondOptions {
   onDelta?: (delta: ModelDelta) => void;
 }
 
+export interface ModelImage {
+  mediaType: "image/png" | "image/jpeg";
+  base64: string;
+}
+
 export interface TurnClient {
-  addMessage(text: string): void;
+  addMessage(text: string, image?: ModelImage): void;
   respond(
     briefing: string,
     tools: FunctionTool[],

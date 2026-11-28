@@ -1,3 +1,5 @@
+import { canEditGraph, canReadDraft } from "../accounts/graph-access.js";
+import { GraphAccessService } from "../accounts/graph-access.service.js";
 import { RequirePermission } from "../accounts/require-permission.js";
 import { Controller, Inject } from "@nestjs/common";
 import { toIso, toIsoOrNull } from "../api/common-schemas.js";
@@ -19,6 +21,7 @@ export class TriggersController {
   constructor(
     @Inject(TriggersService) private readonly triggers: TriggersService,
     @Inject(HooksServer) private readonly hooks: HooksServer,
+    @Inject(GraphAccessService) private readonly access: GraphAccessService,
   ) {}
 
   @Endpoint({
@@ -31,6 +34,8 @@ export class TriggersController {
     errors: [404],
   })
   async getTrigger(@ValidParams() { id, triggerId }: TriggerParams) {
+    // Triggers are part of the project's setup: who only uses the project does not see them.
+    await this.access.require(id, canReadDraft);
     return this.present(await this.triggers.get(id, triggerId));
   }
 
@@ -46,6 +51,7 @@ export class TriggersController {
   })
   @RequirePermission("manage_credentials")
   async rotateTriggerSecret(@ValidParams() { id, triggerId }: TriggerParams) {
+    await this.access.require(id, canEditGraph);
     const { secret, view } = await this.triggers.rotateSecret(id, triggerId);
     return { secret, state: this.present(view) };
   }
@@ -65,6 +71,7 @@ export class TriggersController {
     @ValidParams() { id, triggerId }: TriggerParams,
     @ValidBody() body: SetEnabledBody,
   ) {
+    await this.access.require(id, canEditGraph);
     return this.present(await this.triggers.setEnabled(id, triggerId, body.enabled));
   }
 

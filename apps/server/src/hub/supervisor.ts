@@ -24,7 +24,7 @@ import { buildBriefing } from "./briefing.js";
 import { HubAgentCommunication } from "./hub-agent-communication.js";
 import { HubEvents } from "./hub-events.js";
 import { Hub } from "./hub.js";
-import type { MessageRecord } from "./message.js";
+import { formatChatBody, type MessageRecord } from "./message.js";
 import { RunRegistry } from "./run-registry.js";
 
 type SlotState = AgentRuntimeState | "failed";
@@ -144,7 +144,12 @@ export class Supervisor {
           if (ended) this.recorder.publish(ended.events);
           return;
         }
-        this.registry.register(run.id, graph, run.budgetUsd ?? undefined);
+        this.registry.register(
+          run.id,
+          graph,
+          run.budgetUsd ?? undefined,
+          run.startedByUserId ?? undefined,
+        );
         const recipients = new Set((await this.hub.unacked(run.id)).map((message) => message.to));
         for (const name of recipients) {
           const slot = this.ensureSlot(run.id, name);
@@ -263,8 +268,13 @@ export class Supervisor {
         this.tools,
       );
       const owner = this.registry.requireOpen(slot.runId);
-      const runtime = resourceScope.run({ organizationId: owner.organizationId }, () =>
-        this.factory.create(slot.agent, communication),
+      // The runner that hosts the agent is chosen in this scope: who started the run matters to it.
+      const runtime = resourceScope.run(
+        {
+          organizationId: owner.organizationId,
+          ...(owner.startedByUserId && { userId: owner.startedByUserId }),
+        },
+        () => this.factory.create(slot.agent, communication),
       );
       slot.runtime = runtime;
       slot.unsubscribe = runtime.onStateChange((state) => this.onStateChange(slot, state));
@@ -418,12 +428,18 @@ export class Supervisor {
   private async handOver(slot: AgentSlot, message: MessageRecord): Promise<void> {
     try {
       await this.hub.markDelivered(message);
+      const { chat } = message;
+      const terminalChat = chat && slot.agent.runtime.kind === "terminal";
+      const body = terminalChat
+        ? `Ao concluir, use a ferramenta reply com o ID ${message.id} para registrar sua resposta no chat.\n\n${formatChatBody(message.body, chat.history)}`
+        : message.body;
       await slot.runtime?.deliver({
         id: message.id,
         from: message.from,
         kind: message.kind,
-        body: message.body,
+        body,
         replyTo: message.replyTo,
+        ...(chat && !terminalChat && { chat }),
       });
     } catch (error) {
       // The runtime could not take the message: it stays unacknowledged, the agent is out.

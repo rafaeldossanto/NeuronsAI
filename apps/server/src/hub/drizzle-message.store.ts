@@ -1,11 +1,14 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, desc, eq, gt, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, gt, isNull, ne, or, sql } from "drizzle-orm";
 import { DatabaseService } from "../database/database.service.js";
 import { messages } from "../database/schema/index.js";
 import { allocateSeqs, appendEvents, insertEvents } from "../run-log/drizzle-event-writer.js";
 import type { Recorded, RunEventDraft } from "../run-log/run-event-draft.js";
 import type { MessageRecord, NewMessage } from "./message.js";
 import type { MessageStore } from "./message-store.js";
+
+/** Log and delivery bookkeeping use only the lightweight message fields. */
+const messageLogColumns = { ...getTableColumns(messages), chat: sql<null>`null` };
 
 const toMessageRecord = (row: typeof messages.$inferSelect): MessageRecord => ({
   id: row.id,
@@ -16,6 +19,7 @@ const toMessageRecord = (row: typeof messages.$inferSelect): MessageRecord => ({
   kind: row.kind,
   replyTo: row.replyTo,
   body: row.body,
+  ...(row.chat && { chat: row.chat }),
   createdAt: row.createdAt,
   deliveredAt: row.deliveredAt,
   ackedAt: row.ackedAt,
@@ -43,6 +47,7 @@ export class DrizzleMessageStore implements MessageStore {
           kind: message.kind,
           replyTo: message.replyTo,
           body: message.body,
+          chat: message.chat ?? null,
           deliveredAt: arrival,
           ackedAt: arrival,
         })
@@ -57,7 +62,7 @@ export class DrizzleMessageStore implements MessageStore {
       .update(messages)
       .set({ deliveredAt: sql`coalesce(${messages.deliveredAt}, now())` })
       .where(eq(messages.id, messageId))
-      .returning();
+      .returning(messageLogColumns);
     return row && toMessageRecord(row);
   }
 
@@ -73,7 +78,7 @@ export class DrizzleMessageStore implements MessageStore {
           ackedAt: sql`now()`,
         })
         .where(and(eq(messages.id, messageId), isNull(messages.ackedAt)))
-        .returning();
+        .returning(messageLogColumns);
       if (!row) return undefined;
       const record = toMessageRecord(row);
       return { record, events: await appendEvents(tx, record.runId, [eventFor(record)]) };
@@ -100,7 +105,7 @@ export class DrizzleMessageStore implements MessageStore {
     options: { afterSeq?: number; limit: number },
   ): Promise<MessageRecord[]> {
     const rows = await this.database.db
-      .select()
+      .select(messageLogColumns)
       .from(messages)
       .where(and(eq(messages.runId, runId), gt(messages.seq, options.afterSeq ?? 0)))
       .orderBy(asc(messages.seq))
@@ -110,7 +115,7 @@ export class DrizzleMessageStore implements MessageStore {
 
   async listRecent(runId: string, limit: number): Promise<MessageRecord[]> {
     const rows = await this.database.db
-      .select()
+      .select(messageLogColumns)
       .from(messages)
       .where(eq(messages.runId, runId))
       .orderBy(desc(messages.seq))

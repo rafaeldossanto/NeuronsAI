@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, type OnApplicationShutdown } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional, type OnApplicationShutdown } from "@nestjs/common";
 import {
   CLOSE_NOT_ACCEPTED,
   CLOSE_PROTOCOL,
@@ -7,13 +7,15 @@ import {
   type RejectFrame,
   type ServerChannel,
 } from "@neurons/runner-protocol";
+import { z } from "zod";
 import type { AppConfig } from "../shared/config/app-config.js";
 import { APP_CONFIG } from "../shared/config/tokens.js";
 import { Signal } from "../shared/signal.js";
 import type { RunnerEndpoint, RunnerPool } from "./remote-agent-runtime.js";
 import { RunnerLink, type LinkLogger } from "./runner-link.js";
 import type { RunnerIdentity } from "./runner-tokens.service.js";
-import { NoRunnerAvailableError } from "./runners.errors.js";
+import { RUNNER_REPOSITORY, type RunnerRepository } from "./runner-repository.js";
+import { NoRunnerAvailableError, RunnerNotAllowedError } from "./runners.errors.js";
 import { resourceScope } from "../accounts/resource-scope.js";
 
 /** How long a connection may take to send its `register`. */
@@ -49,7 +51,11 @@ export class RunnerRegistry implements RunnerPool, OnApplicationShutdown {
     warn: (message) => this.logger.warn(message),
   };
 
-  constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {}
+  constructor(
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+    /** Tells who owns a runner that is not connected; without it only connected runners are known. */
+    @Optional() @Inject(RUNNER_REPOSITORY) private readonly repository?: RunnerRepository,
+  ) {}
 
   /**
    * Takes a connection that already proved who it is. The first frame it sends must be `register`;
@@ -89,11 +95,21 @@ export class RunnerRegistry implements RunnerPool, OnApplicationShutdown {
     channel.onClose(() => clearTimeout(timeout));
   }
 
-  /** The runner with the fewest agents among the connected ones; waits for one when none is. */
-  acquire(runnerId?: string): Promise<RunnerEndpoint> {
-    const organizationId = resourceScope.current().organizationId;
-    const ready = this.pick(organizationId, runnerId);
-    if (ready) return Promise.resolve(ready);
+  /**
+   * The runner that hosts a new agent, always inside the run's organization:
+   * - with `runnerId`: that runner, if it belongs to the organization or to whoever started the run
+   *   (someone else's personal runner is refused at once);
+   * - otherwise, the personal runners of whoever started the run (the least busy connected one),
+   *   then the organization's; a run nobody started (a trigger) never uses a personal runner.
+   * Waits for the first runner that fits to connect when none is.
+   * @throws RunnerNotAllowedError, NoRunnerAvailableError
+   */
+  async acquire(runnerId?: string): Promise<RunnerEndpoint> {
+    const { organizationId, userId } = resourceScope.current();
+    const starter = userId ?? null;
+    if (runnerId) await this.requireUsable(runnerId, organizationId, starter);
+    const ready = this.pick(organizationId, starter, runnerId);
+    if (ready) return ready;
 
     const waitMs = this.config.runners.waitMs;
     return new Promise((resolve, reject) => {
@@ -102,11 +118,7 @@ export class RunnerRegistry implements RunnerPool, OnApplicationShutdown {
         reject(new NoRunnerAvailableError(waitMs));
       }, waitMs);
       const stop = this.linkConnected.subscribe((link) => {
-        if (
-          (link.identity.organizationId ?? null) !== organizationId ||
-          (runnerId && link.identity.id !== runnerId)
-        )
-          return;
+        if (!this.fits(link, organizationId, starter, runnerId)) return;
         clearTimeout(timer);
         stop();
         resolve(link);
@@ -129,14 +141,57 @@ export class RunnerRegistry implements RunnerPool, OnApplicationShutdown {
     this.links.clear();
   }
 
-  private pick(organizationId: string | null, runnerId?: string): RunnerLink | undefined {
-    return this.connected()
-      .filter(
-        (link) =>
-          (link.identity.organizationId ?? null) === organizationId &&
-          (!runnerId || link.identity.id === runnerId),
-      )
-      .sort((a, b) => a.load - b.load)[0];
+  /** Cuts the connection of a runner whose token was revoked or replaced; its runner is told why. */
+  disconnect(runnerId: string): void {
+    this.links.get(runnerId)?.revoke("Token revogado.");
+  }
+
+  /** The runner a name or id points at may be used by this run, whether or not it is connected. */
+  private async requireUsable(
+    runnerId: string,
+    organizationId: string | null,
+    starter: string | null,
+  ): Promise<void> {
+    const connectedBefore = this.links.get(runnerId)?.identity;
+    // The id comes from the graph and may not be one the database knows (the embedded runner has none).
+    const stored =
+      !connectedBefore && z.uuid().safeParse(runnerId).success
+        ? await this.repository?.findById(runnerId)
+        : undefined;
+    const known = connectedBefore ?? stored;
+    if (!known || (known.organizationId ?? null) !== organizationId) return; // the wait decides
+    if (!isUsableBy(known.ownerUserId ?? null, starter)) throw new RunnerNotAllowedError();
+  }
+
+  /** Whether a runner may host an agent of a run of `organizationId` started by `starter`. */
+  private fits(
+    link: RunnerLink,
+    organizationId: string | null,
+    starter: string | null,
+    runnerId?: string,
+  ): boolean {
+    const { identity } = link;
+    if ((identity.organizationId ?? null) !== organizationId) return false;
+    if (runnerId)
+      return identity.id === runnerId && isUsableBy(identity.ownerUserId ?? null, starter);
+    const owner = identity.ownerUserId ?? null;
+    return owner === null || owner === starter;
+  }
+
+  private pick(
+    organizationId: string | null,
+    starter: string | null,
+    runnerId?: string,
+  ): RunnerLink | undefined {
+    const usable = this.connected().filter((link) =>
+      this.fits(link, organizationId, starter, runnerId),
+    );
+    const leastBusy = (links: RunnerLink[]) => links.sort((a, b) => a.load - b.load)[0];
+    if (runnerId || starter === null) return leastBusy(usable);
+    // The starter's own computers come first; the organization's are the fallback.
+    return (
+      leastBusy(usable.filter((link) => link.identity.ownerUserId === starter)) ?? leastBusy(usable)
+    );
   }
 
   private linkFor(identity: RunnerIdentity): RunnerLink {
@@ -148,3 +203,7 @@ export class RunnerRegistry implements RunnerPool, OnApplicationShutdown {
     return link;
   }
 }
+
+/** A personal runner serves only its owner's runs; one of the organization serves everyone's. */
+const isUsableBy = (owner: string | null, starter: string | null): boolean =>
+  owner === null || owner === starter;

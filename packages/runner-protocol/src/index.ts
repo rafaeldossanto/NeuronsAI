@@ -25,6 +25,7 @@ export {
   CLOSE_NOT_ACCEPTED,
   CLOSE_PROTOCOL,
   CLOSE_REPLACED,
+  CLOSE_TRY_AGAIN,
   CLOSE_UNAUTHORIZED,
   WireChannel,
   createMemoryChannelPair,

@@ -26,8 +26,14 @@ export async function createApp(
   });
   registerSlowRequestLog(adapter.getInstance());
   adapter.getInstance().addHook("onRoute", (route) => {
-    route.bodyLimit =
-      route.method === "POST" && route.url === "/memories" ? 30 * 1024 * 1024 : 1024 * 1024;
+    if (route.method === "POST" && route.url === "/memories") {
+      route.bodyLimit = 30 * 1024 * 1024;
+    } else if (route.method === "POST" && route.url === "/graphs/:id/agent-chats/:agentId/turns") {
+      // Room for a base64-encoded 5 MiB image and the text of the message.
+      route.bodyLimit = 8 * 1024 * 1024;
+    } else {
+      route.bodyLimit = 1024 * 1024;
+    }
   });
   // abortOnError: false makes a failure while booting (a data folder in use, say) reject instead of
   // exiting the process, so whoever embeds the server (the desktop app) can show it to the user.

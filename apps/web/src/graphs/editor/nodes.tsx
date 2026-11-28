@@ -29,6 +29,8 @@ export interface BlockData extends Record<string, unknown> {
   issues: string[];
   /** Present only in the run view. */
   live?: BlockLive | undefined;
+  receiving?: boolean;
+  compact?: boolean;
 }
 
 export type BlockNode = Node<BlockData>;
@@ -86,7 +88,7 @@ function describe(node: GraphNode): {
 }
 
 const Block = memo(function Block({ data, selected }: NodeProps<BlockNode>) {
-  const { node, issues, live } = data;
+  const { node, issues, live, receiving, compact } = data;
   const { icon: Icon, kindLabel, title, detail } = describe(node);
   const invalid = issues.length > 0;
   return (
@@ -94,6 +96,7 @@ const Block = memo(function Block({ data, selected }: NodeProps<BlockNode>) {
       data-testid={`block-${node.id}`}
       data-invalid={invalid || undefined}
       data-status={live?.status}
+      data-receiving={receiving || undefined}
       className={cn(
         "w-52 rounded-lg border bg-card px-3 py-2.5 shadow-sm",
         node.type === "trigger" && "rounded-full px-4",
@@ -102,6 +105,7 @@ const Block = memo(function Block({ data, selected }: NodeProps<BlockNode>) {
         live?.status === "busy" && "border-accent",
         live?.status === "failed" && "border-destructive",
         live?.status === "finished" && "opacity-70",
+        receiving && "chat-node-receiving relative",
       )}
     >
       {node.type !== "trigger" && (
@@ -136,7 +140,7 @@ const Block = memo(function Block({ data, selected }: NodeProps<BlockNode>) {
       {detail && node.type !== "trigger" && (
         <p className="mt-1.5 truncate text-xs text-muted-foreground">{detail}</p>
       )}
-      {live && <LiveBadge live={live} />}
+      {live && <LiveBadge live={live} compact={compact ?? false} />}
       {node.type !== "tool" && (
         <Handle type="source" position={Position.Right} aria-label="Saída" />
       )}
@@ -154,21 +158,26 @@ const DOT: Record<AgentLiveStatus, string> = {
 };
 
 /** Agent state and cost on the block. The amber dot breathes only while the agent works. */
-function LiveBadge({ live }: { live: BlockLive }) {
+function LiveBadge({ live, compact }: { live: BlockLive; compact: boolean }) {
   const working = live.status === "busy" || live.status === "waiting_reply";
   return (
     <div className="mt-2 flex items-center gap-1.5 border-t pt-1.5 text-xs">
       <span
         aria-hidden
-        className={cn("size-2 shrink-0 rounded-full", DOT[live.status])}
-        style={working ? { animation: "pulse-amber 1.4s ease-in-out infinite" } : undefined}
+        className={cn(
+          "size-2 shrink-0 rounded-full",
+          DOT[live.status],
+          working && "agent-live-working",
+        )}
       />
       <span className="font-bold">{agentStatusLabel[live.status]}</span>
-      <span className="ml-auto text-muted-foreground">
-        {live.costUsd === null
-          ? "custo desconhecido"
-          : `${live.costIsMinimum ? "≥ " : ""}${formatUsd(live.costUsd)}`}
-      </span>
+      {!compact && (
+        <span className="ml-auto text-muted-foreground">
+          {live.costUsd === null
+            ? "custo desconhecido"
+            : `${live.costIsMinimum ? "≥ " : ""}${formatUsd(live.costUsd)}`}
+        </span>
+      )}
     </div>
   );
 }

@@ -1,9 +1,11 @@
+import type { ChatMessageContext } from "@neurons/agent-runtimes";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   bigint,
   check,
   index,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -32,6 +34,8 @@ export const messages = pgTable(
       onDelete: "set null",
     }),
     body: text("body").notNull(),
+    /** Context and image for inbox delivery. Neither is part of the run event stream. */
+    chat: jsonb("chat").$type<ChatMessageContext>(),
     createdAt: createdAtColumn(),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     ackedAt: timestamp("acked_at", { withTimezone: true }),

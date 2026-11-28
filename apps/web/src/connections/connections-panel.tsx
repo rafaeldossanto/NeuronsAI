@@ -184,9 +184,9 @@ export function ConnectionsPanel({ onClose }: { onClose: () => void }) {
           </h3>
           <ChatgptConnection />
           <p className="mt-3 text-xs text-muted-foreground">
-            Usa o Codex CLI oficial, instalado com <code>npm i -g @openai/codex</code>. O login é
-            feito por ele (<code>codex login</code>, Sign in with ChatGPT): o NeuronsAI não lê nem
-            guarda suas credenciais.
+            Usa o Codex oficial, do app do Codex ou do CLI instalado com{" "}
+            <code>npm i -g @openai/codex</code>. O login é feito por ele (Sign in with ChatGPT): o
+            NeuronsAI não lê nem guarda suas credenciais.
           </p>
         </section>
         <section className="resource-card">

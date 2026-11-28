@@ -9,6 +9,27 @@ const graphFields = {
   updatedAt: timestampSchema,
 };
 
+export const graphAccessModeSchema = z.enum(["organization", "restricted"]);
+export const graphAccessLevelSchema = z.enum(["manage", "edit", "use", "view", "none"]);
+export const graphGrantLevelSchema = z.enum(["use", "edit"]);
+
+/** Who the caller is to a project: what they may do, and what they asked for (if anything). */
+export const graphAccessSummarySchema = z
+  .object({
+    level: graphAccessLevelSchema,
+    /** `pending`: waiting for the owner; `blocked`: the owner shut this person out and they cannot ask again. */
+    request: z.enum(["pending", "blocked"]).nullable(),
+    /** Requests waiting for a decision; only counted for who manages the project, 0 for the others. */
+    pendingRequests: z.number().int().min(0),
+  })
+  .meta({ id: "GraphAccessSummary" });
+
+const graphAccessFields = {
+  accessMode: graphAccessModeSchema,
+  owner: z.object({ id: z.uuid(), name: z.string() }).nullable(),
+  access: graphAccessSummarySchema,
+};
+
 /** A member's pending request to delete the project, waiting for an owner or admin. */
 export const graphDeletionRequestSchema = z
   .object({
@@ -18,13 +39,18 @@ export const graphDeletionRequestSchema = z
   .meta({ id: "GraphDeletionRequest" });
 
 export const graphSummarySchema = z
-  .object({ ...graphFields, deletionRequest: graphDeletionRequestSchema.nullable() })
+  .object({
+    ...graphFields,
+    ...graphAccessFields,
+    deletionRequest: graphDeletionRequestSchema.nullable(),
+  })
   .meta({ id: "GraphSummary" });
 
 export const graphSchema = z
   .object({
     ...graphFields,
-    /** The work in progress; it may not be a valid graph yet. */
+    ...graphAccessFields,
+    /** The work in progress; it may not be a valid graph yet. Null for who only uses the project. */
     draft: z.unknown(),
     /** Number of the latest published version; null while none was. */
     latestVersion: z.number().int().nullable(),
@@ -69,6 +95,51 @@ export const publishVersionBody = z.object({
   definition: graphDefinitionSchema.optional(),
 });
 
+const graphAccessUserSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  email: z.string().nullable(),
+  avatarUrl: z.string().optional(),
+});
+
+export const graphAccessEntrySchema = z
+  .object({
+    user: graphAccessUserSchema,
+    status: z.enum(["granted", "blocked", "requested"]),
+    /** Set when `granted`. */
+    level: graphGrantLevelSchema.nullable(),
+    requestedAt: timestampSchema.nullable(),
+    decidedAt: timestampSchema.nullable(),
+  })
+  .meta({ id: "GraphAccessEntry" });
+
+/** Who is in, who is out and who asked, for whoever manages the project. */
+export const graphAccessSchema = z
+  .object({
+    mode: graphAccessModeSchema,
+    owner: z.object({ id: z.uuid(), name: z.string() }).nullable(),
+    entries: z.array(graphAccessEntrySchema),
+  })
+  .meta({ id: "GraphAccess" });
+
+export const setGraphAccessModeBody = z.object({ mode: graphAccessModeSchema });
+
+export const setGraphAccessBody = z
+  .object({
+    status: z.enum(["granted", "blocked"]),
+    /** Required with `granted` (it also approves a request); ignored with `blocked`. */
+    level: graphGrantLevelSchema.optional(),
+  })
+  .refine((body) => body.status !== "granted" || body.level !== undefined, {
+    error: "Informe o nível (use ou edit) ao liberar o acesso.",
+  });
+
+export const graphAccessRequestSchema = z
+  .object({ requestedAt: timestampSchema })
+  .meta({ id: "GraphAccessRequest" });
+
+export const graphAccessUserParams = z.object({ id: z.uuid(), userId: z.uuid() });
+
 export const graphParams = idParamsSchema;
 export const graphVersionParams = z.object({
   id: z.uuid(),
@@ -79,4 +150,7 @@ export type CreateGraphBody = z.infer<typeof createGraphBody>;
 export type UpdateGraphBody = z.infer<typeof updateGraphBody>;
 export type PublishVersionBody = z.infer<typeof publishVersionBody>;
 export type GraphParams = z.infer<typeof graphParams>;
+export type SetGraphAccessModeBody = z.infer<typeof setGraphAccessModeBody>;
+export type SetGraphAccessBody = z.infer<typeof setGraphAccessBody>;
+export type GraphAccessUserParams = z.infer<typeof graphAccessUserParams>;
 export type GraphVersionParams = z.infer<typeof graphVersionParams>;
