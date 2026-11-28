@@ -391,7 +391,8 @@ describe("quem só usa o projeto", () => {
   it("abre a versão publicada só para leitura, sem o editor", async () => {
     renderAs("member", routes(1), base);
 
-    expect(await screen.findByRole("button", { name: "Executar" })).toBeEnabled();
+    const run = await screen.findByRole("button", { name: "Executar" });
+    await waitFor(() => expect(run).toBeEnabled());
     expect(await screen.findByRole("region", { name: "Canvas da execução" })).toBeInTheDocument();
     expect(screen.getByText(/O desenho é só para leitura/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Minhas execuções" })).toHaveAttribute("href", "/runs");
@@ -436,5 +437,64 @@ describe("quem só usa o projeto", () => {
       await screen.findByText("Este projeto ainda não tem versão publicada"),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Executar" })).not.toBeInTheDocument();
+  });
+
+  it("nos chats, fala com os agentes da versão publicada (o rascunho não chega até quem só usa)", async () => {
+    const mock = renderAs(
+      "member",
+      {
+        ...routes(1),
+        [`GET ${base}/agent-chats/a/turns`]: { body: { items: [], hasMore: false } },
+      },
+      `${base}?view=chats`,
+    );
+    const user = userEvent.setup();
+
+    expect(await screen.findByRole("heading", { name: "Pesquisador" })).toBeInTheDocument();
+    const message = screen.getByLabelText("Mensagem");
+    await user.type(message, "Oi");
+    expect(screen.getByRole("button", { name: "Enviar mensagem" })).toBeEnabled();
+    expect(called(mock, `GET ${base}/agent-chats/a/turns`).length).toBeGreaterThan(0);
+  });
+});
+
+describe("quem só pode ver o projeto", () => {
+  const definition = {
+    schemaVersion: 1,
+    id: graphId,
+    name: "Um agente",
+    nodes: [
+      {
+        id: "a",
+        type: "agent",
+        position: { x: 0, y: 0 },
+        name: "Pesquisador",
+        role: "r",
+        instructions: "i",
+        effort: "low",
+        runtime: { kind: "terminal", cli: "claude", mode: "pty", args: [], cwd: "/work" },
+      },
+    ],
+    links: [],
+    annotations: [],
+  };
+
+  it("lê os chats, mas não tem onde enviar mensagem", async () => {
+    renderAs(
+      "viewer",
+      {
+        [`GET ${base}`]: {
+          body: { ...project({ level: "view" }), draft: definition, latestVersion: null },
+        },
+        [`GET ${base}/versions`]: { body: { items: [] } },
+        [`GET ${base}/agent-chats/a/turns`]: { body: { items: [], hasMore: false } },
+      },
+      `${base}?view=chats`,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Pesquisador" })).toBeInTheDocument();
+    expect(await screen.findByText(/Você só pode ler este projeto/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Mensagem")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Enviar mensagem" })).not.toBeInTheDocument();
   });
 });

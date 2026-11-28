@@ -1208,6 +1208,50 @@ describe("acesso por projeto", () => {
     ).toBe(true);
   });
 
+  it("chat por agente: exige 'pode usar' para enviar e lista só os turnos que a pessoa alcança", async () => {
+    const dona = await member("dona");
+    const ana = await member("ana");
+    const beto = await member("beto");
+    const leitor = await member("leitor", "viewer");
+    const estranha = await member("estranha");
+    const draft = { ...buildTestGraph() };
+    const id = await restricted(dona, draft);
+    await publish(dona, id);
+    await grant(dona, id, ana, "use");
+    await grant(dona, id, beto, "use");
+    await grant(dona, id, leitor, "edit");
+    const alfa = `/graphs/${id}/agent-chats/agente-alfa/turns`;
+    const beta = `/graphs/${id}/agent-chats/agente-beta/turns`;
+    const turnsOf = async (who: Actor, url: string) =>
+      (await api(who, "GET", url)).json<{ items: { runId: string }[] }>().items.map((t) => t.runId);
+
+    // Quem não alcança o projeto não envia nem lê (como nas execuções: o projeto "não existe").
+    expect((await api(estranha, "POST", alfa, { body: "oi" })).statusCode).toBe(404);
+    expect((await api(estranha, "GET", alfa)).statusCode).toBe(404);
+    // O leitor liberado só vê: o papel já barra o envio, como barra o início de uma execução.
+    expect((await api(leitor, "POST", alfa, { body: "oi" })).statusCode).toBe(403);
+
+    const sent = await api(ana, "POST", alfa, { body: "oi" });
+    expect(sent.statusCode).toBe(201);
+    const anaTurn = sent.json<{ runId: string }>().runId;
+    const betoSent = await api(beto, "POST", beta, { body: "oi" });
+    expect(betoSent.statusCode).toBe(201);
+    const betoTurn = betoSent.json<{ runId: string }>().runId;
+
+    // Quem só usa lê só os próprios turnos, mesmo no chat do mesmo agente.
+    expect(await turnsOf(ana, alfa)).toEqual([anaTurn]);
+    expect(await turnsOf(beto, alfa)).toEqual([]);
+    expect(await turnsOf(beto, beta)).toEqual([betoTurn]);
+    expect(await turnsOf(dona, alfa)).toEqual([anaTurn]);
+    // O leitor de um projeto restrito fica nos próprios turnos (nenhum); aberto à organização, lê todos.
+    expect(await turnsOf(leitor, alfa)).toEqual([]);
+    // O turno é uma execução: os eventos seguem a regra delas (o WebSocket usa a mesma checagem).
+    expect((await api(beto, "GET", `/runs/${anaTurn}/events`)).statusCode).toBe(404);
+    expect((await api(ana, "GET", `/runs/${anaTurn}/events`)).statusCode).toBe(200);
+    await api(dona, "PUT", `/graphs/${id}/access/mode`, { mode: "organization" });
+    expect(await turnsOf(leitor, alfa)).toEqual([anaTurn]);
+  });
+
   it("'pode editar' edita e publica como um membro, mas não gerencia o acesso", async () => {
     const dona = await member("dona");
     const edita = await member("edita");

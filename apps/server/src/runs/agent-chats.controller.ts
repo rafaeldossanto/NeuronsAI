@@ -1,4 +1,6 @@
 import { Controller, Inject } from "@nestjs/common";
+import { canRunGraph } from "../accounts/graph-access.js";
+import { GraphAccessService } from "../accounts/graph-access.service.js";
 import { RequirePermission } from "../accounts/require-permission.js";
 import { Endpoint, ValidBody, ValidParams, ValidQuery } from "../api/endpoint.js";
 import {
@@ -16,7 +18,10 @@ import { AgentChatsService } from "./agent-chats.service.js";
 @RequirePermission("write")
 @Controller("graphs")
 export class AgentChatsController {
-  constructor(@Inject(AgentChatsService) private readonly chats: AgentChatsService) {}
+  constructor(
+    @Inject(AgentChatsService) private readonly chats: AgentChatsService,
+    @Inject(GraphAccessService) private readonly access: GraphAccessService,
+  ) {}
 
   @Endpoint({
     method: "get",
@@ -27,11 +32,13 @@ export class AgentChatsController {
     response: chatTurnListSchema,
     errors: [404],
   })
-  listAgentChatTurns(
+  async listAgentChatTurns(
     @ValidParams() { id, agentId }: AgentChatParams,
     @ValidQuery() query: AgentChatQuery,
   ) {
-    return this.chats.list(id, agentId, query);
+    // The turns are runs: the person reads the same ones they read in the run list.
+    const scope = await this.access.requireRunReach(id);
+    return this.chats.list(id, agentId, query, scope.reach === "own" ? scope.userId : undefined);
   }
 
   @Endpoint({
@@ -48,6 +55,8 @@ export class AgentChatsController {
     @ValidParams() { id, agentId }: AgentChatParams,
     @ValidBody() body: SendChatTurnBody,
   ) {
+    // Talking to an agent starts a run: it needs the same access as running the project.
+    await this.access.require(id, canRunGraph);
     const run = await this.chats.send(id, agentId, body);
     return { runId: run.id };
   }

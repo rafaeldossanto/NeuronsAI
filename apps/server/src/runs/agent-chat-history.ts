@@ -25,7 +25,13 @@ interface ChatEvent {
 export class AgentChatHistory {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
-  async list(graphId: string, agentId: string, { limit, offset }: AgentChatQuery) {
+  /** `onlyStartedBy` holds the list to the turns one person started (who only reaches their own runs). */
+  async list(
+    graphId: string,
+    agentId: string,
+    { limit, offset }: AgentChatQuery,
+    onlyStartedBy?: string,
+  ) {
     const db = this.database.db;
     const page = await db
       .select({ runId: runs.id, graphVersionId: runs.graphVersionId, status: runs.status })
@@ -37,6 +43,7 @@ export class AgentChatHistory {
           eq(graphs.id, graphId),
           resourceScope.matches(graphs.organizationId),
           eq(runs.chatAgentId, agentId),
+          onlyStartedBy === undefined ? undefined : eq(runs.startedByUserId, onlyStartedBy),
         ),
       )
       .orderBy(desc(runs.startedAt), desc(runs.id))

@@ -132,6 +132,22 @@ export class GraphAccessService {
   }
 
   /**
+   * Which runs of a project the person reads (see {@link runReach}), for the routes that list the
+   * runs of one project. `userId` is set when the reach is "own".
+   * @throws GraphNotFoundError when the person reaches none of them
+   */
+  async requireRunReach(
+    graphId: string,
+    user: ResourceScope = resourceScope.current(),
+  ): Promise<{ reach: "all" } | { reach: "own"; userId: string }> {
+    const { level, mode } = await this.resolve(graphId, user);
+    const reach = runReach(level, mode);
+    if (reach === "own" && user.userId) return { reach, userId: user.userId };
+    if (reach === "all") return { reach };
+    throw new GraphNotFoundError(graphId);
+  }
+
+  /**
    * A run is read by whoever reads the draft, or by the person who started it when they only use
    * the project; it is acted on (stop, talk to the agents, type in its terminals) by whoever edits,
    * or by the person who started it.

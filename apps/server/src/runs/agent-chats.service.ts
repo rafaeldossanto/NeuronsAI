@@ -25,9 +25,10 @@ export class AgentChatsService {
     @Inject(RunService) private readonly runs: RunService,
   ) {}
 
-  async list(graphId: string, agentId: string, query: AgentChatQuery) {
+  /** `onlyStartedBy`: the person reaches only the turns they started. */
+  async list(graphId: string, agentId: string, query: AgentChatQuery, onlyStartedBy?: string) {
     if (!(await this.graphs.findById(graphId))) throw new GraphNotFoundError(graphId);
-    return this.history.list(graphId, agentId, query);
+    return this.history.list(graphId, agentId, query, onlyStartedBy);
   }
 
   async send(graphId: string, agentId: string, input: SendChatTurnBody) {
