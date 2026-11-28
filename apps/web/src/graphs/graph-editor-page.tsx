@@ -1,6 +1,9 @@
 import { Link, useParams } from "react-router";
 import { EmptyState, ErrorState, LoadingRows } from "@/shared/states";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { useSession } from "@/accounts/auth/session-context";
+import { GraphAccessButton, managesAccess } from "@/graphs/access/access-controls";
+import { UseOnlyProject } from "@/graphs/access/use-only-project";
 import { GraphEditor } from "@/graphs/editor/graph-editor";
 import { formatDateTime } from "@/shared/format";
 import { useGraph, useGraphVersions } from "@/graphs/queries";
@@ -9,6 +12,7 @@ export function GraphEditorPage() {
   const { id = "" } = useParams();
   const graph = useGraph(id);
   const versions = useGraphVersions(id);
+  const { account } = useSession();
 
   if (graph.isPending) return <LoadingRows label="Carregando projeto" rows={4} />;
   if (graph.isError) return <ErrorState error={graph.error} onRetry={() => void graph.refetch()} />;
@@ -27,9 +31,16 @@ export function GraphEditorPage() {
           Criado em {formatDateTime(graph.data.createdAt)} · atualizado em{" "}
           {formatDateTime(graph.data.updatedAt)}
         </p>
+        {account !== null && managesAccess(graph.data) && (
+          <GraphAccessButton project={graph.data} />
+        )}
       </div>
 
-      <GraphEditor key={graph.data.id} graph={graph.data} />
+      {graph.data.access.level === "use" ? (
+        <UseOnlyProject key={graph.data.id} graph={graph.data} />
+      ) : (
+        <GraphEditor key={graph.data.id} graph={graph.data} />
+      )}
 
       <details className="project-versions">
         <summary>Versões e histórico do projeto</summary>

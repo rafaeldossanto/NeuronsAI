@@ -50,6 +50,10 @@ export const graphSummary = {
   name: "Revisão de código",
   createdAt: "2026-11-02T10:00:00.000Z",
   updatedAt: "2026-11-02T11:30:00.000Z",
+  // The account-free workspace holds nothing back: open to everyone, edited by the single user.
+  accessMode: "organization" as const,
+  owner: null,
+  access: { level: "edit" as const, request: null, pendingRequests: 0 },
 };
 
 export const graph = {
