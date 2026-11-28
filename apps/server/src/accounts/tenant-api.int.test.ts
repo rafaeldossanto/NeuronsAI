@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -81,10 +81,18 @@ async function api(
 ) {
   return app.inject({ method, url, headers: who.headers, ...(payload && { payload }) });
 }
+/**
+ * A project open to the whole organization, as every project was before per-project access: the
+ * tests of roles and organizations are not about who a project is shared with. (The application
+ * creates them restricted; see "acesso por projeto" below.)
+ */
 async function graph(who: Actor, name = "Projeto") {
   const created = await api(who, "POST", "/graphs", { name });
   expect(created.statusCode).toBe(201);
-  return created.json<{ id: string }>().id;
+  const id = created.json<{ id: string }>().id;
+  const opened = await api(who, "PUT", `/graphs/${id}/access/mode`, { mode: "organization" });
+  expect(opened.statusCode).toBe(200);
+  return id;
 }
 async function publish(who: Actor, id: string, extra: object = {}) {
   const response = await api(who, "POST", `/graphs/${id}/versions`, {
@@ -1011,5 +1019,465 @@ describe("exclusão de projeto: só proprietário e administrador, os demais ped
     expect((await api(bob, "GET", "/graphs")).json<{ items: unknown[] }>().items).toEqual([]);
     expect(await pendingOf(alice, id)).toBeTruthy();
     expect((await api(alice, "GET", `/graphs/${id}`)).statusCode).toBe(200);
+  });
+});
+
+describe("acesso por projeto", () => {
+  interface ListedGraph {
+    id: string;
+    name: string;
+    accessMode: string;
+    owner: { id: string; name: string } | null;
+    access: { level: string; request: string | null; pendingRequests: number };
+  }
+  interface AccessDetails {
+    mode: string;
+    owner: { id: string } | null;
+    entries: {
+      user: { id: string };
+      status: string;
+      level: string | null;
+    }[];
+  }
+
+  /** A new person in alice's organization (she is its owner). */
+  const member = async (name: string, role: "member" | "viewer" | "admin" = "member") => {
+    const person = await actor(`${name}-${sequence}`);
+    await accounts.setMember(alice.userId, alice.organizationId, person.userId, role);
+    return asActor(
+      await sessions.issue(person.userId, alice.organizationId),
+      person.userId,
+      alice.organizationId,
+    );
+  };
+  /** The way the application creates them: restricted, owned by who created it. */
+  async function restricted(who: Actor, draft: unknown = { nodes: ["rascunho"] }) {
+    const created = await api(who, "POST", "/graphs", { name: "Projeto restrito", draft });
+    expect(created.statusCode).toBe(201);
+    return created.json<{ id: string }>().id;
+  }
+  const grant = (who: Actor, id: string, target: Actor, level: "use" | "edit") =>
+    api(who, "PUT", `/graphs/${id}/access/${target.userId}`, { status: "granted", level });
+  const listed = async (who: Actor, id: string) =>
+    (await api(who, "GET", "/graphs"))
+      .json<{ items: ListedGraph[] }>()
+      .items.find((item) => item.id === id)!;
+  const runIdsOf = async (who: Actor) =>
+    (await api(who, "GET", "/runs")).json<{ items: { id: string }[] }>().items.map((r) => r.id);
+
+  it("o projeto novo nasce restrito, com o dono, e quem não tem acesso o vê só com nome e metadados", async () => {
+    const dona = await member("dona");
+    const outsider = await member("fora");
+    const id = await restricted(dona);
+
+    expect(await listed(dona, id)).toMatchObject({
+      accessMode: "restricted",
+      owner: { id: dona.userId },
+      access: { level: "manage" },
+    });
+    const seen = await listed(outsider, id);
+    expect(seen).toMatchObject({
+      name: "Projeto restrito",
+      accessMode: "restricted",
+      owner: { id: dona.userId },
+      access: { level: "none", request: null, pendingRequests: 0 },
+    });
+    expect(seen).not.toHaveProperty("draft");
+
+    await publish(dona, id);
+    const probes: [Parameters<typeof api>[1], string, object?][] = [
+      ["GET", `/graphs/${id}`],
+      ["PATCH", `/graphs/${id}`, { name: "x" }],
+      ["GET", `/graphs/${id}/versions`],
+      ["GET", `/graphs/${id}/versions/1`],
+      ["POST", `/graphs/${id}/versions`, {}],
+      ["GET", `/graphs/${id}/access`],
+      ["PUT", `/graphs/${id}/access/mode`, { mode: "organization" }],
+      ["GET", `/graphs/${id}/triggers/gatilho`],
+      ["PUT", `/graphs/${id}/triggers/gatilho/enabled`, { enabled: true }],
+      ["POST", `/graphs/${id}/deletion-request`],
+    ];
+    for (const [method, url, body] of probes) {
+      const reply = await api(outsider, method, url, body);
+      expect([method, url, reply.statusCode]).toEqual([method, url, 404]);
+    }
+    expect((await api(dona, "GET", `/graphs/${id}`)).statusCode).toBe(200);
+  });
+
+  it("owners e administradores da organização acessam tudo, e o dono edita e gerencia", async () => {
+    const dona = await member("dona");
+    const admin = await member("adm", "admin");
+    const id = await restricted(dona);
+    await publish(dona, id);
+
+    expect(await listed(alice, id)).toMatchObject({ access: { level: "manage" } });
+    expect(await listed(admin, id)).toMatchObject({ access: { level: "manage" } });
+    for (const who of [alice, admin, dona]) {
+      expect((await api(who, "GET", `/graphs/${id}`)).statusCode).toBe(200);
+      expect((await api(who, "PATCH", `/graphs/${id}`, { name: "Renomeado" })).statusCode).toBe(
+        200,
+      );
+      expect((await api(who, "GET", `/graphs/${id}/access`)).statusCode).toBe(200);
+    }
+    expect((await api(alice, "GET", `/graphs/${id}/access`)).json<AccessDetails>()).toMatchObject({
+      mode: "restricted",
+      owner: { id: dona.userId },
+    });
+  });
+
+  it("'pode usar' abre a versão publicada sem rascunho, roda e vê só as próprias execuções (REST e WebSocket)", async () => {
+    const dona = await member("dona");
+    const ana = await member("ana");
+    const beto = await member("beto");
+    const id = await restricted(dona);
+    const version = await publish(dona, id);
+    expect((await grant(dona, id, ana, "use")).statusCode).toBe(200);
+    expect((await grant(dona, id, beto, "use")).statusCode).toBe(200);
+
+    const opened = await api(ana, "GET", `/graphs/${id}`);
+    expect(opened.statusCode).toBe(200);
+    expect(opened.json()).toMatchObject({
+      draft: null,
+      latestVersion: 1,
+      access: { level: "use" },
+    });
+    expect((await api(ana, "GET", `/graphs/${id}/versions`)).statusCode).toBe(200);
+    expect((await api(ana, "GET", `/graphs/${id}/versions/1`)).statusCode).toBe(200);
+    // Nothing that changes the project, its triggers or its access.
+    expect((await api(ana, "PATCH", `/graphs/${id}`, { name: "x" })).statusCode).toBe(404);
+    expect((await api(ana, "POST", `/graphs/${id}/versions`, {})).statusCode).toBe(404);
+    expect((await api(ana, "GET", `/graphs/${id}/triggers/gatilho`)).statusCode).toBe(404);
+    expect(
+      (await api(ana, "PUT", `/graphs/${id}/triggers/gatilho/enabled`, { enabled: true }))
+        .statusCode,
+    ).toBe(404);
+    expect((await api(ana, "GET", `/graphs/${id}/access`)).statusCode).toBe(404);
+
+    const anaRun = await run(ana, version);
+    const betoRun = await run(beto, version);
+    expect(await runIdsOf(ana)).toEqual([anaRun]);
+    expect(await runIdsOf(beto)).toEqual([betoRun]);
+    expect((await runIdsOf(dona)).sort()).toEqual([anaRun, betoRun].sort());
+    expect((await api(ana, "GET", `/runs?graphId=${id}`)).json<{ total: number }>().total).toBe(1);
+
+    for (const [method, url] of [
+      ["GET", `/runs/${betoRun}`],
+      ["GET", `/runs/${betoRun}/events`],
+      ["GET", `/runs/${betoRun}/messages`],
+      ["POST", `/runs/${betoRun}/stop`],
+    ] as const) {
+      expect([url, (await api(ana, method, url)).statusCode]).toEqual([url, 404]);
+    }
+    expect(
+      (await api(ana, "POST", `/runs/${betoRun}/messages`, { to: "Alfa", body: "oi" })).statusCode,
+    ).toBe(404);
+    expect((await api(ana, "GET", `/runs/${anaRun}`)).statusCode).toBe(200);
+    expect((await api(ana, "GET", `/runs/${anaRun}/events`)).statusCode).toBe(200);
+    expect((await api(dona, "GET", `/runs/${betoRun}`)).statusCode).toBe(200);
+
+    await app.listen(0, "127.0.0.1");
+    const port = (app.getHttpServer().address() as AddressInfo).port;
+    const connect = async (who: Actor) => {
+      const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: who.headers });
+      sockets.push(socket);
+      const frames: { event: string; data: unknown }[] = [];
+      socket.on("message", (value) =>
+        frames.push(JSON.parse((value as Buffer).toString()) as { event: string; data: unknown }),
+      );
+      await new Promise<void>((resolve) => socket.once("open", resolve));
+      return { socket, frames };
+    };
+    const colleague = await connect(ana);
+    colleague.socket.send(
+      JSON.stringify({ event: "subscribe", data: { runId: betoRun, fromSeq: 1 } }),
+    );
+    await eventually(() =>
+      expect(colleague.frames.some((frame) => frame.event === "error")).toBe(true),
+    );
+    expect(colleague.frames.some((frame) => frame.event === "run.event")).toBe(false);
+    colleague.socket.send(
+      JSON.stringify({ event: "subscribe", data: { runId: anaRun, fromSeq: 1 } }),
+    );
+    await eventually(() =>
+      expect(colleague.frames.some((frame) => frame.event === "run.event")).toBe(true),
+    );
+    expect(
+      colleague.frames
+        .filter((frame) => frame.event === "run.event")
+        .every((frame) => (frame.data as { runId: string }).runId === anaRun),
+    ).toBe(true);
+  });
+
+  it("'pode editar' edita e publica como um membro, mas não gerencia o acesso", async () => {
+    const dona = await member("dona");
+    const edita = await member("edita");
+    const id = await restricted(dona);
+    await grant(dona, id, edita, "edit");
+
+    expect(await listed(edita, id)).toMatchObject({ access: { level: "edit" } });
+    expect((await api(edita, "GET", `/graphs/${id}`)).json()).toMatchObject({
+      draft: { nodes: ["rascunho"] },
+    });
+    expect((await api(edita, "PATCH", `/graphs/${id}`, { name: "Novo" })).statusCode).toBe(200);
+    const version = await publish(edita, id);
+    expect((await api(edita, "GET", `/graphs/${id}/triggers/gatilho`)).statusCode).toBe(200);
+    const started = await run(edita, version);
+    expect((await api(dona, "GET", `/runs/${started}`)).statusCode).toBe(200);
+    expect((await api(edita, "GET", `/graphs/${id}/access`)).statusCode).toBe(404);
+    expect((await grant(edita, id, alice, "use")).statusCode).toBe(404);
+  });
+
+  it("o papel é o teto: leitor liberado só vê, sem rodar, e não vê as execuções dos outros", async () => {
+    const dona = await member("dona");
+    const leitor = await member("leitor", "viewer");
+    const id = await restricted(dona);
+    const version = await publish(dona, id);
+    const donaRun = await run(dona, version);
+    expect((await api(leitor, "GET", `/graphs/${id}`)).statusCode).toBe(404);
+    expect((await grant(dona, id, leitor, "edit")).statusCode).toBe(200);
+
+    expect(await listed(leitor, id)).toMatchObject({ access: { level: "view" } });
+    expect((await api(leitor, "GET", `/graphs/${id}`)).statusCode).toBe(200);
+    expect(
+      (await api(leitor, "POST", "/runs", { graphVersionId: version, input: "oi" })).statusCode,
+    ).toBe(403);
+    expect((await api(leitor, "PATCH", `/graphs/${id}`, { name: "x" })).statusCode).toBe(403);
+
+    // The runs carry what other people typed: in a restricted project a viewer only reaches their own
+    // (and a viewer starts none), over REST and over the WebSocket.
+    expect(await runIdsOf(leitor)).toEqual([]);
+    for (const url of [
+      `/runs/${donaRun}`,
+      `/runs/${donaRun}/events`,
+      `/runs/${donaRun}/messages`,
+    ]) {
+      expect([url, (await api(leitor, "GET", url)).statusCode]).toEqual([url, 404]);
+    }
+    await app.listen(0, "127.0.0.1");
+    const port = (app.getHttpServer().address() as AddressInfo).port;
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: leitor.headers });
+    sockets.push(socket);
+    const frames: { event: string }[] = [];
+    socket.on("message", (value) =>
+      frames.push(JSON.parse((value as Buffer).toString()) as { event: string }),
+    );
+    await new Promise<void>((resolve) => socket.once("open", resolve));
+    socket.send(JSON.stringify({ event: "subscribe", data: { runId: donaRun, fromSeq: 1 } }));
+    await eventually(() => expect(frames.some((frame) => frame.event === "error")).toBe(true));
+    expect(frames.some((frame) => frame.event === "run.event")).toBe(false);
+
+    // Open to the organization, the viewer reads every run, as before.
+    await api(dona, "PUT", `/graphs/${id}/access/mode`, { mode: "organization" });
+    expect(await runIdsOf(leitor)).toEqual([donaRun]);
+    expect((await api(leitor, "GET", `/runs/${donaRun}`)).statusCode).toBe(200);
+  });
+
+  it("aberto à organização: cada membro com o acesso do seu papel; restrito de novo, só os liberados", async () => {
+    const dona = await member("dona");
+    const colega = await member("colega");
+    const leitor = await member("leitor", "viewer");
+    const id = await restricted(dona);
+    await publish(dona, id);
+    expect((await listed(colega, id)).access.level).toBe("none");
+
+    const opened = await api(dona, "PUT", `/graphs/${id}/access/mode`, { mode: "organization" });
+    expect(opened.statusCode).toBe(200);
+    expect(opened.json<AccessDetails>().mode).toBe("organization");
+    expect((await listed(colega, id)).access.level).toBe("edit");
+    expect((await listed(leitor, id)).access.level).toBe("view");
+    expect((await api(colega, "PATCH", `/graphs/${id}`, { name: "Aberto" })).statusCode).toBe(200);
+
+    await api(dona, "PUT", `/graphs/${id}/access/mode`, { mode: "restricted" });
+    expect((await listed(colega, id)).access.level).toBe("none");
+    expect((await listed(leitor, id)).access.level).toBe("none");
+  });
+
+  it("os projetos que já existiam ficam abertos à organização", async () => {
+    const colega = await member("colega");
+    const old = await graph(alice);
+    await db.database.db.execute(
+      sql`update graphs set owner_user_id = null, access_mode = 'organization' where id = ${old}`,
+    );
+    expect(await listed(colega, old)).toMatchObject({
+      accessMode: "organization",
+      owner: null,
+      access: { level: "edit" },
+    });
+  });
+
+  it("bloqueado fica sem acesso, mesmo no projeto aberto, e não pode pedir de novo", async () => {
+    const dona = await member("dona");
+    const colega = await member("colega");
+    const id = await restricted(dona);
+    await api(dona, "PUT", `/graphs/${id}/access/mode`, { mode: "organization" });
+
+    const blocked = await api(dona, "PUT", `/graphs/${id}/access/${colega.userId}`, {
+      status: "blocked",
+    });
+    expect(blocked.statusCode).toBe(200);
+    expect(await listed(colega, id)).toMatchObject({
+      access: { level: "none", request: "blocked" },
+    });
+    expect((await api(colega, "GET", `/graphs/${id}`)).statusCode).toBe(404);
+    const again = await api(colega, "POST", `/graphs/${id}/access-request`);
+    expect(again.statusCode).toBe(403);
+    expect(again.json()).toMatchObject({ code: "graph_access_blocked" });
+
+    expect((await api(dona, "DELETE", `/graphs/${id}/access/${colega.userId}`)).statusCode).toBe(
+      204,
+    );
+    expect((await listed(colega, id)).access.level).toBe("edit");
+  });
+
+  it("não bloqueia nem libera quem já tem acesso total, nem quem não é da organização", async () => {
+    const dona = await member("dona");
+    const id = await restricted(dona);
+    for (const target of [alice, dona]) {
+      const reply = await api(dona, "PUT", `/graphs/${id}/access/${target.userId}`, {
+        status: "blocked",
+      });
+      expect(reply.statusCode).toBe(409);
+      expect(reply.json()).toMatchObject({ code: "graph_access_protected" });
+    }
+    expect((await grant(dona, id, alice, "use")).statusCode).toBe(409);
+    const stranger = await api(dona, "PUT", `/graphs/${id}/access/${bob.userId}`, {
+      status: "blocked",
+    });
+    expect(stranger.statusCode).toBe(404);
+    expect(stranger.json()).toMatchObject({ code: "graph_access_member_not_found" });
+    const missingLevel = await api(dona, "PUT", `/graphs/${id}/access/${alice.userId}`, {
+      status: "granted",
+    });
+    expect(missingLevel.statusCode).toBe(400);
+  });
+
+  it("pedido de acesso: um por pessoa, o dono vê o contador, aprova com o nível e quem tem acesso não pede", async () => {
+    const dona = await member("dona");
+    const pessoa = await member("pessoa");
+    const id = await restricted(dona);
+
+    const asked = await api(pessoa, "POST", `/graphs/${id}/access-request`);
+    expect(asked.statusCode).toBe(201);
+    const duplicate = await api(pessoa, "POST", `/graphs/${id}/access-request`);
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json()).toMatchObject({ code: "graph_access_request_pending" });
+    expect(await listed(pessoa, id)).toMatchObject({
+      access: { level: "none", request: "pending", pendingRequests: 0 },
+    });
+    expect((await listed(dona, id)).access.pendingRequests).toBe(1);
+    expect((await listed(alice, id)).access.pendingRequests).toBe(1);
+
+    const details = (await api(dona, "GET", `/graphs/${id}/access`)).json<AccessDetails>();
+    expect(details.entries).toMatchObject([
+      { user: { id: pessoa.userId }, status: "requested", level: null },
+    ]);
+
+    const approved = await grant(dona, id, pessoa, "use");
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json<AccessDetails>().entries).toMatchObject([
+      { user: { id: pessoa.userId }, status: "granted", level: "use" },
+    ]);
+    expect(await listed(pessoa, id)).toMatchObject({ access: { level: "use", request: null } });
+    expect((await listed(dona, id)).access.pendingRequests).toBe(0);
+    const already = await api(pessoa, "POST", `/graphs/${id}/access-request`);
+    expect(already.statusCode).toBe(409);
+    expect(already.json()).toMatchObject({ code: "graph_access_already_granted" });
+  });
+
+  it("quem pediu cancela o pedido; recusar apaga o pedido e a pessoa pode pedir de novo", async () => {
+    const dona = await member("dona");
+    const pessoa = await member("pessoa");
+    const id = await restricted(dona);
+    const url = `/graphs/${id}/access-request`;
+
+    expect((await api(pessoa, "DELETE", url)).statusCode).toBe(404);
+    await api(pessoa, "POST", url);
+    expect((await api(pessoa, "DELETE", url)).statusCode).toBe(204);
+    expect((await listed(dona, id)).access.pendingRequests).toBe(0);
+
+    await api(pessoa, "POST", url);
+    expect((await api(dona, "DELETE", `/graphs/${id}/access/${pessoa.userId}`)).statusCode).toBe(
+      204,
+    );
+    expect((await listed(pessoa, id)).access.request).toBeNull();
+    expect((await api(pessoa, "POST", url)).statusCode).toBe(201);
+    // Nobody but who asked cancels it through this route.
+    expect((await api(dona, "DELETE", url)).statusCode).toBe(404);
+    expect((await api(pessoa, "POST", `/graphs/${randomUUID()}/access-request`)).statusCode).toBe(
+      404,
+    );
+  });
+
+  it("quem sai da organização perde liberações, bloqueios e pedidos", async () => {
+    const dona = await member("dona");
+    const pessoa = await member("pessoa");
+    const pedinte = await member("pedinte");
+    const id = await restricted(dona);
+    await grant(dona, id, pessoa, "edit");
+    await api(pedinte, "POST", `/graphs/${id}/access-request`);
+    const rowsOfPeople = async () =>
+      rowsOf<{ total: number }>(
+        await db.database.db.execute(
+          sql`select count(*)::int as total from graph_access where graph_id = ${id}`,
+        ),
+      )[0]!.total;
+    expect(await rowsOfPeople()).toBe(2);
+
+    await accounts.setMember(alice.userId, alice.organizationId, pessoa.userId, null);
+    await accounts.setMember(alice.userId, alice.organizationId, pedinte.userId, null);
+    expect(await rowsOfPeople()).toBe(0);
+    // Back in the organization, they start from the mode of the project.
+    await accounts.setMember(alice.userId, alice.organizationId, pessoa.userId, "member");
+    const back = asActor(
+      await sessions.issue(pessoa.userId, alice.organizationId),
+      pessoa.userId,
+      alice.organizationId,
+    );
+    expect((await listed(back, id)).access.level).toBe("none");
+  });
+
+  it("o gatilho continua disparando num projeto restrito, e a execução dele só aparece a quem edita", async () => {
+    const dona = await member("dona");
+    const usa = await member("usa");
+    const id = await restricted(dona);
+    const fixture = buildTestGraph();
+    await publish(dona, id, {
+      nodes: fixture.nodes.map((node) =>
+        node.type === "trigger" ? { ...node, kind: "webhook" } : node,
+      ),
+    });
+    await grant(dona, id, usa, "use");
+    // Rotating the secret asks for credential management, which only owners and admins have.
+    const secretReply = await api(alice, "POST", `/graphs/${id}/triggers/gatilho/secret`);
+    expect(secretReply.statusCode).toBe(201);
+    const data = secretReply.json<{ secret: string; state: { hookPath: string } }>();
+    expect(
+      (await api(alice, "PUT", `/graphs/${id}/triggers/gatilho/enabled`, { enabled: true }))
+        .statusCode,
+    ).toBe(200);
+    const timestamp = String(Math.floor(Date.now() / 1000)),
+      body = "evento";
+    const signature = createHmac("sha256", data.secret)
+      .update(`${timestamp}.${body}`)
+      .digest("hex");
+    const response = await fetch(
+      `http://127.0.0.1:${app.get(HooksServer).port}${data.state.hookPath}`,
+      {
+        method: "POST",
+        body,
+        headers: {
+          "content-type": "text/plain",
+          "x-neurons-timestamp": timestamp,
+          "x-neurons-signature": `sha256=${signature}`,
+        },
+      },
+    );
+    expect(response.status).toBe(202);
+    const started = (await response.json()) as { runId: string };
+    expect((await api(dona, "GET", `/runs/${started.runId}`)).statusCode).toBe(200);
+    expect((await api(alice, "GET", `/runs/${started.runId}`)).statusCode).toBe(200);
+    // A trigger has no user: who only uses the project never sees what it started.
+    expect((await api(usa, "GET", `/runs/${started.runId}`)).statusCode).toBe(404);
+    expect(await runIdsOf(usa)).toEqual([]);
   });
 });

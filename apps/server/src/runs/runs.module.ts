@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AccountsModule } from "../accounts/accounts.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { GraphsModule } from "../graphs/graphs.module.js";
 import { GuardsModule } from "../guards/guards.module.js";
@@ -15,7 +16,15 @@ import { RUN_SERVICE_OPTIONS, RunService, type RunServiceOptions } from "./run.s
 import { RunsController } from "./runs.controller.js";
 
 @Module({
-  imports: [HubModule, GuardsModule, RunLogModule, RealtimeModule, GraphsModule, DatabaseModule],
+  imports: [
+    HubModule,
+    GuardsModule,
+    RunLogModule,
+    RealtimeModule,
+    GraphsModule,
+    DatabaseModule,
+    AccountsModule,
+  ],
   controllers: [RunsController, AgentChatsController],
   providers: [
     AgentChatHistory,

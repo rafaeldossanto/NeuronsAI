@@ -79,6 +79,10 @@ describe("graphs", () => {
       name: "Meu grafo",
       draft: { nodes: [] },
       latestVersion: null,
+      // The account-free workspace has no owner and no restriction: nothing is held back.
+      accessMode: "organization",
+      owner: null,
+      access: { level: "edit", request: null, pendingRequests: 0 },
     });
     const id = created.body.id as string;
 
@@ -744,6 +748,10 @@ describe("OpenAPI document", () => {
       "/connections/claude/login",
       "/graphs",
       "/graphs/{id}",
+      "/graphs/{id}/access",
+      "/graphs/{id}/access-request",
+      "/graphs/{id}/access/mode",
+      "/graphs/{id}/access/{userId}",
       "/graphs/{id}/agent-chats/{agentId}/turns",
       "/graphs/{id}/deletion-request",
       "/graphs/{id}/deletion-request/approve",

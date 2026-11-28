@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, desc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import { DatabaseService, type DatabaseTransaction } from "../database/database.service.js";
 import { graphVersions, graphs, runEvents, runs } from "../database/schema/index.js";
 import { appendEvents } from "./drizzle-event-writer.js";
@@ -15,6 +15,7 @@ import type {
   RunListFilter,
   RunListItem,
   RunListPage,
+  RunListVisibility,
   RunRecord,
   RunRepository,
   RunSummaryRecord,
@@ -54,6 +55,20 @@ async function assertChatAvailable(tx: DatabaseTransaction, versionId: string, a
     )
     .limit(1);
   if (active) throw new AgentChatBusyError();
+}
+
+/** The runs a person reads: all of some projects, their own in the others, nothing elsewhere. */
+function visibleRuns(visibility: RunListVisibility): SQL {
+  const full =
+    visibility.full.length > 0 ? inArray(graphVersions.graphId, [...visibility.full]) : undefined;
+  const own =
+    visibility.own.length > 0
+      ? and(
+          inArray(graphVersions.graphId, [...visibility.own]),
+          eq(runs.startedByUserId, visibility.userId),
+        )
+      : undefined;
+  return or(full, own) ?? sql`false`;
 }
 
 const toRunRecord = (row: typeof runs.$inferSelect): RunRecord => ({
@@ -193,6 +208,7 @@ export class DrizzleRunRepository implements RunRepository {
     const cost = costDecides ? sql<string>`coalesce(${usage.known}, 0)` : sql<string>`0`;
 
     const conditions: SQL[] = [resourceScope.matches(graphs.organizationId)];
+    if (filter.visibility) conditions.push(visibleRuns(filter.visibility));
     if (filter.status) conditions.push(eq(runs.status, filter.status));
     if (filter.graphId) conditions.push(eq(graphVersions.graphId, filter.graphId));
     if (filter.graphVersionId) conditions.push(eq(runs.graphVersionId, filter.graphVersionId));

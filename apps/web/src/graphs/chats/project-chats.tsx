@@ -25,10 +25,13 @@ export function ProjectChats({
   graphId,
   doc,
   agentId,
+  canSend = true,
 }: {
   graphId: string;
   doc: GraphDefinition;
   agentId?: string | undefined;
+  /** Who may only look at the project (no `use`) reads the conversations but cannot send. */
+  canSend?: boolean;
 }) {
   const agents = doc.nodes.filter((node): node is AgentNode => node.type === "agent");
   const agent = agentId ? agents.find((item) => item.id === agentId) : agents[0];
@@ -78,6 +81,7 @@ export function ProjectChats({
           graphId={graphId}
           agent={agent}
           doc={doc}
+          canSend={canSend}
           graphOpen={graphOpen}
           graphPanelId={graphPanelId}
           toggleGraph={toggleGraph}
@@ -102,6 +106,7 @@ function AgentChat({
   graphId,
   agent,
   doc,
+  canSend: mayRun,
   graphOpen,
   graphPanelId,
   toggleGraph,
@@ -109,6 +114,7 @@ function AgentChat({
   graphId: string;
   agent: AgentNode;
   doc: GraphDefinition;
+  canSend: boolean;
   graphOpen: boolean;
   graphPanelId: string;
   toggleGraph: () => void;
@@ -152,7 +158,8 @@ function AgentChat({
         )
         .join("\n")
     : "";
-  const canSend = !sending && !working && !history.isPending && Boolean(body.trim() || image);
+  const canSend =
+    mayRun && !sending && !working && !history.isPending && Boolean(body.trim() || image);
 
   useEffect(() => {
     if (follow.current && transcript.current) {
@@ -297,85 +304,92 @@ function AgentChat({
           </div>
         </div>
 
-        <form className="project-chat-form" onSubmit={submit}>
-          {send.error && (
-            <p role="alert" className="text-sm text-destructive">
-              {send.error.message}{" "}
-              {publishRequired && (
-                <Link to={flowPath(graphId, agent.id)} className="underline">
-                  Abrir editor do fluxo
-                </Link>
-              )}
-            </p>
-          )}
-          {imageError && (
-            <p role="alert" className="text-sm text-destructive">
-              {imageError}
-            </p>
-          )}
-          {image && (
-            <div className="project-chat-file">
-              <span className="truncate">{image.file.name}</span>
-              <Button
-                variant="ghost"
-                type="button"
-                size="icon"
-                aria-label="Remover imagem"
-                onClick={() => setImage(null)}
-                disabled={sending}
+        {!mayRun && (
+          <p className="project-chat-form text-sm text-muted-foreground">
+            Você só pode ler este projeto: enviar mensagens aos agentes exige poder usá-lo.
+          </p>
+        )}
+        {mayRun && (
+          <form className="project-chat-form" onSubmit={submit}>
+            {send.error && (
+              <p role="alert" className="text-sm text-destructive">
+                {send.error.message}{" "}
+                {publishRequired && (
+                  <Link to={flowPath(graphId, agent.id)} className="underline">
+                    Abrir editor do fluxo
+                  </Link>
+                )}
+              </p>
+            )}
+            {imageError && (
+              <p role="alert" className="text-sm text-destructive">
+                {imageError}
+              </p>
+            )}
+            {image && (
+              <div className="project-chat-file">
+                <span className="truncate">{image.file.name}</span>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  size="icon"
+                  aria-label="Remover imagem"
+                  onClick={() => setImage(null)}
+                  disabled={sending}
+                >
+                  <X className="size-4" aria-hidden />
+                </Button>
+              </div>
+            )}
+            <div className="project-chat-composer">
+              <input
+                type="file"
+                accept="image/png,image/jpeg"
+                aria-label="Selecionar imagem"
+                ref={inputRef}
+                hidden
+                disabled={!supportsImage || sending}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  if (file && supportsImage) selectImage(file);
+                  event.currentTarget.value = "";
+                }}
+              />
+              <span
+                title={supportsImage ? "Anexar imagem" : "Imagens disponíveis para agentes de API"}
               >
-                <X className="size-4" aria-hidden />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  type="button"
+                  aria-label="Anexar imagem"
+                  disabled={!supportsImage || sending}
+                  onClick={() => inputRef.current?.click()}
+                >
+                  <Paperclip className="size-4" aria-hidden />
+                </Button>
+              </span>
+              <textarea
+                rows={1}
+                maxLength={100_000}
+                aria-label="Mensagem"
+                placeholder="Escreva uma mensagem"
+                value={body}
+                disabled={sending}
+                onChange={(event) => setBody(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
+              />
+              <Button type="submit" size="icon" aria-label="Enviar mensagem" disabled={!canSend}>
+                <ArrowUp className="size-4" aria-hidden />
               </Button>
             </div>
-          )}
-          <div className="project-chat-composer">
-            <input
-              type="file"
-              accept="image/png,image/jpeg"
-              aria-label="Selecionar imagem"
-              ref={inputRef}
-              hidden
-              disabled={!supportsImage || sending}
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (file && supportsImage) selectImage(file);
-                event.currentTarget.value = "";
-              }}
-            />
-            <span
-              title={supportsImage ? "Anexar imagem" : "Imagens disponíveis para agentes de API"}
-            >
-              <Button
-                variant="ghost"
-                size="icon"
-                type="button"
-                aria-label="Anexar imagem"
-                disabled={!supportsImage || sending}
-                onClick={() => inputRef.current?.click()}
-              >
-                <Paperclip className="size-4" aria-hidden />
-              </Button>
-            </span>
-            <textarea
-              rows={1}
-              maxLength={100_000}
-              aria-label="Mensagem"
-              placeholder="Escreva uma mensagem"
-              value={body}
-              disabled={sending}
-              onChange={(event) => setBody(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                  event.preventDefault();
-                  event.currentTarget.form?.requestSubmit();
-                }
-              }}
-            />
-            <Button type="submit" size="icon" aria-label="Enviar mensagem" disabled={!canSend}>
-              <ArrowUp className="size-4" aria-hidden />
-            </Button>
-          </div>
-        </form>
+          </form>
+        )}
       </section>
 
       {graphOpen && (

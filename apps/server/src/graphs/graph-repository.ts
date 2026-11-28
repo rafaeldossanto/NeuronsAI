@@ -1,4 +1,13 @@
+import type { GraphAccessMode } from "../database/schema/index.js";
 import type { GraphRecord } from "./graph.records.js";
+
+/** What a new graph is made of; the owner and the mode only exist for a signed-in person. */
+export interface NewGraph {
+  name: string;
+  draft?: unknown;
+  ownerUserId?: string;
+  accessMode?: GraphAccessMode;
+}
 
 export interface GraphChanges {
   name?: string;
@@ -7,7 +16,7 @@ export interface GraphChanges {
 }
 
 export interface GraphRepository {
-  create(input: { name: string; draft?: unknown }): Promise<GraphRecord>;
+  create(input: NewGraph): Promise<GraphRecord>;
   findById(id: string): Promise<GraphRecord | undefined>;
   list(): Promise<GraphRecord[]>;
   /** Changes what is given (`updatedAt` moves). Returns undefined when the graph does not exist. */

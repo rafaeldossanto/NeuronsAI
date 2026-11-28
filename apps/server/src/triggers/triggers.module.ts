@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AccountsModule } from "../accounts/accounts.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { GraphsModule } from "../graphs/graphs.module.js";
 import { RunLogModule } from "../run-log/run-log.module.js";
@@ -26,6 +27,7 @@ import { DEFAULT_HOOKS_RATE_PER_MIN } from "../shared/config/hooks-config.js";
  */
 @Module({
   imports: [
+    AccountsModule,
     DatabaseModule,
     GraphsModule,
     RunsModule,

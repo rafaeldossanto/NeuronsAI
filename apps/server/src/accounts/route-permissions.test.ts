@@ -36,6 +36,8 @@ it("declares who may call every writing route; only credential and deletion rout
   expect(writeRoutes().sort()).toMatchInlineSnapshot(`
     [
       "DELETE /graphs/:id → delete_graphs",
+      "DELETE /graphs/:id/access-request → read",
+      "DELETE /graphs/:id/access/:userId → write",
       "DELETE /graphs/:id/deletion-request → write",
       "DELETE /runners/:name → manage_credentials",
       "DELETE /runners/personal/:id → write",
@@ -43,6 +45,7 @@ it("declares who may call every writing route; only credential and deletion rout
       "POST /connections/chatgpt/login → manage_credentials",
       "POST /connections/claude/login → manage_credentials",
       "POST /graphs/ → write",
+      "POST /graphs/:id/access-request → read",
       "POST /graphs/:id/agent-chats/:agentId/turns → write",
       "POST /graphs/:id/deletion-request → write",
       "POST /graphs/:id/deletion-request/approve → delete_graphs",
@@ -55,6 +58,8 @@ it("declares who may call every writing route; only credential and deletion rout
       "POST /runs/ → write",
       "POST /runs/:id/messages → write",
       "POST /runs/:id/stop → write",
+      "PUT /graphs/:id/access/:userId → write",
+      "PUT /graphs/:id/access/mode → write",
       "PUT /graphs/:id/triggers/:triggerId/enabled → write",
       "PUT /secrets/:name → manage_credentials",
     ]

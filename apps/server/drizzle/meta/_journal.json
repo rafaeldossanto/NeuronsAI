@@ -134,6 +134,13 @@
       "when": 1795861082554,
       "tag": "0018_agent_chats",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795862155378,
+      "tag": "0019_graph_access",
+      "breakpoints": true
     }
   ]
 }

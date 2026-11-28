@@ -1,4 +1,6 @@
 import { Controller, Inject } from "@nestjs/common";
+import { canRunGraph } from "../accounts/graph-access.js";
+import { GraphAccessService } from "../accounts/graph-access.service.js";
 import { RequirePermission } from "../accounts/require-permission.js";
 import { resourceScope } from "../accounts/resource-scope.js";
 import { Endpoint, ValidBody, ValidParams, ValidQuery } from "../api/endpoint.js";
@@ -39,6 +41,7 @@ export class RunsController {
     @Inject(RunService) private readonly runs: RunService,
     @Inject(RunQueryService) private readonly queries: RunQueryService,
     @Inject(Hub) private readonly hub: Hub,
+    @Inject(GraphAccessService) private readonly access: GraphAccessService,
   ) {}
 
   @Endpoint({
@@ -51,6 +54,8 @@ export class RunsController {
     errors: [404, 429],
   })
   async start(@ValidBody() body: StartRunBody) {
+    // Running needs "use" (or more) in the project; a project the person cannot use is "not found".
+    await this.access.requireForVersion(body.graphVersionId, canRunGraph);
     // Only a signed-in session has a user; the local workspace and triggers leave the run unowned.
     const { userId } = resourceScope.current();
     const run = await this.runs.start(body.graphVersionId, body.input, {
@@ -70,7 +75,9 @@ export class RunsController {
     response: runListSchema,
   })
   async list(@ValidQuery() query: ListRunsQuery) {
+    const visibility = await this.access.runVisibility();
     const page = await this.queries.list({
+      ...(visibility && { visibility }),
       limit: query.limit,
       offset: query.offset,
       sort: query.sort,
@@ -100,6 +107,7 @@ export class RunsController {
     errors: [404],
   })
   async get(@ValidParams() { id }: RunParams) {
+    await this.access.requireRun(id, "read");
     return presentRunDetail(await this.queries.detail(id));
   }
 
@@ -112,6 +120,7 @@ export class RunsController {
     errors: [404],
   })
   async stop(@ValidParams() { id }: RunParams) {
+    await this.access.requireRun(id, "write");
     await this.queries.require(id);
     await this.runs.stop(id);
     return presentRunDetail(await this.queries.detail(id));
@@ -128,6 +137,7 @@ export class RunsController {
     errors: [403, 404, 409],
   })
   async sendMessage(@ValidParams() { id }: RunParams, @ValidBody() body: SendMessageBody) {
+    await this.access.requireRun(id, "write");
     await this.queries.require(id);
     return presentMessage(await this.hub.send(id, HUMAN, body.to, "message", body.body));
   }
@@ -142,6 +152,7 @@ export class RunsController {
     errors: [404],
   })
   async messages(@ValidParams() { id }: RunParams, @ValidQuery() query: MessagesQuery) {
+    await this.access.requireRun(id, "read");
     const messages = await this.queries.messagesOf(id, query.afterSeq, query.limit);
     return { items: messages.map(presentMessage) };
   }
@@ -157,6 +168,7 @@ export class RunsController {
     errors: [404],
   })
   async events(@ValidParams() { id }: RunParams, @ValidQuery() query: EventsQuery) {
+    await this.access.requireRun(id, "read");
     const { items, total } = await this.queries.eventsPage(id, query.fromSeq, query.limit);
     return { items: items.map(presentRunEvent), total };
   }
