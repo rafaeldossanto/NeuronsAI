@@ -1,5 +1,6 @@
 import type { Type } from "@nestjs/common";
 import { GraphsController } from "../graphs/graphs.controller.js";
+import { AgentChatsController } from "../runs/agent-chats.controller.js";
 import { RunsController } from "../runs/runs.controller.js";
 import { SecretsController } from "../secrets/secrets.controller.js";
 import { MemoriesController } from "../memories/memories.controller.js";
@@ -13,6 +14,7 @@ export const API_CONTROLLERS: readonly Type[] = [
   AuthController,
   RunnersController,
   GraphsController,
+  AgentChatsController,
   RunsController,
   SecretsController,
   MemoriesController,

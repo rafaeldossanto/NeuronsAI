@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import type {
   TurnClient,
   FunctionTool,
+  ModelImage,
   ModelTurn,
   ModelUsage,
   RespondOptions,
@@ -55,8 +56,19 @@ export class OpenAICompatibleTurnClient implements TurnClient {
       ...(fetcher && { fetch: fetcher }),
     });
   }
-  addMessage(text: string) {
-    this.messages.push({ role: "user", content: text });
+  addMessage(text: string, image?: ModelImage) {
+    this.messages.push({
+      role: "user",
+      content: image
+        ? [
+            { type: "text", text },
+            {
+              type: "image_url",
+              image_url: { url: `data:${image.mediaType};base64,${image.base64}` },
+            },
+          ]
+        : text,
+    });
   }
   async respond(
     briefing: string,

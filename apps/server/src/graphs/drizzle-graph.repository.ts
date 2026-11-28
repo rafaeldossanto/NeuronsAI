@@ -5,20 +5,22 @@ import { DatabaseService } from "../database/database.service.js";
 import { graphs, graphTriggers, graphVersions, runs, secrets } from "../database/schema/index.js";
 import { GraphHasActiveRunsError } from "./graphs.errors.js";
 import { webhookSecretName } from "../triggers/webhook-secret-name.js";
-import type { GraphChanges, GraphRepository } from "./graph-repository.js";
+import type { GraphChanges, GraphRepository, NewGraph } from "./graph-repository.js";
 import type { GraphRecord } from "./graph.records.js";
 
 @Injectable()
 export class DrizzleGraphRepository implements GraphRepository {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
-  async create(input: { name: string; draft?: unknown }): Promise<GraphRecord> {
+  async create(input: NewGraph): Promise<GraphRecord> {
     const [row] = await this.database.db
       .insert(graphs)
       .values({
         name: input.name,
         draft: input.draft ?? null,
         organizationId: resourceScope.current().organizationId,
+        ...(input.ownerUserId !== undefined && { ownerUserId: input.ownerUserId }),
+        ...(input.accessMode !== undefined && { accessMode: input.accessMode }),
       })
       .returning();
     return row as GraphRecord;

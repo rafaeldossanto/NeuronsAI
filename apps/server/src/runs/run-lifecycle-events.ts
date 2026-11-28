@@ -16,7 +16,8 @@ export interface RunFinishDetails {
 export const RunLifecycleEvents = {
   runStarted: (payload: {
     graphVersionId: string;
-    triggerId: string;
+    triggerId?: string;
+    chatAgentId?: string;
     input: string;
     /** Spending limit of the run; null means none. */
     budgetUsd: number | null;

@@ -4,6 +4,8 @@ export { AGENT_RUNTIME_STATES } from "./contract/agent-runtime.js";
 export type {
   AgentRuntime,
   AgentRuntimeState,
+  ChatImage,
+  ChatMessageContext,
   InboundMessage,
   InboundMessageKind,
 } from "./contract/agent-runtime.js";

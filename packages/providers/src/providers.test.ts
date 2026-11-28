@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { defaultProviders, ProviderRegistry, UsageCalculator, supportedEffort } from "./index.js";
 
+const image = { mediaType: "image/png" as const, base64: "dGVzdA==" };
+const imageUrl = `data:${image.mediaType};base64,${image.base64}`;
+
 describe("SDK adapters without paid calls", () => {
   it("keeps absent SDK usage unknown instead of reporting a zero cost", async () => {
     const fetcher: typeof fetch = () =>
@@ -43,8 +46,17 @@ describe("SDK adapters without paid calls", () => {
       "fake-key",
       "max",
     );
-    client.addMessage("start");
+    client.addMessage("start", image);
     const first = await client.respond("briefing", [], AbortSignal.timeout(2000));
+    expect(requests[0]?.input).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "input_text", text: "start" },
+          { type: "input_image", detail: "auto", image_url: imageUrl },
+        ],
+      },
+    ]);
     expect(first.calls[0]).toMatchObject({ id: "call_1", name: "finish" });
     expect(first.usage).toMatchObject({ inputTokens: 100, cacheReadTokens: 20 });
     client.result(first.calls[0]!, "done");
@@ -84,8 +96,20 @@ describe("SDK adapters without paid calls", () => {
       "fake-key",
       "high",
     );
-    client.addMessage("start");
+    client.addMessage("start", image);
     const first = await client.respond("briefing", [], AbortSignal.timeout(2000));
+    expect(requests[0]?.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "start" },
+          {
+            type: "image",
+            source: { type: "base64", media_type: image.mediaType, data: image.base64 },
+          },
+        ],
+      },
+    ]);
     expect(first.usage).toMatchObject({
       inputTokens: 100,
       cacheReadTokens: 20,
@@ -105,9 +129,10 @@ describe("SDK adapters without paid calls", () => {
   });
   it("uses only the configured compatible endpoint and retains the tool call id", async () => {
     let endpoint = "";
-    const fetcher: typeof fetch = async (url) => {
+    let request: { messages?: unknown } | undefined;
+    const fetcher: typeof fetch = async (url, init) => {
       endpoint = url instanceof Request ? url.url : url.toString();
-      await Promise.resolve();
+      request = (await new Response(init?.body).json()) as { messages?: unknown };
       return Response.json({
         id: "test",
         model: "local-model",
@@ -129,7 +154,18 @@ describe("SDK adapters without paid calls", () => {
       compatibleBaseUrl: "http://127.0.0.1:11434/v1",
       fetcher,
     }).createSession("openai-compatible", "local-model", "local", "high");
+    client.addMessage("start", image);
     const turn = await client.respond("test", [], AbortSignal.timeout(2000));
+    expect(request?.messages).toEqual([
+      { role: "system", content: "test" },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "start" },
+          { type: "image_url", image_url: { url: imageUrl } },
+        ],
+      },
+    ]);
     expect(endpoint).toBe("http://127.0.0.1:11434/v1/chat/completions");
     expect(turn.calls[0]?.id).toBe("local_1");
     expect(() => new ProviderRegistry().createSession("missing", "test", "test", "low")).toThrow();

@@ -1,4 +1,5 @@
 export * from "./graphs.js";
+export * from "./graph-access.js";
 export * from "./graph-deletion-requests.js";
 export * from "./messages.js";
 export * from "./run-events.js";

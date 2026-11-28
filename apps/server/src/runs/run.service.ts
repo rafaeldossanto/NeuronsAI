@@ -4,17 +4,20 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DEFAULT_QUOTAS } from "../shared/config/quota-config.js";
 import type { RunQuotas } from "../run-log/run-quota.js";
 import { resourceScope } from "../accounts/resource-scope.js";
-import type { GraphDefinition, TriggerNode } from "@neurons/graph-schema";
+import type { ChatMessageContext } from "@neurons/agent-runtimes";
+import type { AgentNode, GraphDefinition, TriggerNode } from "@neurons/graph-schema";
+import type { GraphVersionRecord } from "../graphs/graph.records.js";
 import {
   GRAPH_VERSION_REPOSITORY,
   type GraphVersionRepository,
 } from "../graphs/graph-version-repository.js";
 import { GuardEnforcer } from "../guards/guard-enforcer.js";
-import { TRIGGER } from "../hub/addresses.js";
+import { HUMAN, TRIGGER } from "../hub/addresses.js";
 import { Hub } from "../hub/hub.js";
 import { RunRegistry } from "../hub/run-registry.js";
 import { Supervisor } from "../hub/supervisor.js";
 import { RunEventRecorder } from "../run-log/run-event-recorder.js";
+import { DomainError } from "../shared/errors/domain-error.js";
 import {
   RUN_REPOSITORY,
   type FinalRunStatus,
@@ -27,6 +30,7 @@ import {
   type RunFinishReason,
 } from "./run-lifecycle-events.js";
 import {
+  AgentChatDispatchError,
   GraphVersionNotFoundError,
   TriggerSelectionError,
   TriggerTargetNotFoundError,
@@ -91,32 +95,73 @@ export class RunService {
     const version = await this.versions.findById(graphVersionId);
     if (!version) throw new GraphVersionNotFoundError(graphVersionId);
 
+    this.assertCredentialsApproved(version);
     const graph = version.definition;
-    // Historical versions require republishing with the corrected authorization.
-    if (
-      resourceScope.current().organizationId !== null &&
-      usesSecrets(graph) &&
-      !version.credentialsApproved
-    )
-      throw new SecretPublishForbiddenError();
     const trigger = pickTrigger(graph, options.triggerId);
     const target = graph.nodes.find((node) => node.type === "agent" && node.id === trigger.target);
     if (target?.type !== "agent") throw new TriggerTargetNotFoundError(trigger.id);
 
+    return this.launch(version, target, input, { triggerId: trigger.id }, options);
+  }
+
+  /** Creates an execution of the whole graph, addressed directly to one agent. */
+  async startChat(
+    version: GraphVersionRecord,
+    target: AgentNode,
+    input: string,
+    prepareChat: () => Promise<ChatMessageContext>,
+  ): Promise<RunRecord> {
+    this.assertCredentialsApproved(version);
+    const { userId: startedByUserId } = resourceScope.current();
+    return this.launch(
+      version,
+      target,
+      input,
+      { chatAgentId: target.id },
+      {
+        ...(startedByUserId && { startedByUserId }),
+        prepareChat,
+      },
+    );
+  }
+
+  private assertCredentialsApproved(version: GraphVersionRecord): void {
+    // Historical versions require republishing with the corrected authorization.
+    if (
+      resourceScope.current().organizationId !== null &&
+      usesSecrets(version.definition) &&
+      !version.credentialsApproved
+    )
+      throw new SecretPublishForbiddenError();
+  }
+
+  private async launch(
+    version: GraphVersionRecord,
+    target: AgentNode,
+    input: string,
+    source: { triggerId: string; chatAgentId?: never } | { chatAgentId: string; triggerId?: never },
+    options: {
+      budgetUsd?: number;
+      startedByUserId?: string;
+      prepareChat?: () => Promise<ChatMessageContext>;
+    } = {},
+  ): Promise<RunRecord> {
+    const { startedByUserId, prepareChat } = options;
     const budgetUsd = options.budgetUsd ?? this.options.defaultBudgetUsd;
     const { record: run, events } = await this.runs.createRunning(
       version.id,
       () => [
         RunLifecycleEvents.runStarted({
           graphVersionId: version.id,
-          triggerId: trigger.id,
+          ...source,
           input,
           budgetUsd: budgetUsd ?? null,
         }),
       ],
       {
         ...(budgetUsd !== undefined && { budgetUsd }),
-        ...(options.startedByUserId && { startedByUserId: options.startedByUserId }),
+        ...(startedByUserId && { startedByUserId }),
+        ...(source.chatAgentId !== undefined && { chatAgentId: source.chatAgentId }),
         // Checked by the repository in the transaction that creates the run (see createRunning). The
         // local workspace has no organization and no limits.
         ...(resourceScope.current().organizationId !== null && {
@@ -126,14 +171,25 @@ export class RunService {
     );
     this.recorder.publish(events);
 
-    this.registry.register(run.id, graph, budgetUsd, options.startedByUserId);
+    this.registry.register(run.id, version.definition, budgetUsd, startedByUserId);
     try {
-      await this.hub.send(run.id, TRIGGER, target.name, "message", input);
+      const chat = await prepareChat?.();
+      await this.hub.send(
+        run.id,
+        chat ? HUMAN : TRIGGER,
+        target.name,
+        "message",
+        input,
+        chat && { chat },
+      );
     } catch (error) {
+      // Storage errors can quote the original query parameters, including image bytes.
+      const failure =
+        prepareChat && !(error instanceof DomainError) ? new AgentChatDispatchError() : error;
       await this.end(run.id, "failed", {
-        error: error instanceof Error ? error.message : String(error),
+        error: failure instanceof Error ? failure.message : String(failure),
       });
-      throw error;
+      throw failure;
     }
     return run;
   }

@@ -73,6 +73,59 @@ describe("Supervisor", () => {
     expect(types).toEqual(["MessageSent", "AgentStarted", "MessageDelivered"]);
   });
 
+  it("entrega o anexo pela caixa de entrada sem copiá-lo para os eventos", async () => {
+    const harness = createHubHarness(persistence);
+    const runId = await harness.openRun();
+    const chat = {
+      history: "Conversa anterior",
+      image: { name: "fluxo.png", mediaType: "image/png" as const, base64: "dGVzdA==" },
+    };
+
+    const message = await harness.hub.send(runId, HUMAN, "Beta", "message", "Confira a imagem", {
+      chat,
+    });
+
+    await eventually(() =>
+      expect(harness.runtimes.runtimeOf("Beta")?.received[0]).toMatchObject({ chat }),
+    );
+    expect((await persistence.messageStore.findById(message.id))?.chat).toEqual(chat);
+    const events = persistence.runLog.eventsOf(runId, "MessageSent");
+    expect(events[0]?.payload).toMatchObject({ body: "Confira a imagem" });
+    expect(JSON.stringify(events)).not.toContain(chat.image.base64);
+    expect(JSON.stringify(events)).not.toContain(chat.history);
+  });
+
+  it("envia o contexto do chat ao terminal pelo transporte de texto", async () => {
+    const harness = createHubHarness(persistence);
+    const graph = buildTestGraph();
+    graph.nodes = graph.nodes.map((node) =>
+      node.type === "agent" && node.name === "Beta"
+        ? {
+            ...node,
+            runtime: { kind: "terminal", cli: "claude", mode: "pty", args: [], cwd: "/tmp" },
+          }
+        : node,
+    );
+    const runId = await harness.openRun(graph);
+    const history = "Conversa anterior";
+
+    await expect(
+      harness.hub.send(runId, HUMAN, "Beta", "message", "Confira", {
+        chat: { image: { name: "fluxo.png", mediaType: "image/png", base64: "dGVzdA==" } },
+      }),
+    ).rejects.toMatchObject({ code: "chat_image_unsupported" });
+    const message = await harness.hub.send(runId, HUMAN, "Beta", "message", "Continue a análise", {
+      chat: { history },
+    });
+    await eventually(() => {
+      const received = harness.runtimes.runtimeOf("Beta")?.received[0];
+      expect(received?.body).toContain(`use a ferramenta reply com o ID ${message.id}`);
+      expect(received?.body).toContain(history);
+      expect(received?.body).toContain("Continue a análise");
+      expect(received?.chat).toBeUndefined();
+    });
+  });
+
   it("hands the inbox to an agent in order, one message per idle moment", async () => {
     const harness = createHubHarness(persistence, {
       scripts: { Beta: (turn) => turn.work(10) },

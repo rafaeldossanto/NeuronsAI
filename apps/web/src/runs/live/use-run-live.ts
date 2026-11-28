@@ -6,6 +6,7 @@ import { terminalInputError, type TerminalInputError } from "./terminal-errors";
 import type { ConnectionState, RunLiveEvent, RunLiveState } from "./types";
 
 interface Model {
+  runId: string;
   state: RunLiveState;
   connection: ConnectionState;
   error: string | null;
@@ -14,13 +15,14 @@ interface Model {
 }
 
 type Action =
-  | { type: "reset" }
+  | { type: "reset"; runId: string }
   | { type: "events"; events: readonly RunLiveEvent[] }
   | { type: "connection"; connection: ConnectionState }
   | { type: "error"; error: string | null }
   | { type: "inputError"; inputError: TerminalInputError | null };
 
 const initialModel: Model = {
+  runId: "",
   state: initialRunLiveState,
   connection: "connecting",
   error: null,
@@ -30,7 +32,7 @@ const initialModel: Model = {
 function reducer(model: Model, action: Action): Model {
   switch (action.type) {
     case "reset":
-      return initialModel;
+      return { ...initialModel, runId: action.runId };
     case "events": {
       const state = action.events.reduce(reduceRunEvent, model.state);
       return state === model.state ? model : { ...model, state };
@@ -64,7 +66,7 @@ export function useRunLive(runId: string): {
   const api = useApi();
 
   useEffect(() => {
-    dispatch({ type: "reset" });
+    dispatch({ type: "reset", runId });
     if (!runId) return;
     // The socket can deliver many messages per frame (terminal output above all): collect them and
     // dispatch one batch per animation frame, so React renders once instead of once per message.
@@ -113,11 +115,12 @@ export function useRunLive(runId: string): {
   }, []);
   const clearInputError = useCallback(() => dispatch({ type: "inputError", inputError: null }), []);
 
+  const current = model.runId === runId ? model : initialModel;
   return {
-    state: model.state,
-    connection: model.connection,
-    error: model.error,
-    inputError: model.inputError,
+    state: current.state,
+    connection: current.connection,
+    error: current.error,
+    inputError: current.inputError,
     sendTerminalInput,
     sendTerminalResize,
     clearInputError,

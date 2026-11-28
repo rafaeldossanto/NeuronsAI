@@ -1,3 +1,4 @@
+import type { ChatMessageContext } from "@neurons/agent-runtimes";
 import type { MessageKind } from "../database/schema/index.js";
 
 export interface MessageRecord {
@@ -10,6 +11,7 @@ export interface MessageRecord {
   kind: MessageKind;
   replyTo: string | null;
   body: string;
+  chat?: ChatMessageContext;
   createdAt: Date;
   deliveredAt: Date | null;
   ackedAt: Date | null;
@@ -22,6 +24,13 @@ export interface NewMessage {
   kind: MessageKind;
   replyTo: string | null;
   body: string;
+  chat?: ChatMessageContext;
   /** The recipient is not an agent (`@human`, `@trigger`): nobody to hand it to, so it is stored as delivered. */
   deliveredOnArrival: boolean;
+}
+
+/** Keep earlier turns separate from the text the user just sent. */
+export function formatChatBody(body: string, history?: string): string {
+  if (!history) return body;
+  return `Histórico da conversa (referência):\n${history}\n\nMensagem atual:\n${body}`;
 }

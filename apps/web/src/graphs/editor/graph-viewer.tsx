@@ -28,7 +28,9 @@ export interface GraphViewerProps {
   /** The pulses to draw, by arrow id (see `pulsesByEdge`). */
   pulses: Readonly<Record<string, EdgePulse[]>>;
   selectedId: string | null;
-  onSelect: (nodeId: string | null) => void;
+  onSelect?: (nodeId: string | null) => void;
+  receiving?: ReadonlySet<string>;
+  compact?: boolean;
 }
 
 /**
@@ -43,7 +45,7 @@ export function GraphViewer(props: GraphViewerProps) {
   );
 }
 
-function Viewer({ doc, live, pulses, selectedId, onSelect }: GraphViewerProps) {
+function Viewer({ doc, live, pulses, selectedId, onSelect, receiving, compact }: GraphViewerProps) {
   const nodes = useMemo<ViewerNode[]>(() => {
     const drawings: AnnotationNode[] = doc.annotations.map((annotation) => ({
       ...annotationShell(annotation, false),
@@ -56,10 +58,16 @@ function Viewer({ doc, live, pulses, selectedId, onSelect }: GraphViewerProps) {
       type: node.type,
       position: node.position,
       selected: node.id === selectedId,
-      data: { node, issues: [], live: live[node.id] },
+      data: {
+        node,
+        issues: [],
+        live: live[node.id],
+        receiving: receiving?.has(node.id) ?? false,
+        compact: compact ?? false,
+      },
     }));
     return [...drawings, ...blocks];
-  }, [doc.nodes, doc.annotations, live, selectedId]);
+  }, [doc.nodes, doc.annotations, live, selectedId, receiving, compact]);
 
   const base = useMemo(
     () => linkFlowEdges({ nodes: doc.nodes, links: doc.links }),
@@ -76,7 +84,11 @@ function Viewer({ doc, live, pulses, selectedId, onSelect }: GraphViewerProps) {
   );
 
   return (
-    <div className="size-full" role="region" aria-label="Canvas da execução">
+    <div
+      className="size-full"
+      role="region"
+      aria-label={compact ? "Canvas do fluxo do chat" : "Canvas da execução"}
+    >
       <ReactFlow<ViewerNode>
         nodes={nodes}
         edges={edges}
@@ -85,18 +97,18 @@ function Viewer({ doc, live, pulses, selectedId, onSelect }: GraphViewerProps) {
         nodesDraggable={false}
         nodesConnectable={false}
         edgesFocusable={false}
-        elementsSelectable
+        elementsSelectable={Boolean(onSelect)}
         // The canvas sits inside a page that scrolls: the wheel scrolls the page; zoom with the buttons or Ctrl+wheel.
         zoomOnScroll={false}
         preventScrolling={false}
         deleteKeyCode={null}
         onNodeClick={(_, node) => {
-          if (node.type === "agent") onSelect(node.id === selectedId ? null : node.id);
+          if (node.type === "agent") onSelect?.(node.id === selectedId ? null : node.id);
         }}
-        onPaneClick={() => onSelect(null)}
+        onPaneClick={() => onSelect?.(null)}
         fitView
-        fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
-        minZoom={0.2}
+        fitViewOptions={{ padding: 0.25, maxZoom: 1, minZoom: compact ? 0.05 : 0.2 }}
+        minZoom={compact ? 0.05 : 0.2}
         maxZoom={2}
       >
         <Background variant={BackgroundVariant.Dots} gap={GRID} size={1.5} />
