@@ -1,6 +1,41 @@
 import { Menu, app, shell, type MenuItemConstructorOptions } from "electron";
 
+import type { RunnerMode } from "../runner/runner-mode.js";
+import type { RunnerView } from "../runner/runner-manager.js";
+
 const SITE = "https://github.com/rafaeldossanto/NeuronsAI";
+
+/** The "Runner deste computador" submenu: the choice and what the runner is doing. */
+export interface RunnerMenu {
+  view: () => RunnerView;
+  choose: (mode: RunnerMode) => void;
+}
+
+const RUNNER_CHOICES: readonly { mode: RunnerMode; label: string }[] = [
+  { mode: "personal", label: "Pessoal — só as minhas execuções" },
+  { mode: "organization", label: "Organização — execuções de toda a equipe" },
+  { mode: "off", label: "Desligado" },
+];
+
+function runnerSubmenu(runner: RunnerMenu): MenuItemConstructorOptions {
+  const view = runner.view();
+  return {
+    label: "Runner deste computador",
+    // Only a remote server has a runner choice; the local space already has its own.
+    visible: view.remote,
+    enabled: view.remote,
+    submenu: [
+      ...RUNNER_CHOICES.map(({ mode, label }): MenuItemConstructorOptions => ({
+        label,
+        type: "radio",
+        checked: view.mode === mode,
+        click: () => runner.choose(mode),
+      })),
+      { type: "separator" },
+      { label: view.status, enabled: false },
+    ],
+  };
+}
 
 /**
  * The application menu, in pt-BR. The differences between systems live here: macOS has the app menu
@@ -10,6 +45,7 @@ const SITE = "https://github.com/rafaeldossanto/NeuronsAI";
 export function buildMenuTemplate(
   platform: NodeJS.Platform,
   developing: boolean,
+  runner?: RunnerMenu,
 ): MenuItemConstructorOptions[] {
   const mac = platform === "darwin";
   const template: MenuItemConstructorOptions[] = [];
@@ -31,11 +67,17 @@ export function buildMenuTemplate(
     });
   }
 
+  const runnerItems: MenuItemConstructorOptions[] = runner
+    ? [runnerSubmenu(runner), { type: "separator" }]
+    : [];
   template.push({
     label: "Arquivo",
-    submenu: mac
-      ? [{ role: "close", label: "Fechar janela" }]
-      : [{ role: "quit", label: "Sair", accelerator: "CommandOrControl+Q" }],
+    submenu: [
+      ...runnerItems,
+      ...(mac
+        ? [{ role: "close", label: "Fechar janela" } as const]
+        : [{ role: "quit", label: "Sair", accelerator: "CommandOrControl+Q" } as const]),
+    ],
   });
 
   template.push({
@@ -91,8 +133,12 @@ export function buildMenuTemplate(
   return template;
 }
 
-export function installMenu(): void {
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate(buildMenuTemplate(process.platform, !app.isPackaged)),
-  );
+/** Installs the menu and returns what redraws it (the runner's status changes while it is open). */
+export function installMenu(runner?: RunnerMenu): { refresh: () => void } {
+  const build = () =>
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate(buildMenuTemplate(process.platform, !app.isPackaged, runner)),
+    );
+  build();
+  return { refresh: build };
 }

@@ -204,6 +204,9 @@ importers:
       '@neurons/mcp-neurons':
         specifier: workspace:*
         version: link:../../packages/mcp-neurons
+      '@neurons/runner':
+        specifier: workspace:*
+        version: link:../../packages/runner
       '@neurons/server':
         specifier: workspace:*
         version: link:../server
