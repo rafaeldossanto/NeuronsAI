@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AccountsModule } from "../accounts/accounts.module.js";
 import { GraphsModule } from "../graphs/graphs.module.js";
 import { GuardsModule } from "../guards/guards.module.js";
 import { HubModule } from "../hub/hub.module.js";
@@ -11,7 +12,7 @@ import { RUN_SERVICE_OPTIONS, RunService, type RunServiceOptions } from "./run.s
 import { RunsController } from "./runs.controller.js";
 
 @Module({
-  imports: [HubModule, GuardsModule, RunLogModule, RealtimeModule, GraphsModule],
+  imports: [HubModule, GuardsModule, RunLogModule, RealtimeModule, GraphsModule, AccountsModule],
   controllers: [RunsController],
   providers: [
     RunService,

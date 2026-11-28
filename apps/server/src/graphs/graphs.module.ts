@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AccountsModule } from "../accounts/accounts.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { DrizzleGraphRepository } from "./drizzle-graph.repository.js";
 import { DrizzleGraphVersionRepository } from "./drizzle-graph-version.repository.js";
@@ -12,7 +13,7 @@ import { GraphService } from "./graph.service.js";
 import { GraphsController } from "./graphs.controller.js";
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, AccountsModule],
   controllers: [GraphsController],
   providers: [
     GraphService,

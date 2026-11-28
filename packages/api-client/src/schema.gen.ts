@@ -331,10 +331,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Lista os grafos, com o pedido de exclusão pendente de cada um (se houver). */
+        /** Lista os grafos, com o pedido de exclusão pendente (se houver) e o acesso de quem pede: modo, dono, nível e pedidos de acesso. Um projeto sem acesso aparece só com nome e metadados. */
         get: operations["graphs_list"];
         put?: never;
-        /** Cria um grafo (com rascunho opcional). */
+        /** Cria um grafo (com rascunho opcional). Com conta, quem cria é o dono e o projeto nasce restrito. */
         post: operations["graphs_create"];
         delete?: never;
         options?: never;
@@ -349,7 +349,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Mostra um grafo, com o rascunho. */
+        /** Mostra um grafo, com o rascunho (quem só usa o projeto recebe o rascunho nulo). 404 sem acesso. */
         get: operations["graphs_get"];
         put?: never;
         post?: never;
@@ -357,8 +357,78 @@ export interface paths {
         delete: operations["graphs_remove"];
         options?: never;
         head?: never;
-        /** Renomeia o grafo e/ou salva o rascunho. */
+        /** Renomeia o grafo e/ou salva o rascunho. Exige poder editar o projeto. */
         patch: operations["graphs_update"];
+        trace?: never;
+    };
+    "/graphs/{id}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quem acessa o projeto: o modo, o dono e as pessoas liberadas, bloqueadas ou com pedido pendente. Só quem gerencia o acesso (dono do projeto, proprietários e administradores); os outros recebem 404. */
+        get: operations["graphs_getAccess"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphs/{id}/access-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quem não tem acesso pede para entrar; o dono aprova escolhendo o nível, ou recusa. Um pedido por pessoa; quem foi bloqueado não pode pedir. */
+        post: operations["graphs_requestAccess"];
+        /** Quem pediu acesso cancela o próprio pedido. */
+        delete: operations["graphs_cancelAccessRequest"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphs/{id}/access/mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Muda o modo: restrito (só o dono, proprietários e administradores e quem for liberado) ou aberto à organização (cada membro com o acesso do seu papel; bloqueados continuam sem acesso). */
+        put: operations["graphs_setAccessMode"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphs/{id}/access/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Libera uma pessoa da organização como use (roda e vê as próprias execuções) ou edit (edita), o que também aprova o pedido dela; ou a bloqueia (sem acesso e sem poder pedir de novo). O dono, os proprietários e os administradores não podem ser limitados. */
+        put: operations["graphs_setAccess"];
+        post?: never;
+        /** Tira a liberação ou o bloqueio de uma pessoa, ou recusa o pedido dela (o pedido some e ela pode pedir de novo). */
+        delete: operations["graphs_removeAccess"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/graphs/{id}/deletion-request": {
@@ -749,8 +819,50 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+            /** @enum {string} */
+            accessMode: "organization" | "restricted";
+            owner: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            } | null;
+            access: components["schemas"]["GraphAccessSummary"];
             draft: unknown;
             latestVersion: number | null;
+        };
+        GraphAccess: {
+            /** @enum {string} */
+            mode: "organization" | "restricted";
+            owner: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            } | null;
+            entries: components["schemas"]["GraphAccessEntry"][];
+        };
+        GraphAccessEntry: {
+            user: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                email: string | null;
+                avatarUrl?: string;
+            };
+            /** @enum {string} */
+            status: "granted" | "blocked" | "requested";
+            level: ("use" | "edit") | null;
+            requestedAt: string | null;
+            decidedAt: string | null;
+        };
+        GraphAccessRequest: {
+            /** Format: date-time */
+            requestedAt: string;
+        };
+        GraphAccessSummary: {
+            /** @enum {string} */
+            level: "manage" | "edit" | "use" | "view" | "none";
+            request: ("pending" | "blocked") | null;
+            pendingRequests: number;
         };
         GraphDeletionRequest: {
             requestedBy: {
@@ -769,6 +881,14 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+            /** @enum {string} */
+            accessMode: "organization" | "restricted";
+            owner: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            } | null;
+            access: components["schemas"]["GraphAccessSummary"];
             deletionRequest: components["schemas"]["GraphDeletionRequest"] | null;
         };
         GraphVersion: {
@@ -2293,6 +2413,296 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Graph"];
                 };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graphs_getAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphAccess"];
+                };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graphs_requestAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphAccessRequest"];
+                };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não permitido. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflito com o estado atual. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graphs_cancelAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso, sem conteúdo. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflito com o estado atual. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graphs_setAccessMode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    mode: "organization" | "restricted";
+                };
+            };
+        };
+        responses: {
+            /** @description Sucesso. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphAccess"];
+                };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graphs_setAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    status: "granted" | "blocked";
+                    /** @enum {string} */
+                    level?: "use" | "edit";
+                };
+            };
+        };
+        responses: {
+            /** @description Sucesso. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphAccess"];
+                };
+            };
+            /** @description Requisição inválida. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflito com o estado atual. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graphs_removeAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sucesso, sem conteúdo. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Requisição inválida. */
             400: {

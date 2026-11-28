@@ -8,6 +8,8 @@ import { AuthController } from "./auth.controller.js";
 import { RequestScopeInterceptor } from "./request-scope.interceptor.js";
 import { APP_INTERCEPTOR } from "@nestjs/core";
 import { SocketAuthorization } from "./socket-authorization.js";
+import { GraphAccessService } from "./graph-access.service.js";
+import { GraphAccessAdminService } from "./graph-access-admin.service.js";
 import { LocalDataAdoption } from "./local-data-adoption.service.js";
 import { DesktopLoginService } from "./desktop-login.service.js";
 import { SIGNUP_POLICY, SignupPolicy } from "./signup-policy.js";
@@ -30,6 +32,8 @@ import type { AppConfig } from "../shared/config/app-config.js";
     AccountAuth,
     DesktopLoginService,
     SocketAuthorization,
+    GraphAccessService,
+    GraphAccessAdminService,
     { provide: APP_INTERCEPTOR, useClass: RequestScopeInterceptor },
     {
       provide: AccountSessionsService,
@@ -37,6 +41,13 @@ import type { AppConfig } from "../shared/config/app-config.js";
       useFactory: (database: DatabaseService) => new AccountSessionsService(database),
     },
   ],
-  exports: [AccountsService, AccountSessionsService, AccountAuth, SocketAuthorization],
+  exports: [
+    AccountsService,
+    AccountSessionsService,
+    AccountAuth,
+    SocketAuthorization,
+    GraphAccessService,
+    GraphAccessAdminService,
+  ],
 })
 export class AccountsModule {}

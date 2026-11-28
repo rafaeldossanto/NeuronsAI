@@ -1,5 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { GRAPH_REPOSITORY, type GraphChanges, type GraphRepository } from "./graph-repository.js";
+import {
+  GRAPH_REPOSITORY,
+  type GraphChanges,
+  type GraphRepository,
+  type NewGraph,
+} from "./graph-repository.js";
 import {
   GRAPH_VERSION_REPOSITORY,
   type GraphVersionRepository,
@@ -38,7 +43,7 @@ export class GraphService {
     this.beforeRemove.push(listener);
   }
 
-  create(input: { name: string; draft?: unknown }): Promise<GraphRecord> {
+  create(input: NewGraph): Promise<GraphRecord> {
     return this.graphs.create(input);
   }
 
