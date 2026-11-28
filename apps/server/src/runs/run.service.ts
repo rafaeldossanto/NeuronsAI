@@ -81,11 +81,12 @@ export class RunService {
    * Creates the run and sends the trigger's first message (`input`) to its target agent.
    * @param options.triggerId Which trigger to use; optional when the graph has only one.
    * @param options.budgetUsd Spending limit of the run; the server's default applies when absent.
+   * @param options.startedByUserId The signed-in user who asked for it; triggers leave it out.
    */
   async start(
     graphVersionId: string,
     input: string,
-    options: { triggerId?: string; budgetUsd?: number } = {},
+    options: { triggerId?: string; budgetUsd?: number; startedByUserId?: string } = {},
   ): Promise<RunRecord> {
     const version = await this.versions.findById(graphVersionId);
     if (!version) throw new GraphVersionNotFoundError(graphVersionId);
@@ -115,6 +116,7 @@ export class RunService {
       ],
       {
         ...(budgetUsd !== undefined && { budgetUsd }),
+        ...(options.startedByUserId && { startedByUserId: options.startedByUserId }),
         // Checked by the repository in the transaction that creates the run (see createRunning). The
         // local workspace has no organization and no limits.
         ...(resourceScope.current().organizationId !== null && {
@@ -124,7 +126,7 @@ export class RunService {
     );
     this.recorder.publish(events);
 
-    this.registry.register(run.id, graph, budgetUsd);
+    this.registry.register(run.id, graph, budgetUsd, options.startedByUserId);
     try {
       await this.hub.send(run.id, TRIGGER, target.name, "message", input);
     } catch (error) {

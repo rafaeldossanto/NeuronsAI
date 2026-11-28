@@ -9,6 +9,8 @@ export interface ActiveRunContext {
   graph: GraphDefinition;
   /** Spending limit of the whole run; absent means none. */
   budgetUsd?: number;
+  /** Who started the run through the API; absent for triggers and the local workspace. */
+  startedByUserId?: string;
 }
 
 /**
@@ -21,12 +23,18 @@ export class RunRegistry {
   private readonly active = new Map<string, ActiveRunContext>();
   private readonly closing = new Map<string, ActiveRunContext>();
 
-  register(runId: string, graph: GraphDefinition, budgetUsd?: number): void {
+  register(
+    runId: string,
+    graph: GraphDefinition,
+    budgetUsd?: number,
+    startedByUserId?: string,
+  ): void {
     this.active.set(runId, {
       runId,
       graph,
       organizationId: resourceScope.current().organizationId,
       ...(budgetUsd !== undefined && { budgetUsd }),
+      ...(startedByUserId && { startedByUserId }),
     });
   }
 

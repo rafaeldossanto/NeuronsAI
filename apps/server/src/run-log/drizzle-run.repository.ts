@@ -36,6 +36,7 @@ const toRunRecord = (row: typeof runs.$inferSelect): RunRecord => ({
   budgetUsd: row.budgetUsd === null ? null : Number(row.budgetUsd),
   startedAt: row.startedAt,
   finishedAt: row.finishedAt,
+  startedByUserId: row.startedByUserId,
 });
 
 @Injectable()
@@ -45,7 +46,7 @@ export class DrizzleRunRepository implements RunRepository {
   createRunning(
     graphVersionId: string,
     eventsFor: (run: RunRecord) => RunEventDraft[],
-    options: { budgetUsd?: number; quotas?: RunQuotas } = {},
+    options: { budgetUsd?: number; quotas?: RunQuotas; startedByUserId?: string } = {},
   ): Promise<Recorded<RunRecord>> {
     return this.database.db.transaction(async (tx) => {
       await requireOwnedVersion(tx, graphVersionId);
@@ -73,6 +74,9 @@ export class DrizzleRunRepository implements RunRepository {
           graphVersionId,
           status: "running",
           startedAt: new Date(),
+          ...(options.startedByUserId !== undefined && {
+            startedByUserId: options.startedByUserId,
+          }),
           ...(options.budgetUsd !== undefined && { budgetUsd: String(options.budgetUsd) }),
         })
         .returning();

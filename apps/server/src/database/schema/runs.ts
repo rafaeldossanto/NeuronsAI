@@ -1,5 +1,6 @@
 import { bigint, check, index, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { users } from "./accounts.js";
 import { idColumn } from "./columns.js";
 import { graphVersions } from "./graphs.js";
 
@@ -16,6 +17,10 @@ export const runs = pgTable(
       .notNull()
       .references(() => graphVersions.id, { onDelete: "restrict" }),
     status: text("status").$type<RunStatus>().notNull().default("pending"),
+    /** Who started the run through the API; null for triggers (cron, webhook, WhatsApp) and the local profile. */
+    startedByUserId: uuid("started_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     /** Null means "no spending limit". */
     budgetUsd: usd("budget_usd"),
     spentUsd: usd("spent_usd").notNull().default("0"),

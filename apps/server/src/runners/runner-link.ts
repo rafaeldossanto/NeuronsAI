@@ -3,6 +3,7 @@ import {
   CLOSE_HEARTBEAT,
   CLOSE_PROTOCOL,
   CLOSE_REPLACED,
+  CLOSE_UNAUTHORIZED,
   PROTOCOL_REVISION,
   PROTOCOL_VERSION,
   REVISION_TERMINAL_RESIZE,
@@ -127,6 +128,14 @@ export class RunnerLink implements RunnerEndpoint {
     this.heartbeat = setInterval(() => this.beat(), this.limits.heartbeatMs);
     this.heartbeat.unref();
     this.connectionChanged.emit(true);
+  }
+
+  /** The runner's token is no longer valid: tells it why and cuts the connection. */
+  revoke(message: string): void {
+    const channel = this.channel;
+    if (!channel) return;
+    channel.send({ v: PROTOCOL_VERSION, type: "reject", code: "unauthorized", message });
+    channel.close(CLOSE_UNAUTHORIZED, message);
   }
 
   /** Closes the connection and forgets the timers (server shutdown). */

@@ -11,6 +11,8 @@ export interface RunRecord {
   budgetUsd: number | null;
   startedAt: Date | null;
   finishedAt: Date | null;
+  /** The signed-in user who started it through the API; null for triggers and the local workspace. */
+  startedByUserId?: string | null;
 }
 
 /** A run as the listings show it: with the graph its version belongs to. */
@@ -79,7 +81,7 @@ export interface RunRepository {
   createRunning(
     graphVersionId: string,
     eventsFor: (run: RunRecord) => RunEventDraft[],
-    options?: { budgetUsd?: number; quotas?: RunQuotas },
+    options?: { budgetUsd?: number; quotas?: RunQuotas; startedByUserId?: string },
   ): Promise<Recorded<RunRecord>>;
 
   /**

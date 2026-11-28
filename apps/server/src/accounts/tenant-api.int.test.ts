@@ -10,7 +10,8 @@ import { TriggerScheduler } from "../triggers/trigger-scheduler.js";
 import { WebSocket } from "ws";
 import { FakeAgentRuntimeFactory } from "../agents/testing/fake-agent-runtime.js";
 import { startTestApi } from "../api/testing/test-api.js";
-import { startTestDatabase, type TestDatabase } from "../database/testing/test-database.js";
+import { rowsOf, startTestDatabase, type TestDatabase } from "../database/testing/test-database.js";
+import { sql } from "drizzle-orm";
 import { buildTestGraph } from "../hub/testing/test-graph.js";
 import { eventually } from "../hub/testing/async-helpers.js";
 import { GraphToolsService } from "../memories/graph-tools.service.js";
@@ -474,6 +475,84 @@ describe("T25 — API entre organizações", () => {
     expect(await tokens.authenticate(other.token)).toMatchObject({
       organizationId: bob.organizationId,
     });
+  });
+
+  it("runners pessoais: só o dono emite, lista e revoga; trocar o token mantém o registro; sair da organização revoga", async () => {
+    await accounts.setMember(alice.userId, alice.organizationId, bob.userId, "member");
+    const member = asActor(
+      await sessions.issue(bob.userId, alice.organizationId),
+      bob.userId,
+      alice.organizationId,
+    );
+    const mine = await api(alice, "POST", "/runners/personal", { name: "  Notebook  " });
+    expect(mine.statusCode).toBe(201);
+    const issued = mine.json<{ id: string; name: string; token: string }>();
+    expect(issued).toEqual({ id: expect.any(String), name: "Notebook", token: expect.any(String) });
+    const tokens = app.get(RunnerTokens);
+    expect(await tokens.authenticate(issued.token)).toMatchObject({
+      id: issued.id,
+      organizationId: alice.organizationId,
+      ownerUserId: alice.userId,
+    });
+
+    // Each one sees only their own computers; the organization's list leaves personal ones out.
+    const listed = await api(alice, "GET", "/runners/personal");
+    expect(listed.json<{ items: { id: string }[] }>().items.map((item) => item.id)).toEqual([
+      issued.id,
+    ]);
+    expect(listed.body).not.toContain(issued.token);
+    expect((await api(member, "GET", "/runners/personal")).json()).toEqual({ items: [] });
+    expect((await api(alice, "GET", "/runners")).json()).toEqual({ items: [] });
+
+    // Another member cannot revoke it: for them it does not exist.
+    expect((await api(member, "DELETE", `/runners/personal/${issued.id}`)).statusCode).toBe(404);
+    expect(await tokens.isActive(issued.id)).toBe(true);
+    // Nor does a manager of the organization's runners see it by name.
+    expect((await api(alice, "DELETE", "/runners/Notebook")).statusCode).toBe(204);
+    expect(await tokens.isActive(issued.id)).toBe(true);
+
+    expect((await api(alice, "DELETE", `/runners/personal/${issued.id}`)).statusCode).toBe(204);
+    expect(await tokens.authenticate(issued.token)).toBeUndefined();
+
+    // The same name again: same runner, new token, active.
+    const again = (await api(alice, "POST", "/runners/personal", { name: "Notebook" })).json<{
+      id: string;
+      token: string;
+    }>();
+    expect(again.id).toBe(issued.id);
+    expect(again.token).not.toBe(issued.token);
+    expect(await tokens.authenticate(issued.token)).toBeUndefined();
+    expect(await tokens.authenticate(again.token)).toMatchObject({ id: issued.id });
+
+    // A viewer cannot create one; a member can.
+    const memberRunner = await api(member, "POST", "/runners/personal", { name: "Notebook" });
+    expect(memberRunner.statusCode).toBe(201);
+    const memberId = memberRunner.json<{ id: string }>().id;
+    expect(memberId).not.toBe(issued.id);
+    await accounts.setMember(alice.userId, alice.organizationId, bob.userId, "viewer");
+    const viewer = asActor(
+      await sessions.issue(bob.userId, alice.organizationId),
+      bob.userId,
+      alice.organizationId,
+    );
+    expect((await api(viewer, "POST", "/runners/personal", { name: "Outro" })).statusCode).toBe(
+      403,
+    );
+
+    // Leaving the organization revokes the member's computers there.
+    await accounts.setMember(alice.userId, alice.organizationId, bob.userId, null);
+    expect(await tokens.isActive(memberId)).toBe(false);
+    expect(await tokens.isActive(issued.id)).toBe(true);
+  });
+
+  it("grava quem iniciou a execução pela API", async () => {
+    const version = await publish(alice, await graph(alice));
+    const id = await run(alice, version);
+
+    const rows = rowsOf<{ started_by_user_id: string | null }>(
+      await db.database.db.execute(sql`select started_by_user_id from runs where id = ${id}`),
+    );
+    expect(rows[0]?.started_by_user_id).toBe(alice.userId);
   });
 
   it("aplica viewer imediatamente aos writes de recursos e credenciais", async () => {
