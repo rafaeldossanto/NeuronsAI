@@ -43,6 +43,7 @@ it("declares who may call every writing route; only credential and deletion rout
       "POST /connections/chatgpt/login → manage_credentials",
       "POST /connections/claude/login → manage_credentials",
       "POST /graphs/ → write",
+      "POST /graphs/:id/agent-chats/:agentId/turns → write",
       "POST /graphs/:id/deletion-request → write",
       "POST /graphs/:id/deletion-request/approve → delete_graphs",
       "POST /graphs/:id/deletion-request/reject → delete_graphs",

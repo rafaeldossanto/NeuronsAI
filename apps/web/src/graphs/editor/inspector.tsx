@@ -10,7 +10,9 @@ import {
   type TriggerNode,
 } from "@neurons/graph-schema";
 import type { ReactNode } from "react";
+import { Link as RouterLink } from "react-router";
 import { useHasApi } from "@/shared/api";
+import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/utils";
 import { AgentAccess } from "@/graphs/editor/agent-access";
 import { MemoryFields } from "@/graphs/editor/memory-fields";
@@ -82,11 +84,13 @@ export function Inspector({
   selection,
   issues,
   dispatch,
+  agentChatHref,
 }: {
   doc: GraphDoc;
   selection: Selection;
   issues: LocatedIssue[];
   dispatch: Dispatch;
+  agentChatHref?: ((agentId: string) => string) | undefined;
 }) {
   const annotationIds = selection.annotationIds ?? [];
   const total = selection.nodeIds.length + selection.linkIds.length + annotationIds.length;
@@ -141,6 +145,11 @@ export function Inspector({
       aria-label="Inspetor"
       className="flex w-80 shrink-0 flex-col gap-5 overflow-y-auto border-l bg-card p-4"
     >
+      {agentChatHref && node?.type === "agent" && (
+        <Button variant="outline" asChild>
+          <RouterLink to={agentChatHref(node.id)}>Abrir chat</RouterLink>
+        </Button>
+      )}
       {body}
     </aside>
   );

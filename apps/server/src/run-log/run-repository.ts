@@ -81,7 +81,12 @@ export interface RunRepository {
   createRunning(
     graphVersionId: string,
     eventsFor: (run: RunRecord) => RunEventDraft[],
-    options?: { budgetUsd?: number; quotas?: RunQuotas; startedByUserId?: string },
+    options?: {
+      budgetUsd?: number;
+      quotas?: RunQuotas;
+      startedByUserId?: string;
+      chatAgentId?: string;
+    },
   ): Promise<Recorded<RunRecord>>;
 
   /**

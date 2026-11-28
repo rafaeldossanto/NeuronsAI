@@ -122,6 +122,68 @@ describe("agente de API", () => {
     await runtime.stop();
   });
 
+  it("entrega a imagem e o contexto ao provedor e grava a resposta do chat uma vez", async () => {
+    const communication = comm();
+    const addMessage = vi.fn();
+    const client: TurnClient = {
+      addMessage,
+      result: vi.fn(),
+      respond: vi.fn().mockResolvedValue({ usage, calls: [], text: "Imagem recebida." }),
+    };
+    const runtime = new ApiRuntime(agent, communication, {
+      resolveSecret: () => Promise.resolve("chave-de-teste"),
+      createClient: () => client,
+    });
+    const image = { name: "fluxo.png", mediaType: "image/png" as const, base64: "dGVzdA==" };
+    await runtime.start("Papel");
+    await runtime.deliver({
+      id: "m",
+      from: "@human",
+      kind: "message",
+      body: "Analise a captura",
+      replyTo: null,
+      chat: { history: "A conversa anterior", image },
+    });
+    await vi.waitFor(() => expect(runtime.state).toBe("idle"));
+    expect(addMessage).toHaveBeenCalledWith(
+      expect.stringContaining("A conversa anterior\n\nMensagem atual:\nAnalise a captura"),
+      image,
+    );
+    expect(communication.reply).toHaveBeenCalledExactlyOnceWith("m", "Imagem recebida.");
+    await runtime.stop();
+  });
+
+  it("mantém a resposta já registrada pela ferramenta do agente", async () => {
+    const communication = comm();
+    const client: TurnClient = {
+      addMessage: vi.fn(),
+      result: vi.fn(),
+      respond: vi
+        .fn()
+        .mockResolvedValueOnce({
+          usage,
+          calls: [{ id: "c1", name: "reply", input: '{"messageId":"m","text":"Aqui está."}' }],
+        })
+        .mockResolvedValueOnce({ usage, calls: [], text: "Resposta adicional." }),
+    };
+    const runtime = new ApiRuntime(agent, communication, {
+      resolveSecret: () => Promise.resolve("chave-de-teste"),
+      createClient: () => client,
+    });
+    await runtime.start("Papel");
+    await runtime.deliver({
+      id: "m",
+      from: "@human",
+      kind: "message",
+      body: "Analise a captura",
+      replyTo: null,
+      chat: {},
+    });
+    await vi.waitFor(() => expect(runtime.state).toBe("idle"));
+    expect(communication.reply).toHaveBeenCalledExactlyOnceWith("m", "Aqui está.");
+    await runtime.stop();
+  });
+
   it("não transforma uma escolha de assinatura em cobrança silenciosa de API", async () => {
     const node = { ...agent, runtime: { ...agent.runtime, access: "subscription" as const } };
     const resolveSecret = vi.fn();

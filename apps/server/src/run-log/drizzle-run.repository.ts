@@ -5,6 +5,8 @@ import { graphVersions, graphs, runEvents, runs } from "../database/schema/index
 import { appendEvents } from "./drizzle-event-writer.js";
 import { resourceScope } from "../accounts/resource-scope.js";
 import { requireOwnedVersion } from "../accounts/resource-ownership.js";
+import { GraphVersionNotFoundError } from "../runs/runs.errors.js";
+import { AgentChatBusyError } from "./run-log.errors.js";
 import type { Recorded, RunEventDraft } from "./run-event-draft.js";
 import { DAY_MS, assertRunQuota, type RunQuotas } from "./run-quota.js";
 import type {
@@ -29,6 +31,31 @@ async function countRuns(tx: DatabaseTransaction, condition: SQL): Promise<numbe
   return Number(row?.total ?? 0);
 }
 
+/** A graph row lock serializes competing turns for the same agent, even across published versions. */
+async function assertChatAvailable(tx: DatabaseTransaction, versionId: string, agentId: string) {
+  const [graph] = await tx
+    .select({ id: graphs.id })
+    .from(graphs)
+    .innerJoin(graphVersions, eq(graphVersions.graphId, graphs.id))
+    .where(and(eq(graphVersions.id, versionId), resourceScope.matches(graphs.organizationId)))
+    .for("update", { of: graphs });
+  if (!graph) throw new GraphVersionNotFoundError(versionId);
+
+  const [active] = await tx
+    .select({ id: runs.id })
+    .from(runs)
+    .innerJoin(graphVersions, eq(graphVersions.id, runs.graphVersionId))
+    .where(
+      and(
+        eq(graphVersions.graphId, graph.id),
+        eq(runs.chatAgentId, agentId),
+        inArray(runs.status, ["pending", "running"]),
+      ),
+    )
+    .limit(1);
+  if (active) throw new AgentChatBusyError();
+}
+
 const toRunRecord = (row: typeof runs.$inferSelect): RunRecord => ({
   id: row.id,
   graphVersionId: row.graphVersionId,
@@ -46,7 +73,12 @@ export class DrizzleRunRepository implements RunRepository {
   createRunning(
     graphVersionId: string,
     eventsFor: (run: RunRecord) => RunEventDraft[],
-    options: { budgetUsd?: number; quotas?: RunQuotas; startedByUserId?: string } = {},
+    options: {
+      budgetUsd?: number;
+      quotas?: RunQuotas;
+      startedByUserId?: string;
+      chatAgentId?: string;
+    } = {},
   ): Promise<Recorded<RunRecord>> {
     return this.database.db.transaction(async (tx) => {
       await requireOwnedVersion(tx, graphVersionId);
@@ -68,6 +100,9 @@ export class DrizzleRunRepository implements RunRepository {
           options.quotas,
         );
       }
+      if (options.chatAgentId !== undefined) {
+        await assertChatAvailable(tx, graphVersionId, options.chatAgentId);
+      }
       const [row] = await tx
         .insert(runs)
         .values({
@@ -77,6 +112,7 @@ export class DrizzleRunRepository implements RunRepository {
           ...(options.startedByUserId !== undefined && {
             startedByUserId: options.startedByUserId,
           }),
+          ...(options.chatAgentId !== undefined && { chatAgentId: options.chatAgentId }),
           ...(options.budgetUsd !== undefined && { budgetUsd: String(options.budgetUsd) }),
         })
         .returning();

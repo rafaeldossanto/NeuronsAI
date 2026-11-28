@@ -16,6 +16,8 @@ export const runs = pgTable(
     graphVersionId: uuid("graph_version_id")
       .notNull()
       .references(() => graphVersions.id, { onDelete: "restrict" }),
+    /** Stable ID of the agent block targeted by a chat turn; null for trigger runs. */
+    chatAgentId: text("chat_agent_id"),
     status: text("status").$type<RunStatus>().notNull().default("pending"),
     /** Who started the run through the API; null for triggers (cron, webhook, WhatsApp) and the local profile. */
     startedByUserId: uuid("started_by_user_id").references(() => users.id, {
@@ -36,6 +38,9 @@ export const runs = pgTable(
   (table) => [
     // The listing joins on the version and sorts by start.
     index("runs_graph_version_id_idx").on(table.graphVersionId),
+    index("runs_chat_agent_id_idx")
+      .on(table.chatAgentId, table.graphVersionId)
+      .where(sql`${table.chatAgentId} is not null`),
     // Active-run counts (quota) and the status filter of the listing.
     index("runs_status_idx").on(table.status),
     index("runs_started_at_idx").on(table.startedAt.desc(), table.id.desc()),

@@ -127,6 +127,13 @@
       "when": 1795825583222,
       "tag": "0017_personal_runners",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795861082554,
+      "tag": "0018_agent_chats",
+      "breakpoints": true
     }
   ]
 }

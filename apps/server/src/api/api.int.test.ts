@@ -744,6 +744,7 @@ describe("OpenAPI document", () => {
       "/connections/claude/login",
       "/graphs",
       "/graphs/{id}",
+      "/graphs/{id}/agent-chats/{agentId}/turns",
       "/graphs/{id}/deletion-request",
       "/graphs/{id}/deletion-request/approve",
       "/graphs/{id}/deletion-request/reject",

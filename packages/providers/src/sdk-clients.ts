@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type {
   Effort,
   FunctionTool,
+  ModelImage,
   ModelTurn,
   RespondOptions,
   ToolCall,
@@ -41,8 +42,20 @@ export class OpenAITurnClient implements TurnClient {
       ...(fetcher && { fetch: fetcher }),
     });
   }
-  addMessage(text: string) {
-    this.messages.push({ role: "user", content: text });
+  addMessage(text: string, image?: ModelImage) {
+    this.messages.push({
+      role: "user",
+      content: image
+        ? [
+            { type: "input_text", text },
+            {
+              type: "input_image",
+              detail: "auto",
+              image_url: `data:${image.mediaType};base64,${image.base64}`,
+            },
+          ]
+        : text,
+    });
   }
   async respond(
     briefing: string,
@@ -155,8 +168,19 @@ export class AnthropicTurnClient implements TurnClient {
       ...(fetcher && { fetch: fetcher }),
     });
   }
-  addMessage(text: string) {
-    this.messages.push({ role: "user", content: text });
+  addMessage(text: string, image?: ModelImage) {
+    this.messages.push({
+      role: "user",
+      content: image
+        ? [
+            { type: "text", text },
+            {
+              type: "image",
+              source: { type: "base64", media_type: image.mediaType, data: image.base64 },
+            },
+          ]
+        : text,
+    });
   }
   async respond(
     briefing: string,

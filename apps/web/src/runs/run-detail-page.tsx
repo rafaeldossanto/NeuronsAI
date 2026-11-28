@@ -1,10 +1,8 @@
-import type { GraphNode } from "@neurons/graph-schema";
 import { useQueryClient } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { GraphViewer } from "@/graphs/editor/graph-viewer";
-import type { BlockLive } from "@/graphs/editor/nodes";
 import { RunStatusBadge } from "@/runs/run-status-badge";
 import { ErrorState, LoadingRows } from "@/shared/states";
 import { Badge } from "@/shared/ui/badge";
@@ -33,6 +31,7 @@ import type { TerminalInputError } from "@/runs/live/terminal-errors";
 import { useReplayPlayer } from "@/runs/live/use-replay-player";
 import { describeEventsProgress, useRunEvents } from "@/runs/live/use-run-events";
 import { pulsesByEdge, useActivePulses } from "@/runs/live/pulse-edges";
+import { isRecentPulse, liveByNode } from "@/runs/live/graph-activity";
 import {
   useRunDetail,
   useRunGraph,
@@ -52,9 +51,6 @@ const finishReasonLabel = (reason: string) =>
   })[reason as "finished"] ?? reason;
 
 const costLabel = (usd: number | null) => (usd === null ? "custo desconhecido" : formatUsd(usd));
-
-/** A message counts as "just happened" (worth a pulse) for this long after its timestamp. */
-const FRESH_MS = 8_000;
 
 type RunDetail = NonNullable<ReturnType<typeof useRunDetail>["data"]>;
 type GraphQuery = ReturnType<typeof useRunGraph>;
@@ -118,7 +114,7 @@ function LiveRunView({
     clearInputError,
   } = useRunLive(id);
   const queryClient = useQueryClient();
-  const moving = useActivePulses(state.pulses, (pulse) => isRecent(state, pulse));
+  const moving = useActivePulses(state.pulses, (pulse) => isRecentPulse(state, pulse));
 
   // The final figures (and the dates) come from the server once, when the live state says it ended.
   const finishedSeq = state.finish?.seq;
@@ -270,7 +266,8 @@ function RunScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state.timeline, state.toolCalls],
   );
-  const selectedNode = doc?.nodes.filter(isAgent).find((n) => n.id === selectedId);
+  const selectedBlock = doc?.nodes.find((node) => node.id === selectedId);
+  const selectedNode = selectedBlock?.type === "agent" ? selectedBlock : undefined;
 
   return (
     <div className="flex flex-col gap-8">
@@ -535,32 +532,4 @@ function SendMessageForm({ runId, agents }: { runId: string; agents: string[] })
       )}
     </section>
   );
-}
-
-const isAgent = (node: GraphNode): node is Extract<GraphNode, { type: "agent" }> =>
-  node.type === "agent";
-
-/** What each agent block shows, by node id; the agent is the one named like the block. */
-function liveByNode(
-  nodes: readonly GraphNode[],
-  agents: RunLiveState["agents"],
-): Record<string, BlockLive> {
-  const result: Record<string, BlockLive> = {};
-  for (const node of nodes.filter(isAgent)) {
-    const agent = agents[node.name];
-    if (agent)
-      result[node.id] = {
-        status: agent.status,
-        costUsd: agent.costUsd,
-        costIsMinimum: agent.unknownCostTurns > 0,
-      };
-  }
-  return result;
-}
-
-/** True when the message behind the pulse was sent a moment ago (not part of the history). */
-function isRecent(state: Pick<RunLiveState, "timeline">, pulse: LivePulse): boolean {
-  const message = state.timeline.findLast((m) => m.seq === pulse.seq);
-  const sentAt = message ? Date.parse(message.at) : NaN;
-  return Number.isNaN(sentAt) || Date.now() - sentAt < FRESH_MS;
 }
