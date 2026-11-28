@@ -8,6 +8,7 @@ import {
   canRunGraph,
   canSeeGraph,
   canSeeRun,
+  runReach,
   resolveGraphAccess,
   type GraphAccessEntryFacts,
   type GraphAccessFacts,
@@ -126,15 +127,32 @@ describe("what each level may do", () => {
     const mine = { startedByUserId: person };
     const theirs = { startedByUserId: stranger };
     const trigger = { startedByUserId: null };
-    expect(canSeeRun("use", mine, person)).toBe(true);
-    expect(canSeeRun("use", theirs, person)).toBe(false);
-    expect(canSeeRun("use", trigger, person)).toBe(false);
-    expect(canSeeRun("use", mine, undefined)).toBe(false);
-    for (const level of ["view", "edit", "manage"] as const) {
-      expect(canSeeRun(level, theirs, person)).toBe(true);
-      expect(canSeeRun(level, trigger, person)).toBe(true);
+    for (const mode of ["restricted", "organization"] as const) {
+      expect(canSeeRun("use", mode, mine, person)).toBe(true);
+      expect(canSeeRun("use", mode, theirs, person)).toBe(false);
+      expect(canSeeRun("use", mode, trigger, person)).toBe(false);
+      expect(canSeeRun("use", mode, mine, undefined)).toBe(false);
+      for (const level of ["edit", "manage"] as const) {
+        expect(canSeeRun(level, mode, theirs, person)).toBe(true);
+        expect(canSeeRun(level, mode, trigger, person)).toBe(true);
+      }
+      expect(canSeeRun("none", mode, mine, person)).toBe(false);
     }
-    expect(canSeeRun("none", mine, person)).toBe(false);
+  });
+
+  it("holds a viewer let into a restricted project to their own runs, and leaves the open one as it was", () => {
+    const mine = { startedByUserId: person };
+    const theirs = { startedByUserId: stranger };
+    const trigger = { startedByUserId: null };
+    expect(runReach("view", "restricted")).toBe("own");
+    expect(canSeeRun("view", "restricted", theirs, person)).toBe(false);
+    expect(canSeeRun("view", "restricted", trigger, person)).toBe(false);
+    expect(canSeeRun("view", "restricted", mine, person)).toBe(true);
+    expect(runReach("view", "organization")).toBe("all");
+    expect(canSeeRun("view", "organization", theirs, person)).toBe(true);
+    expect(canSeeRun("view", "organization", trigger, person)).toBe(true);
+    // A project from before the mode existed is open.
+    expect(runReach("view", undefined)).toBe("all");
   });
 
   it("lets who only uses the project act on their own runs, and who only views act on none", () => {

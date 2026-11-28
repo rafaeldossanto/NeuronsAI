@@ -17,8 +17,8 @@ import { GraphVersionNotFoundError } from "../runs/runs.errors.js";
 import {
   UNRESTRICTED_ACCESS,
   canActOnRun,
-  canReadDraft,
   canSeeRun,
+  runReach,
   resolveGraphAccess,
   type GraphAccessEntryFacts,
   type GraphAccessLevel,
@@ -74,17 +74,25 @@ export class GraphAccessService {
     graphId: string,
     user: ResourceScope = resourceScope.current(),
   ): Promise<GraphAccessLevel> {
+    return (await this.resolve(graphId, user)).level;
+  }
+
+  /** The level and the mode of the project it was decided in (the mode also bounds the runs a viewer sees). */
+  private async resolve(
+    graphId: string,
+    user: ResourceScope,
+  ): Promise<{ level: GraphAccessLevel; mode: GraphAccessMode | undefined }> {
     const [graph] = await this.database.db
       .select({ ownerUserId: graphs.ownerUserId, accessMode: graphs.accessMode })
       .from(graphs)
       .where(
         and(eq(graphs.id, graphId), sameOrganization(graphs.organizationId, user.organizationId)),
       );
-    if (!graph) return "none";
+    if (!graph) return { level: "none", mode: undefined };
     const subject = subjectOf(user);
-    if (!subject) return UNRESTRICTED_ACCESS;
+    if (!subject) return { level: UNRESTRICTED_ACCESS, mode: graph.accessMode };
     const entry = isPrivileged(subject) ? undefined : await this.entryOf(graphId, subject.userId);
-    return resolveGraphAccess(graph, subject, entry);
+    return { level: resolveGraphAccess(graph, subject, entry), mode: graph.accessMode };
   }
 
   /**
@@ -141,9 +149,12 @@ export class GraphAccessService {
       .innerJoin(graphs, eq(graphs.id, graphVersions.graphId))
       .where(and(eq(runs.id, runId), sameOrganization(graphs.organizationId, user.organizationId)));
     if (!row) throw new RunNotFoundError(runId);
-    const level = await this.effectiveAccess(row.graphId, user);
-    const allowed = action === "read" ? canSeeRun : canActOnRun;
-    if (!allowed(level, row, user.userId)) throw new RunNotFoundError(runId);
+    const { level, mode } = await this.resolve(row.graphId, user);
+    const allowed =
+      action === "read"
+        ? canSeeRun(level, mode, row, user.userId)
+        : canActOnRun(level, row, user.userId);
+    if (!allowed) throw new RunNotFoundError(runId);
   }
 
   /**
@@ -169,8 +180,9 @@ export class GraphAccessService {
     const visibility: RunVisibility = { userId: subject.userId, full: [], own: [] };
     for (const project of projects) {
       const level = resolveGraphAccess(project, subject, entries.get(project.id));
-      if (canReadDraft(level)) visibility.full.push(project.id);
-      else if (level === "use") visibility.own.push(project.id);
+      const reach = runReach(level, project.accessMode);
+      if (reach === "all") visibility.full.push(project.id);
+      else if (reach === "own") visibility.own.push(project.id);
     }
     return visibility;
   }

@@ -126,16 +126,16 @@ Só nos perfis com conta (`hybrid` e `hosted`); no `local` nada disso existe e o
 
 - **Quem decide.** Todas as rotas perguntam ao `GraphAccessService.effectiveAccess(graphId, user)` (`accounts/graph-access.service.ts`; a regra pura está em `graph-access.ts`), que devolve `manage`, `edit`, `use`, `view` ou `none`. Proprietário e administrador da organização e o **dono do projeto** (`graphs.owner_user_id`, gravado por `POST /graphs`) têm `manage`: editar, publicar, configurar gatilhos, ver todas as execuções e gerenciar o acesso. A exclusão segue as regras de antes (`delete_graphs`, pedido de exclusão).
 - **Modo do projeto** (`graphs.access_mode`). `restricted` (o padrão de todo projeto criado com `POST /graphs` por uma conta): só o dono, proprietários/administradores e quem foi liberado. `organization` (o valor dos projetos que já existiam, `owner_user_id` nulo): cada membro com o acesso do papel (`member` edita, `viewer` vê). Quem foi **bloqueado** fica sem acesso nos dois modos.
-- **Liberação** (`graph_access`, uma linha por pessoa e projeto). `granted` com `level` `use` ou `edit`; `blocked`; `requested` (pedido). O papel na organização é o teto: um `viewer` liberado só ganha `view` (lê, não roda).
+- **Liberação** (`graph_access`, uma linha por pessoa e projeto). `granted` com `level` `use` ou `edit`; `blocked`; `requested` (pedido). O papel na organização é o teto: um `viewer` liberado só ganha `view` (lê, não roda). Num projeto restrito o `view` vê as execuções como quem só usa (só as que ele iniciou, ou seja, nenhuma, também no WebSocket); num projeto aberto à organização o `viewer` continua vendo todas.
 - **Níveis.**
 
-| Nível    | Vê o rascunho       | Roda | Vê as execuções       | Edita, publica, gatilhos | Gerencia o acesso |
-| -------- | ------------------- | ---- | --------------------- | ------------------------ | ----------------- |
-| `manage` | sim                 | sim  | todas                 | sim                      | sim               |
-| `edit`   | sim                 | sim  | todas                 | sim                      | não               |
-| `use`    | não (`draft: null`) | sim  | só as que ele iniciou | não                      | não               |
-| `view`   | sim                 | não  | todas                 | não                      | não               |
-| `none`   | não                 | não  | nenhuma               | não                      | não               |
+| Nível    | Vê o rascunho       | Roda | Vê as execuções                            | Edita, publica, gatilhos | Gerencia o acesso |
+| -------- | ------------------- | ---- | ------------------------------------------ | ------------------------ | ----------------- |
+| `manage` | sim                 | sim  | todas                                      | sim                      | sim               |
+| `edit`   | sim                 | sim  | todas                                      | sim                      | não               |
+| `use`    | não (`draft: null`) | sim  | só as que ele iniciou                      | não                      | não               |
+| `view`   | sim                 | não  | todas (aberto) / só as próprias (restrito) | não                      | não               |
+| `none`   | não                 | não  | nenhuma                                    | não                      | não               |
 
 - **Sem acesso é 404.** Com `none`, só `GET /graphs` mostra o projeto (id, nome, datas, `accessMode`, `owner` e `access`, sem rascunho nem versões). Qualquer outra rota do projeto, das execuções dele ou dos gatilhos dele responde `404` (`graph_not_found`, `graph_version_not_found`, `run_not_found`), para não revelar nada. Quem só usa (`use`) lê as versões publicadas, inicia execuções (`POST /runs`) e vê, na lista, no detalhe, nas mensagens, nos eventos e no WebSocket, **só** as execuções com `runs.started_by_user_id` igual ao seu (gatilhos não têm usuário: ficam para quem edita). Os gatilhos (agenda, webhook e WhatsApp) seguem disparando normalmente num projeto restrito.
 - **`GET /graphs`.** Cada item traz `accessMode`, `owner` (`{ id, name }` ou `null`) e `access` (`level`, `request`: `pending` / `blocked` / `null`, e `pendingRequests`, contado só para quem gerencia). `GET /graphs/{id}`, `POST` e `PATCH` trazem os mesmos campos.

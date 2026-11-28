@@ -1227,11 +1227,12 @@ describe("acesso por projeto", () => {
     expect((await grant(edita, id, alice, "use")).statusCode).toBe(404);
   });
 
-  it("o papel é o teto: leitor liberado só vê, sem rodar", async () => {
+  it("o papel é o teto: leitor liberado só vê, sem rodar, e não vê as execuções dos outros", async () => {
     const dona = await member("dona");
     const leitor = await member("leitor", "viewer");
     const id = await restricted(dona);
     const version = await publish(dona, id);
+    const donaRun = await run(dona, version);
     expect((await api(leitor, "GET", `/graphs/${id}`)).statusCode).toBe(404);
     expect((await grant(dona, id, leitor, "edit")).statusCode).toBe(200);
 
@@ -1241,6 +1242,34 @@ describe("acesso por projeto", () => {
       (await api(leitor, "POST", "/runs", { graphVersionId: version, input: "oi" })).statusCode,
     ).toBe(403);
     expect((await api(leitor, "PATCH", `/graphs/${id}`, { name: "x" })).statusCode).toBe(403);
+
+    // The runs carry what other people typed: in a restricted project a viewer only reaches their own
+    // (and a viewer starts none), over REST and over the WebSocket.
+    expect(await runIdsOf(leitor)).toEqual([]);
+    for (const url of [
+      `/runs/${donaRun}`,
+      `/runs/${donaRun}/events`,
+      `/runs/${donaRun}/messages`,
+    ]) {
+      expect([url, (await api(leitor, "GET", url)).statusCode]).toEqual([url, 404]);
+    }
+    await app.listen(0, "127.0.0.1");
+    const port = (app.getHttpServer().address() as AddressInfo).port;
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: leitor.headers });
+    sockets.push(socket);
+    const frames: { event: string }[] = [];
+    socket.on("message", (value) =>
+      frames.push(JSON.parse((value as Buffer).toString()) as { event: string }),
+    );
+    await new Promise<void>((resolve) => socket.once("open", resolve));
+    socket.send(JSON.stringify({ event: "subscribe", data: { runId: donaRun, fromSeq: 1 } }));
+    await eventually(() => expect(frames.some((frame) => frame.event === "error")).toBe(true));
+    expect(frames.some((frame) => frame.event === "run.event")).toBe(false);
+
+    // Open to the organization, the viewer reads every run, as before.
+    await api(dona, "PUT", `/graphs/${id}/access/mode`, { mode: "organization" });
+    expect(await runIdsOf(leitor)).toEqual([donaRun]);
+    expect((await api(leitor, "GET", `/runs/${donaRun}`)).statusCode).toBe(200);
   });
 
   it("aberto à organização: cada membro com o acesso do seu papel; restrito de novo, só os liberados", async () => {
